@@ -18,7 +18,7 @@ const Engine = (() => {
     const def = NODES[node.type];
     const temps = [];
     const ctx = {
-      node, params: node.params, res, projRes, uvOff: opts.uvOff || [0, 0],
+      node, params: Anim.params(node), res, projRes, uvOff: opts.uvOff || [0, 0],
       input: (k) => inputs[k],
       space: (k) => (inputs[k] ? inputs[k].space : null),
       px: (v) => (v * res) / projRes,
@@ -56,7 +56,8 @@ const Engine = (() => {
       const o = r && r.outs && r.outs[l.fromPort];
       return o ? { tex: o.tex, space: o.space, key: r.key + ':' + l.fromPort } : null;
     });
-    const inKey = inputs.map((x) => (x ? x.key : '-')).join('|');
+    const animated = Anim.isAnimated(node);
+    const inKey = inputs.map((x) => (x ? x.key : '-')).join('|') + (animated ? '@' + Anim.t : '');
     let m = store.get(id);
     if (!m) store.set(id, (m = new Map()));
     let e = m.get(res);
@@ -106,7 +107,7 @@ const Engine = (() => {
   // Fresh evaluation at `res` into a temporary store; returns 8-bit RGBA file
   // values. Nothing from the preview cache is reused.
   function renderBytes(id, port, res, opts = {}) {
-    const store = new Map();
+    const store = opts.store || new Map();
     try {
       const e = evaluate(id, res, new Map(), store, { ...opts, projRes: opts.projRes || Graph.state.resolution });
       if (!e) throw new Error('Нода не найдена');
@@ -117,9 +118,10 @@ const Engine = (() => {
       const raw = GPU.read(o.tex);
       return { bytes: ColorUtil.toBytes(raw, o.space), space: o.space, width: res, height: res, raw };
     } finally {
-      for (const m of store.values()) for (const e of m.values()) freeEntry(e);
+      if (!opts.store) freeStore(store);
     }
   }
+  function freeStore(store) { for (const m of store.values()) for (const e of m.values()) freeEntry(e); store.clear(); }
 
   function readCachedBytes(id, port, res) {
     const e = get(id, res);
@@ -128,5 +130,5 @@ const Engine = (() => {
     return { bytes: ColorUtil.toBytes(GPU.read(o.tex), o.space), space: o.space };
   }
 
-  return { evaluate, get, purge, dropGpu, renderBytes, readCachedBytes, errors, caches };
+  return { evaluate, get, purge, dropGpu, renderBytes, freeStore, readCachedBytes, errors, caches };
 })();

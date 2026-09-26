@@ -64,8 +64,13 @@
           <button data-view="1" title="RGBA на шахматке">RGBA</button>
           <button data-view="2">R</button><button data-view="3">G</button><button data-view="4">B</button><button data-view="5">A</button>
           <button data-view="6" title="Освещённая плоскость по normal map">Normal</button>
+          <span class="sep2"></span>
+          <button data-layout="2d" class="on" title="Только 2D-предпросмотр выбранной ноды">2D</button>
+          <button data-layout="3d" title="3D-превью материала (Output: Base Color, Normal, ORM)">3D</button>
+          <button data-layout="split" title="2D и 3D рядом">2D|3D</button>
           <span class="grow"></span>
           <select id="view-port" title="Выход ноды" style="display:none"></select>
+          <button id="btn-anim" title="Показать таймлайн анимации и экспорт спрайт-шитов">⏱</button>
           <button id="btn-tile" title="Повтор 3×3 для проверки швов">3×3</button>
           <button id="btn-half" title="Сдвиг на половину текстуры: швы окажутся в центре">½</button>
           <button id="btn-vfit" title="Вписать (двойной щелчок)">⤢</button>
@@ -75,7 +80,25 @@
           высота <input type="range" id="l-el" min="5" max="90" value="40">
           <select id="l-conv"><option value="auto">Y: авто</option><option value="gl">OpenGL +Y</option><option value="dx">DirectX −Y</option></select>
         </div>
+        <div class="lightbar" id="bar3d">
+          <select id="m-mesh" title="Форма для 3D-превью"><option value="cube">Куб</option><option value="sphere">Сфера</option><option value="cylinder">Цилиндр</option><option value="plane">Плоскость</option></select>
+          <select id="m-tiling" title="Повтор текстуры на объекте"><option value="1">1×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select>
+          Свет <input type="range" id="m-az" min="-180" max="180" value="35" title="Азимут света (или Shift+мышь)">
+          <input type="range" id="m-el" min="5" max="90" value="40" title="Высота света">
+          <input type="range" id="m-light" min="0" max="6" step="0.1" value="2.2" title="Яркость света">
+          <label title="Автоматическое вращение"><input type="checkbox" id="m-rot">↻</label>
+        </div>
         <div id="canvas-wrap"><canvas id="view"></canvas><div id="lost">Контекст WebGL потерян. Граф и параметры сохранены — ожидаю восстановления…</div></div>
+        <div id="timeline">
+          <button id="tl-play" title="Воспроизвести / пауза (анимация по кадрам)">▶</button>
+          <input type="range" id="tl-frame" min="0" max="15" value="0" title="Кадр">
+          <span id="tl-label" style="min-width:44px">1/16</span>
+          <label title="Число кадров: сетка листа 2×2, 4×2, 4×4, 8×4, 8×8">Кадров <select id="tl-frames"><option>4</option><option>8</option><option selected>16</option><option>32</option><option>64</option></select></label>
+          <label title="Размер одного кадра в спрайт-шите (степень двойки)">Кадр <select id="tl-size"><option>64</option><option>128</option><option selected>256</option><option>512</option></select></label>
+          <label>FPS <input type="number" id="tl-fps" min="1" max="60" value="24" style="width:46px"></label>
+          <span id="tl-sheet" style="color:var(--fg3)"></span>
+          <button id="tl-export" class="primary" title="Экспорт всех кадров выбранной ноды (или основного Output) одним PNG-листом">Спрайт-шит PNG</button>
+        </div>
         <div class="info" id="pinfo"></div>
       </section>
       <div class="split-h" id="split-h" title="Изменить высоту предпросмотра"></div>

@@ -14,7 +14,8 @@ You need nothing else — no repository, no install. Everything is in this file:
 1. Run JavaScript in the page (DevTools console, Playwright/Puppeteer `page.evaluate`, a browser
    extension or «run JS» tool). The API is `window.PTL`; read `PTL.help()` (this text) and `PTL.nodeTypes()`.
 2. For «make me a <material> texture»: start from the closest template (`PTL.examples()`), or build a graph
-   from the recipes below. Keep 3 outputs: `<name>_albedo`, `<name>_normal`, `<name>_orm`.
+   from the recipes below. Keep 3 outputs with `usage` basecolor / normal / orm: `<name>_basecolor`, `<name>_normal`, `<name>_orm`.
+   For particle effects build an animated graph and export a sprite sheet (see Animation below).
 3. Verify with numbers (`PTL.stats`, `PTL.pixel`, `PTL.errors()`) and pictures (`await PTL.renderDataURL(id)`).
 4. Deliver: `await PTL.exportAll()` downloads every Output as PNG; `PTL.saveProject()` returns the editable
    project JSON; or return `await PTL.renderPNGBase64(id)` to your caller.
@@ -81,6 +82,17 @@ Editing (all validated; unknown params/enum values throw with the list of valid 
 - Browser library (localStorage of this site): `PTL.library.saveNodePreset(id, name)`, `.nodePresets(type)`,
   `.saveTemplate(name)`, `.templates()`, `await .loadTemplate(name)`.
 - `await PTL.exportAll()` — download every Output node as PNG.
+- Material outputs: `PTL.addNode('output', {params:{usage:'basecolor'|'normal'|'orm', filename}})` — these three
+  feed the 3D preview (`PTL.setView({layout:'3d'|'split', material:{mesh:'cube'|'sphere'|'cylinder'|'plane', tiling:2}})`).
+- Animation (sprite sheets / flipbooks for particle FX):
+  `PTL.animate(id, key, {from, to, curve})` (curve `linear` | `pingpong` | `smooth` | `easeIn` | `easeOut`),
+  `PTL.unanimate(id, key)`, `PTL.animation({frames: 4|8|16|32|64, frameSize: 64|128|256|512, fps})` →
+  `{layout:[cols,rows], sheet:[w,h]}`, `PTL.setFrame(k)`, `await PTL.renderSpriteSheet(id)` →
+  `{width, height, cols, rows, png}`, `await PTL.exportSpriteSheet(id)`. Sheets are ALWAYS power-of-two
+  (2×2, 4×2, 4×4, 8×4, 8×8 frames of 64–512 px), frames left→right, top→bottom.
+  Seamless loops: frame k has t = k/N, so animate periodic params by exactly one period with `linear`:
+  noise/voronoi `evolution` 0→1, waves `phase` 0→1, transform `offsetX/Y` 0→±1; or use `pingpong`.
+  Transparency comes from Color Ramp stops with alpha (e.g. black α=0 → orange α=1).
 
 Images and projects
 - `await PTL.importImage(bytes | base64 | dataURL, {name, nodeId?, interp:'srgb'|'data', fit:'stretch'|'cover'|'tile'})` → image node id.
@@ -169,15 +181,17 @@ PTL.errors()[c];   // undefined when it compiled
 3. **Albedo**: masks → `ramp` (gradient map) for colour, variation via `tiler` output 1 or a large-scale
    noise multiplied in (`blend` multiply, opacity 0.3–0.6). Keep albedo mid-range (sRGB ~30–240).
 4. **Roughness / AO / Metallic**: `levels`/`invert` of the height or masks → `combine` preset `orm` → `output`.
-5. Add one `output` per map with clear filenames (`name_albedo`, `name_normal`, `name_orm`), `setActiveOutput` on albedo.
+5. Add one `output` per map with `usage` basecolor / normal / orm and clear filenames; `setActiveOutput` on basecolor.
+   Check the result in 3D: `PTL.setView({layout:'split'})`.
 6. Check tiling with `PTL.setView({tile3:true, half:true})`, verify numbers with `PTL.stats(id)`, look at
    `await PTL.renderDataURL(id)`. Keep everything tileable: integer scales, repeat wrap, no gradients.
 7. Scale: noise `scale` 2–4 = large forms, 8–16 = medium, 32–64 = fine detail. Use different seeds per layer.
 
 Built-in examples you can read as templates: `PTL.examples()`, `PTL.getExample(i)` (graph JSON) or
 `PTL.loadExample(i)`: 0 noise→levels→ramp, 1 noise→blur→normal, 2 masks→ORM, and full texture templates
-(albedo + normal + ORM outputs, exposed parameters): **3 brick wall, 4 asphalt with cracks, 5 cobblestone,
-6 wood planks, 7 painted metal with chips and scratches**. Fastest path for a request like «сделай асфальт»:
+(basecolor + normal + ORM outputs, exposed parameters): **3 brick wall, 4 asphalt with cracks, 5 cobblestone,
+6 wood planks, 7 painted metal with chips and scratches**; example 2 = metal panels showing how masks are packed
+into ORM; animated FX flipbooks: **8 fire, 9 smoke puff, 10 energy ring**. Fastest path for a request like «сделай асфальт»:
 `PTL.loadExample(4)`, then tune it with `PTL.exposed()` / `PTL.setExposed(label, value)` or `PTL.setParams`.
 
 ## Recipes (node chains; params are good starting points)
@@ -190,11 +204,17 @@ Built-in examples you can read as templates: `PTL.examples()`, `PTL.getExample(i
 - **Brick wall**: `tiler` preset «Кирпичи» → `warp{mode:'gradient',intensity:0.006}` with `noise{scale:16}` as map
   → `blend multiply` with `levels(noise){outBlack:0.72}` = height → `normal{strength:4}`.
   Colour: `ramp`(tiler output 1, reds/browns) mixed with mortar `constant` using `levels(height){inWhite:0.08}` as mask.
-- **Cobblestone / paving**: `tiler` preset «Булыжник» (or `voronoi{mode:'f1'}` inverted for round stones),
-  warp slightly, `normal{strength:6}`; gaps dark in albedo via the same mask.
+- **Cobblestone / flagstone** (template 5): `voronoi{mode:'border',scale:7,randomness:0.85}` warped by noise →
+  `gaussian{sigma:5}` → `levels{inBlack:0.1,inWhite:0.7,gamma:2.2}` = domed stones with gaps; per-stone variation from
+  `voronoi{mode:'cell'}` with the SAME seed/scale/randomness and the same warp; gaps = dirt ramp + splatter pebbles.
 - **Tiles**: `tiler` preset «Плитка», `bevel` 0.03–0.06; grout mask = `levels(tiler){inWhite:0.05}` inverted.
-- **Wood**: `noise{stretch:8,scale:2,octaves:4}` → `waves{countX:0,countY:12,shape:'sine',distort:3}` (distort input = that noise)
-  → `ramp` browns; planks via `tiler{countX:1,countY:6,rowOffset:0,sizeX:1,sizeY:0.97}` multiplied in.
+- **Wood planks** (template 6): grain = `waves{countY:84,distort:14}` distorted by `noise{scale:1,stretch:4}` + knots
+  (`splatter{pattern:'gauss',count:5,size:0.13,aspect:0.5}` added into the distortion) → `levels` to thin dark lines,
+  × fine fibers `noise{type:'value',scale:4,stretch:32}`; planks `tiler{countX:2,countY:6,rowOffset:0.5}`; give each plank
+  its own grain with `warp{mode:'directional',angle:90,intensity:0.5}` using tiler output 1 (random per plank) as map.
+- **Fire / smoke / magic flipbooks** (templates 8–10): noise with animated `evolution` 0→1 (+ transform scroll 0→−1)
+  × soft shape/gradient mask → `levels` → `ramp` with alpha → output; `PTL.animation({frames:16,frameSize:256})`,
+  `await PTL.exportSpriteSheet(outId)`.
 - **Marble**: `noise{warp:0.7,warpScale:2,fractal:'ridged'}` → `levels` → `ramp` white/grey veins.
 - **Rock / cliff**: `noise{fractal:'ridged',scale:3,octaves:7}` + `voronoi{mode:'crackle',scale:6}` (blend multiply) →
   `warp` by another noise → `normal{strength:8}`; albedo = ramp of height + `hsv` tweak.

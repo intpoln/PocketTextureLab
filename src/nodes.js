@@ -164,6 +164,7 @@ const NODES = {
       i('lacunarity', 'Лакунарность (×частота на октаву)', 2, 4, 2, { help: 'Во сколько раз растёт частота с каждой октавой. Целое — чтобы шум оставался бесшовным.' }),
       f('warp', 'Искажение (Domain Warp)', 0, 1, 0, { help: 'Сдвигает координаты другим периодическим шумом — «текучие», органические формы (мрамор, грязь, облака). Бесшовность сохраняется.' }),
       i('warpScale', 'Масштаб искажения', 1, 16, 2, { visible: (p) => p.warp > 0 }),
+      f('evolution', 'Эволюция (анимация)', 0, 1, 0, { step: 0.001, help: 'Плавно меняет узор, не сдвигая его. Для зацикленной анимации анимируйте 0 → 1 (кривая «Линейно»): последний кадр переходит в первый без скачка.' }),
       f('contrast', 'Контраст (Contrast)', 0, 4, 1),
       b('invert', 'Инвертировать', false),
     ],
@@ -174,7 +175,7 @@ const NODES = {
         u_type: { value: 0, perlin: 1, worley: 2, white: 3 }[p.type], u_fractal: { fbm: 0, ridged: 1, billow: 2 }[p.fractal],
         u_seed: p.seed, u_oct: p.octaves, u_lac: p.lacunarity, u_scale: p.scale, u_stretch: p.stretch,
         u_grainCells: ctx.projRes / Math.max(1, p.grain), u_pers: p.persistence, u_contrast: p.contrast,
-        u_warp: p.warp, u_warpScale: p.warpScale, u_tile: p.tile, u_inv: p.invert,
+        u_warp: p.warp, u_warpScale: p.warpScale, u_tile: p.tile, u_inv: p.invert, u_evo: p.evolution,
       });
       return [{ tex: out, space: 'data' }];
     },
@@ -190,13 +191,14 @@ const NODES = {
       f('scale', 'Масштаб (Scale)', 1, 64, 8, { step: 1, intWhen: (p) => p.tile }),
       i('seed', 'Seed', 0, 99999, 1),
       f('randomness', 'Случайность (Randomness)', 0, 1, 1),
+      f('evolution', 'Эволюция (анимация)', 0, 1, 0, { step: 0.001, help: 'Плавно меняет узор, не сдвигая его. Для зацикленной анимации анимируйте 0 → 1 (кривая «Линейно»): последний кадр переходит в первый без скачка.' }),
     ],
     seamFn: (p) => (p.tile ? '' : 'Tileable выключен — узор не периодичен, при повторе будет шов.'),
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
       ctx.pass('voronoi', out, {
         u_seed: p.seed, u_mode: { f1: 0, border: 1, cell: 2, f2: 3, crackle: 4 }[p.mode], u_scale: p.scale,
-        u_rand: p.randomness, u_tile: p.tile, u_metric: { euclid: 0, manhattan: 1, chebyshev: 2 }[p.metric],
+        u_rand: p.randomness, u_tile: p.tile, u_evo: p.evolution, u_metric: { euclid: 0, manhattan: 1, chebyshev: 2 }[p.metric],
       });
       return [{ tex: out, space: 'data' }];
     },
@@ -654,8 +656,12 @@ const NODES = {
     title: 'Выход (Output)', cat: 'Выход', outputs: [],
     inputs: [{ label: 'Карта', def: BLACK, defText: 'чёрный (0,0,0,1)' }],
     params: [
+      e('usage', 'Назначение', [['generic', 'Обычная карта'], ['basecolor', 'Base Color (альбедо)'], ['normal', 'Normal'], ['orm', 'ORM (AO · Roughness · Metallic)']], 'generic',
+        { help: 'Выходы Base Color, Normal и ORM собираются в материал для 3D-превью (кнопки 3D над предпросмотром). На экспорт не влияет.' }),
+      e('normalY', 'Соглашение нормали для 3D', [['auto', 'Авто (по ноде Height to Normal)'], ['gl', 'OpenGL +Y'], ['dx', 'DirectX −Y']], 'auto', { visible: (p) => p.usage === 'normal' }),
       { key: 'filename', label: 'Имя файла', type: 'text', def: 'texture' },
     ],
+    titleFn: (p) => ({ basecolor: 'Выход: Base Color', normal: 'Выход: Normal', orm: 'Выход: ORM' })[p.usage] || 'Выход (Output)',
     help: 'Экспорт PNG 8 бит RGBA без потерь. Цветные карты кодируются в sRGB, карты-данные записываются как есть. Экспорт всегда пересчитывает граф в выбранном разрешении.',
     eval(ctx) {
       const out = ctx.alloc(), u = {};
@@ -795,3 +801,15 @@ const NODE_DESC = {
   output: 'Финальная карта для экспорта в PNG (имя файла).',
 };
 for (const t in NODES) if (!NODES[t].desc) NODES[t].desc = NODE_DESC[t] || '';
+
+function nodeTitle(node) {
+  const def = NODES[node.type];
+  return def.titleFn ? def.titleFn(node.params) : def.title;
+}
+
+// Extra catalog entries: pre-configured nodes.
+const CATALOG_EXTRA = [
+  { type: 'output', title: 'Выход: Base Color', params: { usage: 'basecolor', filename: 'basecolor' }, desc: 'Выход цвета (альбедо) материала: экспорт PNG + 3D-превью.' },
+  { type: 'output', title: 'Выход: Normal', params: { usage: 'normal', filename: 'normal' }, desc: 'Выход normal map материала: экспорт PNG + 3D-превью.' },
+  { type: 'output', title: 'Выход: ORM', params: { usage: 'orm', filename: 'orm' }, desc: 'Выход ORM (R=AO, G=Roughness, B=Metallic): экспорт PNG + 3D-превью.' },
+];

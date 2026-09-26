@@ -3,7 +3,7 @@
 // cycle prevention, (de)serialisation and snapshot-based undo/redo.
 // ---------------------------------------------------------------------------
 const Graph = (() => {
-  const g = { nodes: new Map(), links: [], resolution: 512, activeOutput: null, nextId: 1, exposed: [] };
+  const g = { nodes: new Map(), links: [], resolution: 512, activeOutput: null, nextId: 1, exposed: [], animation: { frames: 16, frameSize: 256, fps: 24 } };
   let stampCounter = 1;
 
   function newStamp() { return ++stampCounter; }
@@ -12,7 +12,7 @@ const Graph = (() => {
     if (!NODES[type]) throw new Error('Неизвестный тип ноды: ' + type);
     const p = { ...defaultParams(type), ...(params ? JSON.parse(JSON.stringify(params)) : {}) };
     id = id || 'n' + g.nextId++;
-    const node = { id, type, x: Math.round(x), y: Math.round(y), params: p, stamp: newStamp() };
+    const node = { id, type, x: Math.round(x), y: Math.round(y), params: p, anim: {}, stamp: newStamp() };
     g.nodes.set(id, node);
     if (type === 'output' && !g.activeOutput) g.activeOutput = id;
     return node;
@@ -74,7 +74,8 @@ const Graph = (() => {
       resolution: g.resolution,
       activeOutput: g.activeOutput,
       nextId: g.nextId,
-      nodes: [...g.nodes.values()].map((n) => ({ id: n.id, type: n.type, x: n.x, y: n.y, params: n.params })),
+      nodes: [...g.nodes.values()].map((n) => ({ id: n.id, type: n.type, x: n.x, y: n.y, params: n.params, ...(n.anim && Object.keys(n.anim).length ? { anim: n.anim } : {}) })),
+      animation: { ...g.animation },
       links: g.links.map((l) => ({ ...l })),
       exposed: g.exposed.map((x) => ({ ...x })),
     };
@@ -89,14 +90,22 @@ const Graph = (() => {
     for (const n of data.nodes) {
       const prev = old.get(n.id);
       const params = { ...defaultParams(n.type), ...JSON.parse(JSON.stringify(n.params || {})) };
-      const same = prev && prev.type === n.type && JSON.stringify(prev.params) === JSON.stringify(params);
-      g.nodes.set(n.id, { id: n.id, type: n.type, x: +n.x || 0, y: +n.y || 0, params, stamp: same ? prev.stamp : newStamp() });
+      const anim = cleanAnim(n.type, n.anim);
+      const same = prev && prev.type === n.type && JSON.stringify(prev.params) === JSON.stringify(params) &&
+        JSON.stringify(prev.anim || {}) === JSON.stringify(anim);
+      g.nodes.set(n.id, { id: n.id, type: n.type, x: +n.x || 0, y: +n.y || 0, params, anim, stamp: same ? prev.stamp : newStamp() });
     }
     g.links = [];
     for (const l of data.links) {
       if (connect(l.from, l.fromPort | 0, l.to, l.toPort | 0)) console.warn('Пропущена связь', l);
     }
     g.resolution = [256, 512, 1024, 2048].includes(data.resolution) ? data.resolution : 512;
+    const an = data.animation || {};
+    g.animation = {
+      frames: [4, 8, 16, 32, 64].includes(an.frames) ? an.frames : 16,
+      frameSize: [64, 128, 256, 512].includes(an.frameSize) ? an.frameSize : 256,
+      fps: Math.min(60, Math.max(1, +an.fps || 24)),
+    };
     g.exposed = (Array.isArray(data.exposed) ? data.exposed : []).filter((x) => x && g.nodes.has(x.node) &&
       NODES[g.nodes.get(x.node).type].params.some((d) => d.key === x.key)).map((x) => ({ node: x.node, key: x.key, label: String(x.label || x.key) }));
     g.activeOutput = data.activeOutput && g.nodes.has(data.activeOutput) ? data.activeOutput : null;
@@ -107,6 +116,16 @@ const Graph = (() => {
     let maxId = 0;
     for (const id of g.nodes.keys()) { const m = /^n(\d+)$/.exec(id); if (m) maxId = Math.max(maxId, +m[1]); }
     g.nextId = Math.max(data.nextId | 0, maxId + 1);
+  }
+
+  function cleanAnim(type, anim) {
+    const out = {};
+    if (!anim || typeof anim !== 'object') return out;
+    for (const key of Object.keys(anim)) {
+      const d = NODES[type].params.find((q) => q.key === key);
+      if (d && (d.type === 'float' || d.type === 'int') && isFinite(+anim[key].to)) out[key] = { to: +anim[key].to, curve: String(anim[key].curve || 'linear') };
+    }
+    return out;
   }
 
   function validate(data) {

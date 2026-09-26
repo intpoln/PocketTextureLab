@@ -769,8 +769,8 @@ await test('Шаблоны текстур, пресеты градиентов, 
     const menu = [...document.querySelectorAll('#examples option')].map((o) => o.textContent);
     return { res, lbl, before, after, projPanel, magma, fire, saved, reloaded, menu };
   });
-  for (const t of r.res) ok(t.outs.length === 3 && t.outs.some((f) => /albedo/.test(f)) && t.outs.some((f) => /normal/.test(f)) && t.outs.some((f) => /orm/.test(f)) && t.exposed >= 5 && t.errors === 0 && t.spread > 40,
-    `шаблон «${t.title}»: 3 выхода (albedo, normal, orm), вынесенные параметры, без ошибок`, t);
+  for (const t of r.res) ok(t.outs.length === 3 && t.outs.some((f) => /basecolor|albedo/.test(f)) && t.outs.some((f) => /normal/.test(f)) && t.outs.some((f) => /orm/.test(f)) && t.exposed >= 5 && t.errors === 0 && t.spread > 40,
+    `шаблон «${t.title}»: 3 выхода (basecolor, normal, orm), вынесенные параметры, без ошибок`, t);
   ok(r.after === r.before + 1 && r.projPanel >= 5, 'вынесенный параметр меняет ноду; панель «Проект» показывает ползунки', [r.lbl, r.before, r.after, r.projPanel]);
   ok(r.magma === 8 && r.fire.slice(0, 3).join() === '1,1,1', 'пресеты градиентов (Magma, Fire)', r.fire);
   ok(r.saved.presets.includes('Мой огонь') && r.saved.templates.includes('Моя стена') && r.reloaded > 10 && r.menu.includes('Моя стена'),
@@ -781,6 +781,84 @@ await test('Шаблоны текстур, пресеты градиентов, 
   const kept = await page.evaluate(() => PTL.library.templates().map((t) => t.name));
   ok(kept.includes('Моя стена'), 'после перезагрузки страницы шаблон на месте (file://)', kept);
   await page.evaluate(() => localStorage.clear());
+  await page.context().close();
+});
+
+await test('Анимация и спрайт-шиты (степени двойки, петля, эволюция шума)', async () => {
+  const page = await openPage();
+  const r = await page.evaluate(async () => {
+    PTL.newProject(); PTL.setResolution(256);
+    const nz = PTL.addNode('noise', { params: { scale: 4 } });
+    const cmp = (a, b) => { let m = 0; for (let i = 0; i < a.length; i++) m = Math.max(m, Math.abs(a[i] - b[i])); return m; };
+    const e0 = PTL.render(nz).rgba;
+    PTL.setParams(nz, { evolution: 1 }); const e1 = PTL.render(nz).rgba;
+    PTL.setParams(nz, { evolution: 0.002 }); const eSmall = PTL.render(nz).rgba;
+    PTL.setParams(nz, { evolution: 0.5 }); const eHalf = PTL.render(nz).rgba;
+    const evo = { loop: cmp(e0, e1), small: cmp(e0, eSmall), half: cmp(e0, eHalf) };
+    PTL.setParams(nz, { evolution: 0 });
+    // animate evolution 0 → 1 and a transform scroll, check frames and sheet
+    const tr = PTL.addNode('transform'); PTL.connect(nz, 0, tr, 0);
+    PTL.animate(nz, 'evolution', { from: 0, to: 1 });
+    PTL.animate(tr, 'offsetX', { from: 0, to: 1 });
+    const sizes = [];
+    for (const [frames, frameSize] of [[4, 64], [8, 128], [16, 256], [32, 64], [64, 64]]) {
+      PTL.animation({ frames, frameSize });
+      const sh = await PTL.renderSpriteSheet(tr);
+      sizes.push([frames, frameSize, sh.width, sh.height, sh.cols, sh.rows]);
+    }
+    PTL.animation({ frames: 16, frameSize: 256 });
+    const sheet = PTL._test.sheet(tr);
+    PTL.setFrame(0); const f0 = PTL.render(tr, { size: 256 }).rgba;
+    PTL.setFrame(5); const f5 = PTL.render(tr, { size: 256 }).rgba;
+    PTL.setFrame(16); const f16 = PTL.render(tr, { size: 256 }).rgba;   // wraps to frame 0
+    // frame 5 in the sheet: col 1, row 1
+    let m5 = 0; for (let y = 0; y < 256; y++) for (let x = 0; x < 256 * 4; x++) m5 = Math.max(m5, Math.abs(sheet.bytes[((256 + y) * 1024 + 256) * 4 + x] - f5[y * 1024 + x]));
+    PTL.setFrame(0);
+    const saved = PTL.saveProject();
+    return { evo, sizes, loop: cmp(f0, f16), differs: cmp(f0, f5), m5, anim: saved.nodes.find((n) => n.id === nz).anim, settings: saved.animation };
+  });
+  ok(r.evo.loop <= 1 && r.evo.small <= 3 && r.evo.half > 30, 'эволюция шума: 0 и 1 совпадают (петля), малые шаги плавные, середина другая', r.evo);
+  const pot = (v) => (v & (v - 1)) === 0;
+  ok(r.sizes.every(([, , w, h]) => pot(w) && pot(h)), 'лист всегда степени двойки: 4×64→128², 8×128→512×256, 16×256→1024², 32×64→512×256, 64×64→512²', r.sizes);
+  ok(r.sizes[2][2] === 1024 && r.sizes[2][3] === 1024 && r.sizes[1][2] === 512 && r.sizes[1][3] === 256, 'раскладка кадров (cols×rows) верная', r.sizes);
+  ok(r.loop <= 1 && r.differs > 20, 'кадр N совпадает с кадром 0 (бесшовная петля), промежуточные кадры отличаются', [r.loop, r.differs]);
+  ok(r.m5 === 0, 'кадр 5 в листе (ряд 1, колонка 1) = отдельный рендер кадра 5', r.m5);
+  ok(r.anim && r.anim.evolution.to === 1 && r.settings.frames === 16, 'анимация сохраняется в проекте', r.anim);
+  // UI: timeline + download
+  await page.evaluate(() => PTL.animation({ frames: 4, frameSize: 128 }));
+  await page.waitForSelector('#timeline.show');
+  const dl = await downloadExport(page, '#tl-export');
+  const img = decode(dl.bytes);
+  ok(img.width === 256 && img.height === 256 && /sheet_2x2_128px/.test(dl.name), 'кнопка «Спрайт-шит PNG» скачивает лист 256×256 (2×2 по 128)', [dl.name, img.width, img.height]);
+  // ⏱ button in the parameter panel
+  const hasRow = await page.evaluate(() => { const nz = PTL.getGraph().nodes.find((n) => n.type === 'noise').id; PTL.select(nz); return !!document.querySelector('#params .prow[data-key="evolution"] .animrow'); });
+  ok(hasRow, 'в панели параметров у анимированного параметра есть строка «конец + кривая»');
+  await page.context().close();
+});
+
+await test('Выходы Base Color / Normal / ORM и 3D-превью материала', async () => {
+  const page = await openPage();
+  await page.evaluate(() => { PTL.loadExample(3); PTL.setView({ layout: '3d', material: { mesh: 'cube', autoRot: false } }); });
+  await page.waitForTimeout(1500);
+  await page.evaluate(() => PTL.whenIdle());
+  const info = await page.evaluate(() => ({
+    usages: PTL.getGraph().nodes.filter((n) => n.type === 'output').map((n) => n.params.usage).sort(),
+    text: document.getElementById('pinfo').textContent,
+  }));
+  ok(info.usages.join() === 'basecolor,normal,orm', 'шаблон использует типизированные выходы', info.usages);
+  ok(/Base brick_basecolor/.test(info.text) && /Normal brick_normal/.test(info.text) && /ORM brick_orm/.test(info.text), '3D-превью собирает материал из трёх выходов', info.text);
+  const shot = decode(await page.locator('#view').screenshot());
+  let sum = 0, sum2 = 0, n = 0, reddish = 0;
+  for (let y = Math.floor(shot.height * 0.3); y < shot.height * 0.7; y += 2) for (let x = Math.floor(shot.width * 0.3); x < shot.width * 0.7; x += 2) {
+    const o = (y * shot.width + x) * 4, l = shot.data[o] + shot.data[o + 1] + shot.data[o + 2];
+    sum += l; sum2 += l * l; n++; if (shot.data[o] > shot.data[o + 2] + 25) reddish++;
+  }
+  const mean = sum / n, sd = Math.sqrt(sum2 / n - mean * mean);
+  ok(mean > 60 && sd > 20 && reddish / n > 0.3, 'в 3D-окне отрисован освещённый куб с кирпичной текстурой', { mean: Math.round(mean), sd: Math.round(sd), red: +(reddish / n).toFixed(2) });
+  fs.writeFileSync(path.join(OUT, 'preview-3d.png'), await page.locator('#view').screenshot());
+  // catalog entries for typed outputs
+  const cat = await page.evaluate(() => [...document.querySelectorAll('#catalog .item')].map((i) => i.textContent).filter((t) => /^Выход/.test(t)));
+  ok(cat.includes('Выход: Base Color') && cat.includes('Выход: Normal') && cat.includes('Выход: ORM'), 'в каталоге есть Выход: Base Color / Normal / ORM', cat);
   await page.context().close();
 });
 

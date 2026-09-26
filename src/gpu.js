@@ -205,7 +205,8 @@ void main() {
       gl.viewport(0, 0, target.size, target.size);
     } else {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.viewport(0, 0, opts.width, opts.height);
+      const vp = opts.viewport || [0, 0, opts.width, opts.height];
+      gl.viewport(vp[0], vp[1], vp[2], vp[3]);
     }
     let unit = 0;
     for (const uname in pr.uniforms) {

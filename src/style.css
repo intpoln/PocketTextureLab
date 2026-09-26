@@ -146,3 +146,13 @@ main { flex: 1; display: flex; min-height: 0; }
 .lib-list div { display: flex; gap: 6px; align-items: center; padding: 3px 0; border-bottom: 1px solid var(--line); }
 .lib-list div span { flex: 1; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.prow > label .pin.anim { margin-left: auto; }
+.prow > label .pin.anim + .pin { margin-left: 0; }
+.animrow { width: 100%; font-size: 12px; color: var(--warn); }
+.animrow input[type=number] { width: 70px; }
+.animrow select { flex: 1; }
+#timeline { display: none; gap: 6px; padding: 4px 6px; align-items: center; font-size: 12px; color: var(--fg2); flex-wrap: wrap; border-top: 1px solid var(--line); }
+#timeline.show { display: flex; }
+#timeline input[type=range] { flex: 1; min-width: 60px; }
+#timeline select { padding: 1px 3px; }
+#preview .bar .sep2 { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }

@@ -133,11 +133,23 @@ float worleyN(vec2 p, ivec2 P, int o) {
   }
   return clamp(sqrt(md), 0.0, 1.0);
 }
+uniform float u_evo;
 float octave(vec2 p, ivec2 P, int o) {
   if (u_type == 0) return valueN(p, P, o, 1u);
   if (u_type == 1) return gradN(p, P, o);
   if (u_type == 2) return worleyN(p, P, o);
   return h1(wc(ivec2(floor(p)), P), o, 7u);
+}
+// Evolution: blend between 3 periodic "slices" of the noise with a
+// variance-preserving cos/sin crossfade; evolution 0 → 1 loops seamlessly.
+float octaveE(vec2 p, ivec2 P, int o) {
+  if (u_evo <= 0.0) return octave(p, P, o);
+  float z = fract(u_evo) * 3.0;
+  int zi = int(floor(z));
+  float f = z - float(zi);
+  float a = octave(p, P, o + 97 * zi), b = octave(p, P, o + 97 * ((zi + 1) % 3));
+  float th = f * f * (3.0 - 2.0 * f) * 1.5707963;
+  return 0.5 + (a - 0.5) * cos(th) + (b - 0.5) * sin(th);
 }
 float warpN(vec2 uv, int W, uint salt) {
   float s = 0.0, a = 0.5;
@@ -158,7 +170,7 @@ void main() {
   float sum = 0.0, amp = 1.0, norm = 0.0;
   for (int o = 0; o < 8; o++) {
     if (o >= u_oct) break;
-    float n = octave(uv * freq, P, o);
+    float n = octaveE(uv * freq, P, o);
     if (u_fractal == 1) { n = 1.0 - abs(2.0 * n - 1.0); n *= n; }
     else if (u_fractal == 2) n = abs(2.0 * n - 1.0);
     sum += n * amp; norm += amp; amp *= u_pers;
@@ -178,7 +190,16 @@ uniform float u_rand;
 uniform bool u_tile;
 ivec2 wc(ivec2 c, int P) { return u_tile ? ((c % P) + P) % P : c + 4096; }
 uvec3 hc(ivec2 c) { return pcg3(uvec3(uvec2(c), uint(u_seed) * 747796405u + 12345u)); }
-vec2 pt(ivec2 c) { uvec3 r = hc(c); return 0.5 + (vec2(r.xy >> 8u) / 16777215.0 - 0.5) * u_rand; }
+uniform float u_evo;
+vec2 pt(ivec2 c) {
+  uvec3 r = hc(c);
+  vec2 b = 0.5 + (vec2(r.xy >> 8u) / 16777215.0 - 0.5) * u_rand;
+  if (u_evo > 0.0) {   // each point orbits a small circle: evolution 0 → 1 loops
+    float a0 = float(r.z >> 8u) / 16777215.0 * 6.2831853, a1 = a0 + 6.2831853 * u_evo;
+    b += 0.25 * u_rand * (vec2(cos(a1), sin(a1)) - vec2(cos(a0), sin(a0)));
+  }
+  return b;
+}
 float dist(vec2 r) {
   if (u_metric == 1) return abs(r.x) + abs(r.y);
   if (u_metric == 2) return max(abs(r.x), abs(r.y));
@@ -608,6 +629,7 @@ uniform bool u_has;
 uniform bool u_isColor;
 uniform int u_view;     // 0 RGB, 1 RGBA over checker, 2 R, 3 G, 4 B, 5 A, 6 normal lit
 uniform vec2 u_canvas;
+uniform vec2 u_origin;
 uniform float u_zoom;
 uniform vec2 u_pan;
 uniform bool u_tile3;
@@ -618,7 +640,7 @@ uniform vec3 u_light;
 uniform vec3 u_bg;
 vec3 checker(vec2 fc) { vec2 c = floor(fc / 8.0); return mod(c.x + c.y, 2.0) < 1.0 ? vec3(0.42) : vec3(0.58); }
 void main() {
-  vec2 fc = gl_FragCoord.xy;
+  vec2 fc = gl_FragCoord.xy - u_origin;
   if (u_flip) fc.y = u_canvas.y - fc.y;
   float size = min(u_canvas.x, u_canvas.y) * u_zoom;
   vec2 uv = (fc - (u_canvas * 0.5 + u_pan)) / size + 0.5;

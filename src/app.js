@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 const App = (() => {
   const $ = (s) => document.querySelector(s);
-  const state = { selected: null, selectedLink: null, viewPort: 0, interactive: false, displayRes: 512, dirty: false, ready: false };
+  const state = { selected: null, selectedLink: null, viewPort: 0, interactive: false, playing: false, displayRes: 512, dirty: false, ready: false };
   let evalRaf = 0, idleTimer = 0, thumbQueue = [], thumbTimer = 0;
   const CAT_ORDER = ['Источники', 'Узоры', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
   const KEYWORDS = {
@@ -35,7 +35,7 @@ const App = (() => {
       requestEval();
     });
     GraphView.init(); ParamsPanel.init(); Preview.init();
-    buildCatalog(); bindToolbar(); bindKeys(); bindSplitters();
+    buildCatalog(); bindToolbar(); bindKeys(); bindSplitters(); bindTimeline();
     $('#status-gpu').textContent = GPU.precisionNote;
     $('#status-gpu').title = GPU.precisionNote;
     window.addEventListener('beforeunload', (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
@@ -60,6 +60,90 @@ const App = (() => {
     $('#fatal').classList.add('show');
   }
 
+  // ---------------------------------------------------------------- animation
+  let timelineForced = false, playRaf = 0, playLast = 0, playFrame = 0;
+  function bindTimeline() {
+    $('#btn-anim').onclick = () => { timelineForced = !timelineForced; animChanged(); };
+    $('#tl-play').onclick = () => (state.playing ? stop() : play());
+    $('#tl-frame').oninput = () => { stop(); setFrame(+$('#tl-frame').value); };
+    const setSettings = () => {
+      const a = Graph.state.animation;
+      a.frames = +$('#tl-frames').value; a.frameSize = +$('#tl-size').value;
+      a.fps = Math.min(60, Math.max(1, +$('#tl-fps').value || 24));
+      commit(); animChanged(); setFrame(Math.min(playFrame, a.frames - 1));
+    };
+    $('#tl-frames').onchange = setSettings; $('#tl-size').onchange = setSettings; $('#tl-fps').onchange = setSettings;
+    $('#tl-export').onclick = () => exportSpriteSheet();
+  }
+  function animChanged() {
+    const any = Anim.any();
+    $('#timeline').classList.toggle('show', any || timelineForced);
+    $('#btn-anim').classList.toggle('on', any || timelineForced);
+    const a = Anim.settings();
+    $('#tl-frames').value = a.frames; $('#tl-size').value = a.frameSize; $('#tl-fps').value = a.fps;
+    $('#tl-frame').max = a.frames - 1;
+    $('#tl-sheet').textContent = `лист ${a.layout[0] * a.frameSize}×${a.layout[1] * a.frameSize} (${a.layout[0]}×${a.layout[1]})`;
+    $('#tl-label').textContent = `${playFrame + 1}/${a.frames}`;
+  }
+  function setFrame(k) {
+    const F = Anim.settings().frames;
+    playFrame = ((k % F) + F) % F;
+    Anim.t = playFrame / F;
+    $('#tl-frame').value = playFrame;
+    $('#tl-label').textContent = `${playFrame + 1}/${F}`;
+    requestEval();
+  }
+  function play() {
+    if (state.playing) return;
+    flush();                                  // one full evaluation (thumbnails) before playback
+    state.playing = true; $('#tl-play').textContent = '⏸'; playLast = performance.now();
+    const step = (now) => {
+      if (!state.playing) return;
+      if (now - playLast >= 1000 / Anim.settings().fps) { playLast = now; setFrame(playFrame + 1); }
+      playRaf = requestAnimationFrame(step);
+    };
+    playRaf = requestAnimationFrame(step);
+  }
+  function stop() {
+    if (!state.playing) return;
+    state.playing = false; cancelAnimationFrame(playRaf); $('#tl-play').textContent = '▶'; requestEval();
+    GraphView.refreshMarks();
+  }
+
+  // Frames k = 0..N-1 (t = k/N), left→right, top→bottom; sheet is power-of-two.
+  function renderSpriteSheet(id, port = 0, opts = {}) {
+    const a = { ...Anim.settings(), ...opts };
+    const [cols, rows] = Anim.LAYOUTS[a.frames];
+    const fs = a.frameSize, W = cols * fs, H = rows * fs;
+    const pot = (v) => v > 0 && (v & (v - 1)) === 0;
+    if (!pot(fs) || !pot(W) || !pot(H)) throw new Error('Размер листа должен быть степенью двойки');
+    const sheet = new Uint8Array(W * H * 4);
+    const store = new Map(), t0 = Anim.t;
+    try {
+      for (let k = 0; k < a.frames; k++) {
+        Anim.t = k / a.frames;
+        const r = Engine.renderBytes(id, port, fs, { store });
+        const ox = (k % cols) * fs, oy = Math.floor(k / cols) * fs;
+        for (let y = 0; y < fs; y++) sheet.set(r.bytes.subarray(y * fs * 4, (y + 1) * fs * 4), ((oy + y) * W + ox) * 4);
+      }
+    } finally { Anim.t = t0; Engine.freeStore(store); }
+    return { bytes: sheet, width: W, height: H, cols, rows, frames: a.frames, frameSize: fs };
+  }
+
+  async function exportSpriteSheet(id = viewedId(), port = state.viewPort) {
+    if (!id) { toast('Выберите ноду или добавьте Output.', 'warn'); return; }
+    try {
+      status('Рендер спрайт-шита…');
+      const t0 = performance.now();
+      const r = renderSpriteSheet(id, port);
+      const png = await PNG.encodeAsync(r.bytes, r.width, r.height);
+      const base = exportFileName(id, port).replace(/\.png$/, '');
+      const name = `${base}_sheet_${r.cols}x${r.rows}_${r.frameSize}px.png`;
+      download(png, name, 'image/png');
+      toast(`Спрайт-шит: ${name} — ${r.width}×${r.height}, ${r.frames} кадров (${Math.round(performance.now() - t0)} мс)`);
+    } catch (e) { console.warn(e); toast('Ошибка экспорта спрайт-шита: ' + e.message, 'err'); }
+  }
+
   // ---------------------------------------------------------------- UI bits
   function buildCatalog() {
     const list = $('#catalog-list'), search = $('#search');
@@ -70,8 +154,22 @@ const App = (() => {
       for (const cat of CAT_ORDER) {
         const items = Object.keys(NODES).filter((t) => NODES[t].cat === cat &&
           (!q || (NODES[t].title + ' ' + t + ' ' + (KEYWORDS[t] || '')).toLowerCase().includes(q)));
-        if (!items.length) continue;
+        const extras = CATALOG_EXTRA.map((x, k) => ({ ...x, k })).filter((x) => NODES[x.type].cat === cat &&
+          (!q || (x.title + ' ' + x.type + ' ' + (KEYWORDS[x.type] || '') + ' basecolor albedo normal orm material материал').toLowerCase().includes(q)));
+        if (!items.length && !extras.length) continue;
         const h = document.createElement('h4'); h.textContent = cat; list.append(h);
+        if (cat === 'Выход') h.dataset.cat = cat;
+        for (const x of extras) {
+          const it = document.createElement('div');
+          it.className = 'item';
+          it.textContent = x.title;
+          it.dataset.type = x.type + '#' + x.k;
+          it.title = x.desc + '\n\nЩелчок — добавить, или перетащите на граф';
+          it.draggable = true;
+          it.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/ptl-node', x.type + '#' + x.k); e.dataTransfer.effectAllowed = 'copy'; });
+          it.addEventListener('click', () => { const c = GraphView.center(); addNode(x.type, c.x - 88, c.y - 50, x.params); });
+          list.append(it);
+        }
         for (const t of items) {
           const it = document.createElement('div');
           it.className = 'item' + (q && first ? ' hl' : '');
@@ -218,6 +316,15 @@ const App = (() => {
       <li>При наведении внизу видны значения пикселя (8 бит, как в экспортируемом PNG).</li>
       <li>Во время движения ползунка предпросмотр считается в уменьшенном разрешении, после отпускания — в полном.</li>
       </ul>
+      <h3>Материал в 3D</h3>
+      <p>Добавьте ноды <b>Выход: Base Color</b>, <b>Выход: Normal</b> и <b>Выход: ORM</b> (или выберите назначение в обычном Output) и включите <b>3D</b> или <b>2D|3D</b> над предпросмотром. Мышь вращает объект, Shift+мышь двигает свет, колесо приближает, двойной щелчок сбрасывает вид. Форма (куб, сфера, цилиндр, плоскость), повтор текстуры и свет — в строке под кнопками.</p>
+      <h3>Анимация и спрайт-шиты</h3>
+      <ul>
+      <li>Нажмите <b>⏱</b> у любого числового параметра: значение ползунка — начало, в появившейся строке задаётся конец и кривая.</li>
+      <li>Для бесшовной петли анимируйте периодические параметры ровно на один период с кривой «Линейно»: <b>Эволюция</b> шума/Вороного 0 → 1, <b>Фаза</b> волн 0 → 1, <b>Смещение</b> Transform 0 → 1. Или используйте «Туда-обратно».</li>
+      <li>Таймлайн под предпросмотром: ▶, кадр, число кадров (4–64), размер кадра (64–512), FPS и <b>Спрайт-шит PNG</b>. Лист всегда степени двойки (например, 16 кадров по 256 → 1024×1024, сетка 4×4), кадры слева направо, сверху вниз.</li>
+      <li>Прозрачность берётся из альфы точек Color Ramp. Готовые эффекты — в меню «Примеры и шаблоны…» → «Анимированные эффекты».</li>
+      </ul>
       <h3>Файлы</h3>
       <ul>
       <li><b>Сохранить</b> — скачивает проект .json со встроенными изображениями; <b>Открыть…</b> — загружает его обратно (или перетащите .json в окно).</li>
@@ -236,7 +343,7 @@ const App = (() => {
     ex.textContent = '';
     const opt = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; return o; };
     ex.append(opt('', 'Примеры и шаблоны…'));
-    const groups = [['Примеры', (e) => !e.template], ['Шаблоны текстур (Albedo + Normal + ORM)', (e) => e.template]];
+    const groups = [['Примеры', (e) => !e.template && !e.fx], ['Шаблоны материалов (Base Color + Normal + ORM)', (e) => e.template], ['Анимированные эффекты (спрайт-шиты)', (e) => e.fx]];
     for (const [label, test] of groups) {
       const g = document.createElement('optgroup');
       g.label = label;
@@ -407,6 +514,7 @@ const App = (() => {
     ParamsPanel.build();
     Engine.purge([previewRes()]);
     updateUndo();
+    animChanged();
     requestEval();
   }
 
@@ -414,6 +522,7 @@ const App = (() => {
   function redo() { if (History.redo()) { state.dirty = true; afterLoad(); status('Повторено.'); } }
 
   function loadGraph(data) {
+    stop();
     Graph.load(data);
     state.selected = data.selected && Graph.nodes.has(data.selected) ? data.selected : null;
     afterLoad();
@@ -426,7 +535,9 @@ const App = (() => {
     loadGraph(JSON.parse(JSON.stringify(ex.graph)));
     commit();
     status(`Загружен ${ex.template ? 'шаблон' : 'пример'} «${ex.title}». Предыдущий граф можно вернуть через Отмену.`);
-    if (ex.template) { state.selected = null; ParamsPanel.build(); GraphView.refreshMarks(); }
+    if (ex.template || ex.fx) { state.selected = null; ParamsPanel.build(); GraphView.refreshMarks(); }
+    if (ex.template || /ORM/.test(ex.title)) Preview.setView({ layout: 'split' });
+    if (ex.fx) { Preview.setView({ layout: '2d', mode: 1 }); setFrame(0); setTimeout(() => { if (Anim.any()) play(); }, 400); }
   }
 
   function newProject() {
@@ -470,10 +581,18 @@ const App = (() => {
     const pres = previewRes();
     const viewed = viewedId();
     const t0 = performance.now();
+    if (state.playing) {
+      state.displayRes = pres;
+      const memo = new Map();
+      for (const id of liveIds(viewed)) Engine.evaluate(id, pres, memo);
+      Preview.draw();
+      return;
+    }
     if (state.interactive) {
       const r = dragRes(pres);
       state.displayRes = r;
-      if (viewed) Engine.evaluate(viewed, r, new Map());
+      const memo = new Map();
+      for (const id of liveIds(viewed)) Engine.evaluate(id, r, memo);
       // settle to full quality shortly after the last live change
       clearTimeout(idleTimer);
       idleTimer = setTimeout(() => { state.interactive = false; requestEval(); }, 350);
@@ -489,6 +608,13 @@ const App = (() => {
     GraphView.refreshMarks();
     ParamsPanel.refreshStatus();
     Preview.draw();
+  }
+
+  // Nodes that must be fresh during drags/playback: the viewed one + material outputs shown in 3D.
+  function liveIds(viewed) {
+    const ids = viewed ? [viewed] : [];
+    if (typeof Preview.materialIds === 'function') for (const id of Preview.materialIds()) if (!ids.includes(id)) ids.push(id);
+    return ids;
   }
 
   function queueThumbs(res) {
@@ -683,7 +809,7 @@ const App = (() => {
 
   return {
     init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId,
-    undo, redo, flush, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    undo, redo, flush, animChanged, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };

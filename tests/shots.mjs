@@ -2,17 +2,15 @@
 import { chromium } from 'playwright';
 import path from 'node:path';
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-const page = await browser.newPage({ viewport: { width: 1400, height: 860 } });
+const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 page.on('pageerror', (e) => console.log('ERR', e.message));
 await page.goto('file://' + path.resolve('texture-lab.html'));
 await page.waitForFunction(() => window.PTL);
-const shot = async (n) => { await page.evaluate(() => PTL.whenIdle()); await page.waitForTimeout(500); await page.screenshot({ path: `test-output/shot-${n}.png` }); };
-await page.evaluate(() => PTL.select('n3')); await shot('ramp');
-await page.evaluate(() => { PTL.loadExample(1); PTL.select('n3'); PTL.setView({ mode: 6 }); }); await shot('normal-lit');
-await page.evaluate(() => { PTL.loadExample(2); PTL.select('n4'); PTL.setView({ mode: 0, tile3: true, half: true }); }); await shot('combine');
-await page.evaluate(() => { PTL.setView({ tile3: false, half: false }); PTL.loadExample(3); PTL.fitGraph(); }); await shot('template-brick');
-await page.evaluate(() => { const t = PTL.getGraph().nodes.find((n) => n.type === 'tiler').id; PTL.select(t); }); await shot('tiler');
-await page.evaluate(() => { PTL.loadExample(6); }); await shot('template-wood');
-await page.click('#btn-lib'); await shot('library');
-await page.click('#modal-close'); await page.click('#btn-help'); await shot('help');
+const shot = async (n, wait = 800) => { await page.evaluate(() => PTL.whenIdle()); await page.waitForTimeout(wait); await page.screenshot({ path: `test-output/shot-${n}.png` }); };
+for (const [k, n] of [[3, 'brick'], [5, 'cobble'], [6, 'wood'], [2, 'panels']]) {
+  await page.evaluate((k) => { PTL.loadExample(k); PTL.fitGraph(); }, k); await shot('tpl-' + n, 1500);
+}
+await page.evaluate(() => PTL.setView({ layout: '3d', material: { mesh: 'sphere', tiling: 2 } })); await shot('3d-sphere', 1500);
+await page.evaluate(() => { PTL.loadExample(8); PTL.fitGraph(); }); await shot('fx-fire', 1500);
+await page.evaluate(() => { const nz = PTL.getGraph().nodes.find((n) => n.type === 'noise').id; PTL.select(nz); }); await shot('fx-anim-param', 600);
 await browser.close();

@@ -135,6 +135,35 @@ const PTL = (() => {
       if (!x) throw new Error(`PTL: нет вынесенного параметра "${label}". Есть: ${Graph.state.exposed.map((e) => e.label).join(' | ')}`);
       return api.setParams(x.node, { [x.key]: value });
     },
+    // ---- animation / sprite sheets
+    animate(id, key, opts = {}) {
+      const n = need(id), d = NODES[n.type].params.find((q) => q.key === key);
+      if (!d || (d.type !== 'float' && d.type !== 'int')) throw new Error(`PTL: анимировать можно только числовой параметр; "${key}" не подходит`);
+      if (opts.from != null) n.params[key] = +opts.from;
+      n.anim = n.anim || {};
+      n.anim[key] = { to: +opts.to, curve: opts.curve || 'linear' };
+      if (!Anim.CURVES[n.anim[key].curve]) throw new Error('PTL: кривая: ' + Object.keys(Anim.CURVES).join(', '));
+      Graph.touch(n); after();
+    },
+    unanimate(id, key) { const n = need(id); if (n.anim) delete n.anim[key]; Graph.touch(n); after(); },
+    animation(o) {
+      if (o) {
+        const a = Graph.state.animation;
+        if (o.frames != null) { if (!Anim.LAYOUTS[o.frames]) throw new Error('PTL: frames = 4, 8, 16, 32 или 64'); a.frames = o.frames; }
+        if (o.frameSize != null) { if (![64, 128, 256, 512].includes(o.frameSize)) throw new Error('PTL: frameSize = 64, 128, 256 или 512'); a.frameSize = o.frameSize; }
+        if (o.fps != null) a.fps = Math.min(60, Math.max(1, +o.fps));
+        after();
+      }
+      const s = Anim.settings();
+      return { ...s, sheet: [s.layout[0] * s.frameSize, s.layout[1] * s.frameSize], time: Anim.t };
+    },
+    setFrame(k) { App.setFrame(k | 0); return Anim.t; },
+    async renderSpriteSheet(id, opts = {}) {
+      id = id || Graph.state.activeOutput; need(id);
+      const r = App.renderSpriteSheet(id, opts.port || 0, opts);
+      return { width: r.width, height: r.height, cols: r.cols, rows: r.rows, frames: r.frames, png: await PNG.encodeAsync(r.bytes, r.width, r.height) };
+    },
+    exportSpriteSheet(id) { return App.exportSpriteSheet(id || App.viewedId()); },
     rampPresets() { return Object.keys(RAMP_PRESETS); },
     rampPreset(name) { const r = rampFromPreset(name); if (!r) throw new Error(`PTL: нет градиента "${name}". Есть: ${Object.keys(RAMP_PRESETS).join(', ')}`); return r; },
     library: {
@@ -224,6 +253,7 @@ const PTL = (() => {
       cached(id, port) { return Engine.readCachedBytes(id, port || 0, App.state.displayRes); },
       liveTextures: () => GPU.liveTextures,
       historySize: () => History.size,
+      sheet: (id, port) => App.renderSpriteSheet(id, port || 0),
     },
   };
   return api;

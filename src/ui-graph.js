@@ -55,8 +55,8 @@ const GraphView = (() => {
     const head = document.createElement('div');
     head.className = 'head';
     head.innerHTML = `<span class="t"></span><span class="badge out" title="Основной выход (экспорт)"></span><span class="badge err"></span>`;
-    head.querySelector('.t').textContent = def.title;
-    head.title = def.title + ' — ' + n.id;
+    head.querySelector('.t').textContent = nodeTitle(n);
+    head.title = nodeTitle(n) + ' — ' + n.id;
     el.appendChild(head);
     const body = document.createElement('div');
     body.className = 'body';
@@ -122,6 +122,7 @@ const GraphView = (() => {
     const n = Graph.nodes.get(id), rec = els.get(id);
     if (!n || !rec) return;
     rec.ins.forEach((d, k) => { d.querySelector('.lbl').textContent = inputLabel(n, k); });
+    rec.el.querySelector('.head .t').textContent = nodeTitle(n);
   }
 
   function refreshMarks() {
@@ -304,7 +305,12 @@ const GraphView = (() => {
     e.preventDefault();
     const pos = toGraph(e.clientX, e.clientY);
     const type = e.dataTransfer.getData('text/ptl-node');
-    if (type) { App.addNode(type, pos.x - 88, pos.y - 20); return; }
+    if (type) {
+      const [t, extra] = type.split('#');
+      const ex = extra != null ? CATALOG_EXTRA[+extra] : null;
+      App.addNode(t, pos.x - 88, pos.y - 20, ex ? ex.params : undefined);
+      return;
+    }
     const files = [...(e.dataTransfer.files || [])];
     for (const [k, file] of files.entries()) {
       if (/\.json$/i.test(file.name)) App.openProjectFile(file);

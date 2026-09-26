@@ -32,6 +32,7 @@ const ParamsPanel = (() => {
     }
     Graph.touch(node);
     App.changed({ commit, interactive: !commit, node: node.id });
+    if (key === 'usage') { GraphView.updateLabels(node.id); Preview.draw(); build(); return; }
     if (rebuildAll) { GraphView.updateLabels(node.id); build(); }
     else refreshDynamic(key);
   }
@@ -44,7 +45,7 @@ const ParamsPanel = (() => {
     current = node || null;
     if (!node) { buildProject(); return; }
     const def = NODES[node.type];
-    el.append(h('h3', { text: def.title }), h('div', { class: 'sub', text: `id: ${node.id} · ${def.cat}` }));
+    el.append(h('h3', { text: nodeTitle(node) }), h('div', { class: 'sub', text: `id: ${node.id} · ${def.cat}` }));
     const actions = h('div', { class: 'actions' },
       h('button', { text: 'Дублировать', title: 'Ctrl+D', onclick: () => App.duplicate(node.id) }),
       h('button', { text: 'Удалить', title: 'Delete', onclick: () => App.removeNode(node.id) }),
@@ -104,6 +105,37 @@ const ParamsPanel = (() => {
       }));
     }
     return l;
+  }
+
+  // ⏱: animate a numeric parameter from its value (start) to an end value.
+  function animControls(node, d, wrap, lab, norm) {
+    const anim = () => node.anim && node.anim[d.key];
+    const btn = h('button', { class: 'pin anim' + (anim() ? ' on' : ''), text: '⏱',
+      title: anim() ? 'Убрать анимацию параметра' : 'Анимировать: значение ползунка — начало, ниже задаётся конец',
+      onclick: (e) => {
+        e.preventDefault();
+        node.anim = node.anim || {};
+        if (anim()) delete node.anim[d.key];
+        else node.anim[d.key] = { to: d.key === 'evolution' || d.key === 'phase' ? node.params[d.key] + 1 : d.max, curve: 'linear' };
+        Graph.touch(node); App.changed({ commit: true, node: node.id }); App.animChanged(); build();
+      } });
+    lab.insertBefore(btn, lab.querySelector('.pin'));
+    if (!anim()) return;
+    const a = anim();
+    const hardMax = Math.max(d.hardMax ?? d.max, d.key === 'evolution' || d.key === 'phase' ? 64 : -Infinity);
+    const to = h('input', { type: 'number', step: d.step, value: +(+a.to).toFixed(4), title: 'Значение в конце цикла (последний кадр стремится к нему)' });
+    const curve = h('select');
+    for (const [v, t] of Anim.CURVE_OPTS) curve.append(h('option', { value: v, text: t }));
+    curve.value = a.curve;
+    const apply = () => {
+      let v = +to.value; if (!isFinite(v)) v = a.to;
+      a.to = Math.min(hardMax, Math.max(d.hardMin ?? d.min, v));
+      a.curve = curve.value;
+      Graph.touch(node); App.changed({ commit: true, node: node.id }); App.animChanged();
+    };
+    to.addEventListener('change', apply);
+    curve.addEventListener('change', apply);
+    wrap.append(h('div', { class: 'ctl animrow' }, h('span', { text: '⏱ конец:' }), to, curve));
   }
 
   // Saved-in-browser presets for this node type.
@@ -190,7 +222,9 @@ const ParamsPanel = (() => {
       range.addEventListener('change', () => { const v = norm(range.value); set(node, d.key, v, true); row.sync(); });
       num.addEventListener('change', () => { const v = norm(num.value); set(node, d.key, v, true); row.sync(); });
       num.addEventListener('keydown', (e) => { if (e.key === 'Enter') num.dispatchEvent(new Event('change')); });
-      wrap.append(labelEl(d, node), h('div', { class: 'ctl' }, range, num, resetBtn(() => { set(node, d.key, d.def, true); row.sync(); })));
+      const lab = labelEl(d, node);
+      wrap.append(lab, h('div', { class: 'ctl' }, range, num, resetBtn(() => { set(node, d.key, d.def, true); row.sync(); })));
+      animControls(node, d, wrap, lab, norm);
     } else if (d.type === 'enum') {
       const sel = h('select');
       for (const [v, t] of d.options) sel.append(h('option', { value: v, text: t }));

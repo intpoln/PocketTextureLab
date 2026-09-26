@@ -32,7 +32,8 @@ You need nothing else — no repository, no install. Everything is in this file:
 1. Run JavaScript in the page (DevTools console, Playwright/Puppeteer `page.evaluate`, a browser
    extension or «run JS» tool). The API is `window.PTL`; read `PTL.help()` (this text) and `PTL.nodeTypes()`.
 2. For «make me a <material> texture»: start from the closest template (`PTL.examples()`), or build a graph
-   from the recipes below. Keep 3 outputs: `<name>_albedo`, `<name>_normal`, `<name>_orm`.
+   from the recipes below. Keep 3 outputs with `usage` basecolor / normal / orm: `<name>_basecolor`, `<name>_normal`, `<name>_orm`.
+   For particle effects build an animated graph and export a sprite sheet (see Animation below).
 3. Verify with numbers (`PTL.stats`, `PTL.pixel`, `PTL.errors()`) and pictures (`await PTL.renderDataURL(id)`).
 4. Deliver: `await PTL.exportAll()` downloads every Output as PNG; `PTL.saveProject()` returns the editable
    project JSON; or return `await PTL.renderPNGBase64(id)` to your caller.
@@ -99,6 +100,17 @@ Editing (all validated; unknown params/enum values throw with the list of valid 
 - Browser library (localStorage of this site): `PTL.library.saveNodePreset(id, name)`, `.nodePresets(type)`,
   `.saveTemplate(name)`, `.templates()`, `await .loadTemplate(name)`.
 - `await PTL.exportAll()` — download every Output node as PNG.
+- Material outputs: `PTL.addNode('output', {params:{usage:'basecolor'|'normal'|'orm', filename}})` — these three
+  feed the 3D preview (`PTL.setView({layout:'3d'|'split', material:{mesh:'cube'|'sphere'|'cylinder'|'plane', tiling:2}})`).
+- Animation (sprite sheets / flipbooks for particle FX):
+  `PTL.animate(id, key, {from, to, curve})` (curve `linear` | `pingpong` | `smooth` | `easeIn` | `easeOut`),
+  `PTL.unanimate(id, key)`, `PTL.animation({frames: 4|8|16|32|64, frameSize: 64|128|256|512, fps})` →
+  `{layout:[cols,rows], sheet:[w,h]}`, `PTL.setFrame(k)`, `await PTL.renderSpriteSheet(id)` →
+  `{width, height, cols, rows, png}`, `await PTL.exportSpriteSheet(id)`. Sheets are ALWAYS power-of-two
+  (2×2, 4×2, 4×4, 8×4, 8×8 frames of 64–512 px), frames left→right, top→bottom.
+  Seamless loops: frame k has t = k/N, so animate periodic params by exactly one period with `linear`:
+  noise/voronoi `evolution` 0→1, waves `phase` 0→1, transform `offsetX/Y` 0→±1; or use `pingpong`.
+  Transparency comes from Color Ramp stops with alpha (e.g. black α=0 → orange α=1).
 
 Images and projects
 - `await PTL.importImage(bytes | base64 | dataURL, {name, nodeId?, interp:'srgb'|'data', fit:'stretch'|'cover'|'tile'})` → image node id.
@@ -187,15 +199,17 @@ PTL.errors()[c];   // undefined when it compiled
 3. **Albedo**: masks → `ramp` (gradient map) for colour, variation via `tiler` output 1 or a large-scale
    noise multiplied in (`blend` multiply, opacity 0.3–0.6). Keep albedo mid-range (sRGB ~30–240).
 4. **Roughness / AO / Metallic**: `levels`/`invert` of the height or masks → `combine` preset `orm` → `output`.
-5. Add one `output` per map with clear filenames (`name_albedo`, `name_normal`, `name_orm`), `setActiveOutput` on albedo.
+5. Add one `output` per map with `usage` basecolor / normal / orm and clear filenames; `setActiveOutput` on basecolor.
+   Check the result in 3D: `PTL.setView({layout:'split'})`.
 6. Check tiling with `PTL.setView({tile3:true, half:true})`, verify numbers with `PTL.stats(id)`, look at
    `await PTL.renderDataURL(id)`. Keep everything tileable: integer scales, repeat wrap, no gradients.
 7. Scale: noise `scale` 2–4 = large forms, 8–16 = medium, 32–64 = fine detail. Use different seeds per layer.
 
 Built-in examples you can read as templates: `PTL.examples()`, `PTL.getExample(i)` (graph JSON) or
 `PTL.loadExample(i)`: 0 noise→levels→ramp, 1 noise→blur→normal, 2 masks→ORM, and full texture templates
-(albedo + normal + ORM outputs, exposed parameters): **3 brick wall, 4 asphalt with cracks, 5 cobblestone,
-6 wood planks, 7 painted metal with chips and scratches**. Fastest path for a request like «сделай асфальт»:
+(basecolor + normal + ORM outputs, exposed parameters): **3 brick wall, 4 asphalt with cracks, 5 cobblestone,
+6 wood planks, 7 painted metal with chips and scratches**; example 2 = metal panels showing how masks are packed
+into ORM; animated FX flipbooks: **8 fire, 9 smoke puff, 10 energy ring**. Fastest path for a request like «сделай асфальт»:
 `PTL.loadExample(4)`, then tune it with `PTL.exposed()` / `PTL.setExposed(label, value)` or `PTL.setParams`.
 
 ## Recipes (node chains; params are good starting points)
@@ -208,11 +222,17 @@ Built-in examples you can read as templates: `PTL.examples()`, `PTL.getExample(i
 - **Brick wall**: `tiler` preset «Кирпичи» → `warp{mode:'gradient',intensity:0.006}` with `noise{scale:16}` as map
   → `blend multiply` with `levels(noise){outBlack:0.72}` = height → `normal{strength:4}`.
   Colour: `ramp`(tiler output 1, reds/browns) mixed with mortar `constant` using `levels(height){inWhite:0.08}` as mask.
-- **Cobblestone / paving**: `tiler` preset «Булыжник» (or `voronoi{mode:'f1'}` inverted for round stones),
-  warp slightly, `normal{strength:6}`; gaps dark in albedo via the same mask.
+- **Cobblestone / flagstone** (template 5): `voronoi{mode:'border',scale:7,randomness:0.85}` warped by noise →
+  `gaussian{sigma:5}` → `levels{inBlack:0.1,inWhite:0.7,gamma:2.2}` = domed stones with gaps; per-stone variation from
+  `voronoi{mode:'cell'}` with the SAME seed/scale/randomness and the same warp; gaps = dirt ramp + splatter pebbles.
 - **Tiles**: `tiler` preset «Плитка», `bevel` 0.03–0.06; grout mask = `levels(tiler){inWhite:0.05}` inverted.
-- **Wood**: `noise{stretch:8,scale:2,octaves:4}` → `waves{countX:0,countY:12,shape:'sine',distort:3}` (distort input = that noise)
-  → `ramp` browns; planks via `tiler{countX:1,countY:6,rowOffset:0,sizeX:1,sizeY:0.97}` multiplied in.
+- **Wood planks** (template 6): grain = `waves{countY:84,distort:14}` distorted by `noise{scale:1,stretch:4}` + knots
+  (`splatter{pattern:'gauss',count:5,size:0.13,aspect:0.5}` added into the distortion) → `levels` to thin dark lines,
+  × fine fibers `noise{type:'value',scale:4,stretch:32}`; planks `tiler{countX:2,countY:6,rowOffset:0.5}`; give each plank
+  its own grain with `warp{mode:'directional',angle:90,intensity:0.5}` using tiler output 1 (random per plank) as map.
+- **Fire / smoke / magic flipbooks** (templates 8–10): noise with animated `evolution` 0→1 (+ transform scroll 0→−1)
+  × soft shape/gradient mask → `levels` → `ramp` with alpha → output; `PTL.animation({frames:16,frameSize:256})`,
+  `await PTL.exportSpriteSheet(outId)`.
 - **Marble**: `noise{warp:0.7,warpScale:2,fractal:'ridged'}` → `levels` → `ramp` white/grey veins.
 - **Rock / cliff**: `noise{fractal:'ridged',scale:3,octaves:7}` + `voronoi{mode:'crackle',scale:6}` (blend multiply) →
   `warp` by another noise → `normal{strength:8}`; albedo = ramp of height + `hsv` tweak.
@@ -401,6 +421,16 @@ main { flex: 1; display: flex; min-height: 0; }
 .lib-list div { display: flex; gap: 6px; align-items: center; padding: 3px 0; border-bottom: 1px solid var(--line); }
 .lib-list div span { flex: 1; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.prow > label .pin.anim { margin-left: auto; }
+.prow > label .pin.anim + .pin { margin-left: 0; }
+.animrow { width: 100%; font-size: 12px; color: var(--warn); }
+.animrow input[type=number] { width: 70px; }
+.animrow select { flex: 1; }
+#timeline { display: none; gap: 6px; padding: 4px 6px; align-items: center; font-size: 12px; color: var(--fg2); flex-wrap: wrap; border-top: 1px solid var(--line); }
+#timeline.show { display: flex; }
+#timeline input[type=range] { flex: 1; min-width: 60px; }
+#timeline select { padding: 1px 3px; }
+#preview .bar .sep2 { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
 
 </style>
 </head>
@@ -446,8 +476,13 @@ main { flex: 1; display: flex; min-height: 0; }
           <button data-view="1" title="RGBA на шахматке">RGBA</button>
           <button data-view="2">R</button><button data-view="3">G</button><button data-view="4">B</button><button data-view="5">A</button>
           <button data-view="6" title="Освещённая плоскость по normal map">Normal</button>
+          <span class="sep2"></span>
+          <button data-layout="2d" class="on" title="Только 2D-предпросмотр выбранной ноды">2D</button>
+          <button data-layout="3d" title="3D-превью материала (Output: Base Color, Normal, ORM)">3D</button>
+          <button data-layout="split" title="2D и 3D рядом">2D|3D</button>
           <span class="grow"></span>
           <select id="view-port" title="Выход ноды" style="display:none"></select>
+          <button id="btn-anim" title="Показать таймлайн анимации и экспорт спрайт-шитов">⏱</button>
           <button id="btn-tile" title="Повтор 3×3 для проверки швов">3×3</button>
           <button id="btn-half" title="Сдвиг на половину текстуры: швы окажутся в центре">½</button>
           <button id="btn-vfit" title="Вписать (двойной щелчок)">⤢</button>
@@ -457,7 +492,25 @@ main { flex: 1; display: flex; min-height: 0; }
           высота <input type="range" id="l-el" min="5" max="90" value="40">
           <select id="l-conv"><option value="auto">Y: авто</option><option value="gl">OpenGL +Y</option><option value="dx">DirectX −Y</option></select>
         </div>
+        <div class="lightbar" id="bar3d">
+          <select id="m-mesh" title="Форма для 3D-превью"><option value="cube">Куб</option><option value="sphere">Сфера</option><option value="cylinder">Цилиндр</option><option value="plane">Плоскость</option></select>
+          <select id="m-tiling" title="Повтор текстуры на объекте"><option value="1">1×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select>
+          Свет <input type="range" id="m-az" min="-180" max="180" value="35" title="Азимут света (или Shift+мышь)">
+          <input type="range" id="m-el" min="5" max="90" value="40" title="Высота света">
+          <input type="range" id="m-light" min="0" max="6" step="0.1" value="2.2" title="Яркость света">
+          <label title="Автоматическое вращение"><input type="checkbox" id="m-rot">↻</label>
+        </div>
         <div id="canvas-wrap"><canvas id="view"></canvas><div id="lost">Контекст WebGL потерян. Граф и параметры сохранены — ожидаю восстановления…</div></div>
+        <div id="timeline">
+          <button id="tl-play" title="Воспроизвести / пауза (анимация по кадрам)">▶</button>
+          <input type="range" id="tl-frame" min="0" max="15" value="0" title="Кадр">
+          <span id="tl-label" style="min-width:44px">1/16</span>
+          <label title="Число кадров: сетка листа 2×2, 4×2, 4×4, 8×4, 8×8">Кадров <select id="tl-frames"><option>4</option><option>8</option><option selected>16</option><option>32</option><option>64</option></select></label>
+          <label title="Размер одного кадра в спрайт-шите (степень двойки)">Кадр <select id="tl-size"><option>64</option><option>128</option><option selected>256</option><option>512</option></select></label>
+          <label>FPS <input type="number" id="tl-fps" min="1" max="60" value="24" style="width:46px"></label>
+          <span id="tl-sheet" style="color:var(--fg3)"></span>
+          <button id="tl-export" class="primary" title="Экспорт всех кадров выбранной ноды (или основного Output) одним PNG-листом">Спрайт-шит PNG</button>
+        </div>
         <div class="info" id="pinfo"></div>
       </section>
       <div class="split-h" id="split-h" title="Изменить высоту предпросмотра"></div>
@@ -1711,11 +1764,23 @@ float worleyN(vec2 p, ivec2 P, int o) {
   }
   return clamp(sqrt(md), 0.0, 1.0);
 }
+uniform float u_evo;
 float octave(vec2 p, ivec2 P, int o) {
   if (u_type == 0) return valueN(p, P, o, 1u);
   if (u_type == 1) return gradN(p, P, o);
   if (u_type == 2) return worleyN(p, P, o);
   return h1(wc(ivec2(floor(p)), P), o, 7u);
+}
+// Evolution: blend between 3 periodic "slices" of the noise with a
+// variance-preserving cos/sin crossfade; evolution 0 → 1 loops seamlessly.
+float octaveE(vec2 p, ivec2 P, int o) {
+  if (u_evo <= 0.0) return octave(p, P, o);
+  float z = fract(u_evo) * 3.0;
+  int zi = int(floor(z));
+  float f = z - float(zi);
+  float a = octave(p, P, o + 97 * zi), b = octave(p, P, o + 97 * ((zi + 1) % 3));
+  float th = f * f * (3.0 - 2.0 * f) * 1.5707963;
+  return 0.5 + (a - 0.5) * cos(th) + (b - 0.5) * sin(th);
 }
 float warpN(vec2 uv, int W, uint salt) {
   float s = 0.0, a = 0.5;
@@ -1736,7 +1801,7 @@ void main() {
   float sum = 0.0, amp = 1.0, norm = 0.0;
   for (int o = 0; o < 8; o++) {
     if (o >= u_oct) break;
-    float n = octave(uv * freq, P, o);
+    float n = octaveE(uv * freq, P, o);
     if (u_fractal == 1) { n = 1.0 - abs(2.0 * n - 1.0); n *= n; }
     else if (u_fractal == 2) n = abs(2.0 * n - 1.0);
     sum += n * amp; norm += amp; amp *= u_pers;
@@ -1756,7 +1821,16 @@ uniform float u_rand;
 uniform bool u_tile;
 ivec2 wc(ivec2 c, int P) { return u_tile ? ((c % P) + P) % P : c + 4096; }
 uvec3 hc(ivec2 c) { return pcg3(uvec3(uvec2(c), uint(u_seed) * 747796405u + 12345u)); }
-vec2 pt(ivec2 c) { uvec3 r = hc(c); return 0.5 + (vec2(r.xy >> 8u) / 16777215.0 - 0.5) * u_rand; }
+uniform float u_evo;
+vec2 pt(ivec2 c) {
+  uvec3 r = hc(c);
+  vec2 b = 0.5 + (vec2(r.xy >> 8u) / 16777215.0 - 0.5) * u_rand;
+  if (u_evo > 0.0) {   // each point orbits a small circle: evolution 0 → 1 loops
+    float a0 = float(r.z >> 8u) / 16777215.0 * 6.2831853, a1 = a0 + 6.2831853 * u_evo;
+    b += 0.25 * u_rand * (vec2(cos(a1), sin(a1)) - vec2(cos(a0), sin(a0)));
+  }
+  return b;
+}
 float dist(vec2 r) {
   if (u_metric == 1) return abs(r.x) + abs(r.y);
   if (u_metric == 2) return max(abs(r.x), abs(r.y));
@@ -2186,6 +2260,7 @@ uniform bool u_has;
 uniform bool u_isColor;
 uniform int u_view;     // 0 RGB, 1 RGBA over checker, 2 R, 3 G, 4 B, 5 A, 6 normal lit
 uniform vec2 u_canvas;
+uniform vec2 u_origin;
 uniform float u_zoom;
 uniform vec2 u_pan;
 uniform bool u_tile3;
@@ -2196,7 +2271,7 @@ uniform vec3 u_light;
 uniform vec3 u_bg;
 vec3 checker(vec2 fc) { vec2 c = floor(fc / 8.0); return mod(c.x + c.y, 2.0) < 1.0 ? vec3(0.42) : vec3(0.58); }
 void main() {
-  vec2 fc = gl_FragCoord.xy;
+  vec2 fc = gl_FragCoord.xy - u_origin;
   if (u_flip) fc.y = u_canvas.y - fc.y;
   float size = min(u_canvas.x, u_canvas.y) * u_zoom;
   vec2 uv = (fc - (u_canvas * 0.5 + u_pan)) / size + 0.5;
@@ -2484,7 +2559,8 @@ void main() {
       gl.viewport(0, 0, target.size, target.size);
     } else {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.viewport(0, 0, opts.width, opts.height);
+      const vp = opts.viewport || [0, 0, opts.width, opts.height];
+      gl.viewport(vp[0], vp[1], vp[2], vp[3]);
     }
     let unit = 0;
     for (const uname in pr.uniforms) {
@@ -2849,6 +2925,7 @@ const NODES = {
       i('lacunarity', 'Лакунарность (×частота на октаву)', 2, 4, 2, { help: 'Во сколько раз растёт частота с каждой октавой. Целое — чтобы шум оставался бесшовным.' }),
       f('warp', 'Искажение (Domain Warp)', 0, 1, 0, { help: 'Сдвигает координаты другим периодическим шумом — «текучие», органические формы (мрамор, грязь, облака). Бесшовность сохраняется.' }),
       i('warpScale', 'Масштаб искажения', 1, 16, 2, { visible: (p) => p.warp > 0 }),
+      f('evolution', 'Эволюция (анимация)', 0, 1, 0, { step: 0.001, help: 'Плавно меняет узор, не сдвигая его. Для зацикленной анимации анимируйте 0 → 1 (кривая «Линейно»): последний кадр переходит в первый без скачка.' }),
       f('contrast', 'Контраст (Contrast)', 0, 4, 1),
       b('invert', 'Инвертировать', false),
     ],
@@ -2859,7 +2936,7 @@ const NODES = {
         u_type: { value: 0, perlin: 1, worley: 2, white: 3 }[p.type], u_fractal: { fbm: 0, ridged: 1, billow: 2 }[p.fractal],
         u_seed: p.seed, u_oct: p.octaves, u_lac: p.lacunarity, u_scale: p.scale, u_stretch: p.stretch,
         u_grainCells: ctx.projRes / Math.max(1, p.grain), u_pers: p.persistence, u_contrast: p.contrast,
-        u_warp: p.warp, u_warpScale: p.warpScale, u_tile: p.tile, u_inv: p.invert,
+        u_warp: p.warp, u_warpScale: p.warpScale, u_tile: p.tile, u_inv: p.invert, u_evo: p.evolution,
       });
       return [{ tex: out, space: 'data' }];
     },
@@ -2875,13 +2952,14 @@ const NODES = {
       f('scale', 'Масштаб (Scale)', 1, 64, 8, { step: 1, intWhen: (p) => p.tile }),
       i('seed', 'Seed', 0, 99999, 1),
       f('randomness', 'Случайность (Randomness)', 0, 1, 1),
+      f('evolution', 'Эволюция (анимация)', 0, 1, 0, { step: 0.001, help: 'Плавно меняет узор, не сдвигая его. Для зацикленной анимации анимируйте 0 → 1 (кривая «Линейно»): последний кадр переходит в первый без скачка.' }),
     ],
     seamFn: (p) => (p.tile ? '' : 'Tileable выключен — узор не периодичен, при повторе будет шов.'),
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
       ctx.pass('voronoi', out, {
         u_seed: p.seed, u_mode: { f1: 0, border: 1, cell: 2, f2: 3, crackle: 4 }[p.mode], u_scale: p.scale,
-        u_rand: p.randomness, u_tile: p.tile, u_metric: { euclid: 0, manhattan: 1, chebyshev: 2 }[p.metric],
+        u_rand: p.randomness, u_tile: p.tile, u_evo: p.evolution, u_metric: { euclid: 0, manhattan: 1, chebyshev: 2 }[p.metric],
       });
       return [{ tex: out, space: 'data' }];
     },
@@ -3339,8 +3417,12 @@ const NODES = {
     title: 'Выход (Output)', cat: 'Выход', outputs: [],
     inputs: [{ label: 'Карта', def: BLACK, defText: 'чёрный (0,0,0,1)' }],
     params: [
+      e('usage', 'Назначение', [['generic', 'Обычная карта'], ['basecolor', 'Base Color (альбедо)'], ['normal', 'Normal'], ['orm', 'ORM (AO · Roughness · Metallic)']], 'generic',
+        { help: 'Выходы Base Color, Normal и ORM собираются в материал для 3D-превью (кнопки 3D над предпросмотром). На экспорт не влияет.' }),
+      e('normalY', 'Соглашение нормали для 3D', [['auto', 'Авто (по ноде Height to Normal)'], ['gl', 'OpenGL +Y'], ['dx', 'DirectX −Y']], 'auto', { visible: (p) => p.usage === 'normal' }),
       { key: 'filename', label: 'Имя файла', type: 'text', def: 'texture' },
     ],
+    titleFn: (p) => ({ basecolor: 'Выход: Base Color', normal: 'Выход: Normal', orm: 'Выход: ORM' })[p.usage] || 'Выход (Output)',
     help: 'Экспорт PNG 8 бит RGBA без потерь. Цветные карты кодируются в sRGB, карты-данные записываются как есть. Экспорт всегда пересчитывает граф в выбранном разрешении.',
     eval(ctx) {
       const out = ctx.alloc(), u = {};
@@ -3481,6 +3563,18 @@ const NODE_DESC = {
 };
 for (const t in NODES) if (!NODES[t].desc) NODES[t].desc = NODE_DESC[t] || '';
 
+function nodeTitle(node) {
+  const def = NODES[node.type];
+  return def.titleFn ? def.titleFn(node.params) : def.title;
+}
+
+// Extra catalog entries: pre-configured nodes.
+const CATALOG_EXTRA = [
+  { type: 'output', title: 'Выход: Base Color', params: { usage: 'basecolor', filename: 'basecolor' }, desc: 'Выход цвета (альбедо) материала: экспорт PNG + 3D-превью.' },
+  { type: 'output', title: 'Выход: Normal', params: { usage: 'normal', filename: 'normal' }, desc: 'Выход normal map материала: экспорт PNG + 3D-превью.' },
+  { type: 'output', title: 'Выход: ORM', params: { usage: 'orm', filename: 'orm' }, desc: 'Выход ORM (R=AO, G=Roughness, B=Metallic): экспорт PNG + 3D-превью.' },
+];
+
 
 // ===== graph.js =====
 // ---------------------------------------------------------------------------
@@ -3488,7 +3582,7 @@ for (const t in NODES) if (!NODES[t].desc) NODES[t].desc = NODE_DESC[t] || '';
 // cycle prevention, (de)serialisation and snapshot-based undo/redo.
 // ---------------------------------------------------------------------------
 const Graph = (() => {
-  const g = { nodes: new Map(), links: [], resolution: 512, activeOutput: null, nextId: 1, exposed: [] };
+  const g = { nodes: new Map(), links: [], resolution: 512, activeOutput: null, nextId: 1, exposed: [], animation: { frames: 16, frameSize: 256, fps: 24 } };
   let stampCounter = 1;
 
   function newStamp() { return ++stampCounter; }
@@ -3497,7 +3591,7 @@ const Graph = (() => {
     if (!NODES[type]) throw new Error('Неизвестный тип ноды: ' + type);
     const p = { ...defaultParams(type), ...(params ? JSON.parse(JSON.stringify(params)) : {}) };
     id = id || 'n' + g.nextId++;
-    const node = { id, type, x: Math.round(x), y: Math.round(y), params: p, stamp: newStamp() };
+    const node = { id, type, x: Math.round(x), y: Math.round(y), params: p, anim: {}, stamp: newStamp() };
     g.nodes.set(id, node);
     if (type === 'output' && !g.activeOutput) g.activeOutput = id;
     return node;
@@ -3559,7 +3653,8 @@ const Graph = (() => {
       resolution: g.resolution,
       activeOutput: g.activeOutput,
       nextId: g.nextId,
-      nodes: [...g.nodes.values()].map((n) => ({ id: n.id, type: n.type, x: n.x, y: n.y, params: n.params })),
+      nodes: [...g.nodes.values()].map((n) => ({ id: n.id, type: n.type, x: n.x, y: n.y, params: n.params, ...(n.anim && Object.keys(n.anim).length ? { anim: n.anim } : {}) })),
+      animation: { ...g.animation },
       links: g.links.map((l) => ({ ...l })),
       exposed: g.exposed.map((x) => ({ ...x })),
     };
@@ -3574,14 +3669,22 @@ const Graph = (() => {
     for (const n of data.nodes) {
       const prev = old.get(n.id);
       const params = { ...defaultParams(n.type), ...JSON.parse(JSON.stringify(n.params || {})) };
-      const same = prev && prev.type === n.type && JSON.stringify(prev.params) === JSON.stringify(params);
-      g.nodes.set(n.id, { id: n.id, type: n.type, x: +n.x || 0, y: +n.y || 0, params, stamp: same ? prev.stamp : newStamp() });
+      const anim = cleanAnim(n.type, n.anim);
+      const same = prev && prev.type === n.type && JSON.stringify(prev.params) === JSON.stringify(params) &&
+        JSON.stringify(prev.anim || {}) === JSON.stringify(anim);
+      g.nodes.set(n.id, { id: n.id, type: n.type, x: +n.x || 0, y: +n.y || 0, params, anim, stamp: same ? prev.stamp : newStamp() });
     }
     g.links = [];
     for (const l of data.links) {
       if (connect(l.from, l.fromPort | 0, l.to, l.toPort | 0)) console.warn('Пропущена связь', l);
     }
     g.resolution = [256, 512, 1024, 2048].includes(data.resolution) ? data.resolution : 512;
+    const an = data.animation || {};
+    g.animation = {
+      frames: [4, 8, 16, 32, 64].includes(an.frames) ? an.frames : 16,
+      frameSize: [64, 128, 256, 512].includes(an.frameSize) ? an.frameSize : 256,
+      fps: Math.min(60, Math.max(1, +an.fps || 24)),
+    };
     g.exposed = (Array.isArray(data.exposed) ? data.exposed : []).filter((x) => x && g.nodes.has(x.node) &&
       NODES[g.nodes.get(x.node).type].params.some((d) => d.key === x.key)).map((x) => ({ node: x.node, key: x.key, label: String(x.label || x.key) }));
     g.activeOutput = data.activeOutput && g.nodes.has(data.activeOutput) ? data.activeOutput : null;
@@ -3592,6 +3695,16 @@ const Graph = (() => {
     let maxId = 0;
     for (const id of g.nodes.keys()) { const m = /^n(\d+)$/.exec(id); if (m) maxId = Math.max(maxId, +m[1]); }
     g.nextId = Math.max(data.nextId | 0, maxId + 1);
+  }
+
+  function cleanAnim(type, anim) {
+    const out = {};
+    if (!anim || typeof anim !== 'object') return out;
+    for (const key of Object.keys(anim)) {
+      const d = NODES[type].params.find((q) => q.key === key);
+      if (d && (d.type === 'float' || d.type === 'int') && isFinite(+anim[key].to)) out[key] = { to: +anim[key].to, curve: String(anim[key].curve || 'linear') };
+    }
+    return out;
   }
 
   function validate(data) {
@@ -3648,6 +3761,59 @@ const History = (() => {
 })();
 
 
+// ===== anim.js =====
+// ---------------------------------------------------------------------------
+// Animation: a global time t in [0, 1) over a loop of N frames. Any float/int
+// parameter can be animated from its value (start) to `to` (end) with a curve.
+// Frame k of N has t = k / N, so a linear 0 → 1 of a periodic parameter
+// (noise evolution, wave phase, offset) loops seamlessly.
+// Sprite sheets are cols × rows frames of a power-of-two size, so the sheet is
+// always power-of-two as well.
+// ---------------------------------------------------------------------------
+const Anim = (() => {
+  const LAYOUTS = { 4: [2, 2], 8: [4, 2], 16: [4, 4], 32: [8, 4], 64: [8, 8] };
+  const CURVES = {
+    linear: (t) => t,
+    smooth: (t) => t * t * (3 - 2 * t),
+    pingpong: (t) => 0.5 - 0.5 * Math.cos(2 * Math.PI * t),   // start → end → start, loops smoothly
+    easeIn: (t) => t * t,
+    easeOut: (t) => 1 - (1 - t) * (1 - t),
+  };
+  const CURVE_OPTS = [['linear', 'Линейно (для зацикленных 0→1)'], ['pingpong', 'Туда-обратно (петля)'], ['smooth', 'Плавно'], ['easeIn', 'Разгон'], ['easeOut', 'Торможение']];
+  const st = { t: 0 };
+
+  function settings() {
+    const a = Graph.state.animation;
+    return { frames: a.frames, frameSize: a.frameSize, fps: a.fps, layout: LAYOUTS[a.frames] };
+  }
+  function isAnimated(node) { return !!(node.anim && Object.keys(node.anim).length); }
+  function any() { for (const n of Graph.nodes.values()) if (isAnimated(n)) return true; return false; }
+
+  // Parameters of `node` at time t (the node's own params are the start values).
+  function params(node, t = st.t) {
+    if (!isAnimated(node)) return node.params;
+    const p = { ...node.params };
+    const defs = NODES[node.type].params;
+    for (const key of Object.keys(node.anim)) {
+      const a = node.anim[key], d = defs.find((q) => q.key === key);
+      if (!d) continue;
+      const f = (CURVES[a.curve] || CURVES.linear)(t);
+      let v = node.params[key] + (a.to - node.params[key]) * f;
+      if (d.type === 'int' || (d.intWhen && d.intWhen(node.params))) v = Math.round(v);
+      p[key] = v;
+    }
+    return p;
+  }
+
+  function frameTime(k) { return (k % settings().frames) / settings().frames; }
+
+  return {
+    LAYOUTS, CURVES, CURVE_OPTS, settings, isAnimated, any, params, frameTime,
+    get t() { return st.t; }, set t(v) { st.t = ((v % 1) + 1) % 1; },
+  };
+})();
+
+
 // ===== engine.js =====
 // ---------------------------------------------------------------------------
 // Evaluation engine: per-node GPU result cache keyed by resolution. A node is
@@ -3669,7 +3835,7 @@ const Engine = (() => {
     const def = NODES[node.type];
     const temps = [];
     const ctx = {
-      node, params: node.params, res, projRes, uvOff: opts.uvOff || [0, 0],
+      node, params: Anim.params(node), res, projRes, uvOff: opts.uvOff || [0, 0],
       input: (k) => inputs[k],
       space: (k) => (inputs[k] ? inputs[k].space : null),
       px: (v) => (v * res) / projRes,
@@ -3707,7 +3873,8 @@ const Engine = (() => {
       const o = r && r.outs && r.outs[l.fromPort];
       return o ? { tex: o.tex, space: o.space, key: r.key + ':' + l.fromPort } : null;
     });
-    const inKey = inputs.map((x) => (x ? x.key : '-')).join('|');
+    const animated = Anim.isAnimated(node);
+    const inKey = inputs.map((x) => (x ? x.key : '-')).join('|') + (animated ? '@' + Anim.t : '');
     let m = store.get(id);
     if (!m) store.set(id, (m = new Map()));
     let e = m.get(res);
@@ -3757,7 +3924,7 @@ const Engine = (() => {
   // Fresh evaluation at `res` into a temporary store; returns 8-bit RGBA file
   // values. Nothing from the preview cache is reused.
   function renderBytes(id, port, res, opts = {}) {
-    const store = new Map();
+    const store = opts.store || new Map();
     try {
       const e = evaluate(id, res, new Map(), store, { ...opts, projRes: opts.projRes || Graph.state.resolution });
       if (!e) throw new Error('Нода не найдена');
@@ -3768,9 +3935,10 @@ const Engine = (() => {
       const raw = GPU.read(o.tex);
       return { bytes: ColorUtil.toBytes(raw, o.space), space: o.space, width: res, height: res, raw };
     } finally {
-      for (const m of store.values()) for (const e of m.values()) freeEntry(e);
+      if (!opts.store) freeStore(store);
     }
   }
+  function freeStore(store) { for (const m of store.values()) for (const e of m.values()) freeEntry(e); store.clear(); }
 
   function readCachedBytes(id, port, res) {
     const e = get(id, res);
@@ -3779,7 +3947,7 @@ const Engine = (() => {
     return { bytes: ColorUtil.toBytes(GPU.read(o.tex), o.space), space: o.space };
   }
 
-  return { evaluate, get, purge, dropGpu, renderBytes, readCachedBytes, errors, caches };
+  return { evaluate, get, purge, dropGpu, renderBytes, freeStore, readCachedBytes, errors, caches };
 })();
 
 
@@ -3934,8 +4102,8 @@ const GraphView = (() => {
     const head = document.createElement('div');
     head.className = 'head';
     head.innerHTML = `<span class="t"></span><span class="badge out" title="Основной выход (экспорт)"></span><span class="badge err"></span>`;
-    head.querySelector('.t').textContent = def.title;
-    head.title = def.title + ' — ' + n.id;
+    head.querySelector('.t').textContent = nodeTitle(n);
+    head.title = nodeTitle(n) + ' — ' + n.id;
     el.appendChild(head);
     const body = document.createElement('div');
     body.className = 'body';
@@ -4001,6 +4169,7 @@ const GraphView = (() => {
     const n = Graph.nodes.get(id), rec = els.get(id);
     if (!n || !rec) return;
     rec.ins.forEach((d, k) => { d.querySelector('.lbl').textContent = inputLabel(n, k); });
+    rec.el.querySelector('.head .t').textContent = nodeTitle(n);
   }
 
   function refreshMarks() {
@@ -4183,7 +4352,12 @@ const GraphView = (() => {
     e.preventDefault();
     const pos = toGraph(e.clientX, e.clientY);
     const type = e.dataTransfer.getData('text/ptl-node');
-    if (type) { App.addNode(type, pos.x - 88, pos.y - 20); return; }
+    if (type) {
+      const [t, extra] = type.split('#');
+      const ex = extra != null ? CATALOG_EXTRA[+extra] : null;
+      App.addNode(t, pos.x - 88, pos.y - 20, ex ? ex.params : undefined);
+      return;
+    }
     const files = [...(e.dataTransfer.files || [])];
     for (const [k, file] of files.entries()) {
       if (/\.json$/i.test(file.name)) App.openProjectFile(file);
@@ -4257,6 +4431,7 @@ const ParamsPanel = (() => {
     }
     Graph.touch(node);
     App.changed({ commit, interactive: !commit, node: node.id });
+    if (key === 'usage') { GraphView.updateLabels(node.id); Preview.draw(); build(); return; }
     if (rebuildAll) { GraphView.updateLabels(node.id); build(); }
     else refreshDynamic(key);
   }
@@ -4269,7 +4444,7 @@ const ParamsPanel = (() => {
     current = node || null;
     if (!node) { buildProject(); return; }
     const def = NODES[node.type];
-    el.append(h('h3', { text: def.title }), h('div', { class: 'sub', text: `id: ${node.id} · ${def.cat}` }));
+    el.append(h('h3', { text: nodeTitle(node) }), h('div', { class: 'sub', text: `id: ${node.id} · ${def.cat}` }));
     const actions = h('div', { class: 'actions' },
       h('button', { text: 'Дублировать', title: 'Ctrl+D', onclick: () => App.duplicate(node.id) }),
       h('button', { text: 'Удалить', title: 'Delete', onclick: () => App.removeNode(node.id) }),
@@ -4329,6 +4504,37 @@ const ParamsPanel = (() => {
       }));
     }
     return l;
+  }
+
+  // ⏱: animate a numeric parameter from its value (start) to an end value.
+  function animControls(node, d, wrap, lab, norm) {
+    const anim = () => node.anim && node.anim[d.key];
+    const btn = h('button', { class: 'pin anim' + (anim() ? ' on' : ''), text: '⏱',
+      title: anim() ? 'Убрать анимацию параметра' : 'Анимировать: значение ползунка — начало, ниже задаётся конец',
+      onclick: (e) => {
+        e.preventDefault();
+        node.anim = node.anim || {};
+        if (anim()) delete node.anim[d.key];
+        else node.anim[d.key] = { to: d.key === 'evolution' || d.key === 'phase' ? node.params[d.key] + 1 : d.max, curve: 'linear' };
+        Graph.touch(node); App.changed({ commit: true, node: node.id }); App.animChanged(); build();
+      } });
+    lab.insertBefore(btn, lab.querySelector('.pin'));
+    if (!anim()) return;
+    const a = anim();
+    const hardMax = Math.max(d.hardMax ?? d.max, d.key === 'evolution' || d.key === 'phase' ? 64 : -Infinity);
+    const to = h('input', { type: 'number', step: d.step, value: +(+a.to).toFixed(4), title: 'Значение в конце цикла (последний кадр стремится к нему)' });
+    const curve = h('select');
+    for (const [v, t] of Anim.CURVE_OPTS) curve.append(h('option', { value: v, text: t }));
+    curve.value = a.curve;
+    const apply = () => {
+      let v = +to.value; if (!isFinite(v)) v = a.to;
+      a.to = Math.min(hardMax, Math.max(d.hardMin ?? d.min, v));
+      a.curve = curve.value;
+      Graph.touch(node); App.changed({ commit: true, node: node.id }); App.animChanged();
+    };
+    to.addEventListener('change', apply);
+    curve.addEventListener('change', apply);
+    wrap.append(h('div', { class: 'ctl animrow' }, h('span', { text: '⏱ конец:' }), to, curve));
   }
 
   // Saved-in-browser presets for this node type.
@@ -4415,7 +4621,9 @@ const ParamsPanel = (() => {
       range.addEventListener('change', () => { const v = norm(range.value); set(node, d.key, v, true); row.sync(); });
       num.addEventListener('change', () => { const v = norm(num.value); set(node, d.key, v, true); row.sync(); });
       num.addEventListener('keydown', (e) => { if (e.key === 'Enter') num.dispatchEvent(new Event('change')); });
-      wrap.append(labelEl(d, node), h('div', { class: 'ctl' }, range, num, resetBtn(() => { set(node, d.key, d.def, true); row.sync(); })));
+      const lab = labelEl(d, node);
+      wrap.append(lab, h('div', { class: 'ctl' }, range, num, resetBtn(() => { set(node, d.key, d.def, true); row.sync(); })));
+      animControls(node, d, wrap, lab, norm);
     } else if (d.type === 'enum') {
       const sel = h('select');
       for (const [v, t] of d.options) sel.append(h('option', { value: v, text: t }));
@@ -4660,20 +4868,326 @@ const ParamsPanel = (() => {
 })();
 
 
+// ===== ui-3d.js =====
+// ---------------------------------------------------------------------------
+// 3D material preview: renders Base Color + Normal + ORM (from Output nodes
+// with the matching "usage") on a mesh with a metallic/roughness PBR shader
+// (GGX specular, Lambert diffuse, one directional light + simple sky/ground
+// environment, ACES tone mapping). Uses the same WebGL2 context and the
+// cached preview textures (copied into mipmapped textures for clean filtering).
+//
+// Tangent frame: T = direction of +u, B = direction of +v where v points DOWN
+// the image (row 0 = top). OpenGL (+Y) normal maps have green pointing UP the
+// image, i.e. along −B; DirectX (−Y) along +B.
+// ---------------------------------------------------------------------------
+const Material3D = (() => {
+  const VS = `#version 300 es
+in vec3 a_pos; in vec3 a_nrm; in vec4 a_tan; in vec2 a_uv;
+uniform mat4 u_mvp; uniform mat4 u_model;
+out vec3 v_wpos; out vec3 v_n; out vec4 v_t; out vec2 v_uv;
+void main() {
+  vec4 w = u_model * vec4(a_pos, 1.0);
+  v_wpos = w.xyz;
+  v_n = mat3(u_model) * a_nrm;
+  v_t = vec4(mat3(u_model) * a_tan.xyz, a_tan.w);
+  v_uv = a_uv;
+  gl_Position = u_mvp * vec4(a_pos, 1.0);
+}`;
+  const FS = `#version 300 es
+precision highp float;
+in vec3 v_wpos; in vec3 v_n; in vec4 v_t; in vec2 v_uv;
+uniform sampler2D u_base; uniform sampler2D u_nrm; uniform sampler2D u_orm;
+uniform bool u_hasBase, u_hasN, u_hasORM, u_baseLinear, u_ndx;
+uniform float u_tiling, u_lightI, u_envI, u_nStrength;
+uniform vec3 u_L, u_cam, u_sky, u_ground;
+out vec4 fragColor;
+const float PI = 3.14159265;
+vec3 toLin(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
+vec3 toSrgb(vec3 c) { c = max(c, 0.0); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+vec3 env(vec3 d, float rough) {
+  float h = d.y;
+  vec3 sky = mix(u_sky * 1.2, u_sky * 0.6, clamp(h, 0.0, 1.0));
+  vec3 c = mix(u_ground, sky, smoothstep(-0.25 - rough * 0.5, 0.25 + rough * 0.5, h));
+  float sun = pow(max(dot(d, u_L), 0.0), mix(400.0, 4.0, rough)) * mix(6.0, 0.4, rough);
+  return c + sun * vec3(1.0, 0.95, 0.85);
+}
+void main() {
+  vec2 uv = v_uv * u_tiling;
+  vec3 base = vec3(0.6);
+  float alpha = 1.0;
+  if (u_hasBase) { vec4 b = texture(u_base, uv); base = u_baseLinear ? b.rgb : toLin(b.rgb); alpha = b.a; }
+  vec3 orm = u_hasORM ? texture(u_orm, uv).rgb : vec3(1.0, 0.5, 0.0);
+  float ao = orm.r, rough = clamp(orm.g, 0.04, 1.0), metal = clamp(orm.b, 0.0, 1.0);
+  vec3 N = normalize(v_n);
+  vec3 T = normalize(v_t.xyz - N * dot(N, v_t.xyz));
+  vec3 B = cross(N, T) * v_t.w;                  // +v (image down)
+  if (u_hasN) {
+    vec3 n = texture(u_nrm, uv).rgb * 2.0 - 1.0;
+    if (!u_ndx) n.y = -n.y;                      // OpenGL: +Y up the image = -B
+    n.xy *= u_nStrength;
+    N = normalize(T * n.x + B * n.y + N * n.z);
+  }
+  vec3 V = normalize(u_cam - v_wpos), L = normalize(u_L), H = normalize(V + L);
+  float NdL = max(dot(N, L), 0.0), NdV = max(dot(N, V), 1e-4), NdH = max(dot(N, H), 0.0), VdH = max(dot(V, H), 0.0);
+  float a = rough * rough, a2 = a * a;
+  float D = a2 / (PI * pow(NdH * NdH * (a2 - 1.0) + 1.0, 2.0));
+  float k = (rough + 1.0) * (rough + 1.0) / 8.0;
+  float G = (NdV / (NdV * (1.0 - k) + k)) * (NdL / (NdL * (1.0 - k) + k));
+  vec3 F0 = mix(vec3(0.04), base, metal);
+  vec3 F = F0 + (1.0 - F0) * pow(1.0 - VdH, 5.0);
+  vec3 spec = D * G * F / max(4.0 * NdV * NdL, 1e-4);
+  vec3 kd = (1.0 - F) * (1.0 - metal);
+  vec3 direct = (kd * base / PI + spec) * NdL * u_lightI * vec3(1.0, 0.97, 0.92) * PI;
+  vec3 Fv = F0 + (max(vec3(1.0 - rough), F0) - F0) * pow(1.0 - NdV, 5.0);
+  vec3 irr = mix(u_ground, u_sky, 0.5 + 0.5 * N.y);
+  vec3 ambient = (kd * base * irr + Fv * env(reflect(-V, N), rough)) * ao * u_envI;
+  vec3 c = aces(direct + ambient);
+  fragColor = vec4(toSrgb(c), 1.0);
+}`;
+
+  const st = { gen: -1, prog: null, loc: {}, meshes: {}, sampler: null, mips: {}, aniso: null };
+
+  // ---------------------------------------------------------------- meshes
+  function pushFace(out, N, U, V, center, half, seg) {
+    // U = +u direction, V = +v (image down) on this face; w = handedness of B = cross(N,T)*w
+    const cr = [N[1] * U[2] - N[2] * U[1], N[2] * U[0] - N[0] * U[2], N[0] * U[1] - N[1] * U[0]];
+    const w = cr[0] * V[0] + cr[1] * V[1] + cr[2] * V[2] >= 0 ? 1 : -1;
+    const base = out.pos.length / 3;
+    for (let j = 0; j <= seg; j++) for (let i = 0; i <= seg; i++) {
+      const u = i / seg, v = j / seg;
+      for (let c = 0; c < 3; c++) out.pos.push(center[c] + (u - 0.5) * 2 * half * U[c] + (v - 0.5) * 2 * half * V[c]);
+      out.nrm.push(...N); out.tan.push(...U, w); out.uv.push(u, v);
+    }
+    for (let j = 0; j < seg; j++) for (let i = 0; i < seg; i++) {
+      const a = base + j * (seg + 1) + i, b = a + 1, c = a + seg + 1, d = c + 1;
+      out.idx.push(a, c, b, b, c, d);
+    }
+  }
+  function orient(out) {
+    // make triangles counter-clockwise when seen from the normal side
+    for (let t = 0; t < out.idx.length; t += 3) {
+      const [i0, i1, i2] = [out.idx[t], out.idx[t + 1], out.idx[t + 2]];
+      const p = (i) => out.pos.slice(i * 3, i * 3 + 3);
+      const a = p(i0), b = p(i1), c = p(i2);
+      const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+      const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+      const nn = out.nrm.slice(i0 * 3, i0 * 3 + 3);
+      if (n[0] * nn[0] + n[1] * nn[1] + n[2] * nn[2] < 0) { out.idx[t + 1] = i2; out.idx[t + 2] = i1; }
+    }
+    return out;
+  }
+  function cube() {
+    const o = { pos: [], nrm: [], tan: [], uv: [], idx: [] };
+    const faces = [ // N, U (+u), V (+v = image down)
+      [[0, 0, 1], [1, 0, 0], [0, -1, 0]], [[0, 0, -1], [-1, 0, 0], [0, -1, 0]],
+      [[1, 0, 0], [0, 0, -1], [0, -1, 0]], [[-1, 0, 0], [0, 0, 1], [0, -1, 0]],
+      [[0, 1, 0], [1, 0, 0], [0, 0, 1]], [[0, -1, 0], [1, 0, 0], [0, 0, -1]],
+    ];
+    for (const [N, U, V] of faces) pushFace(o, N, U, V, N.map((x) => x * 0.8), 0.8, 1);
+    return orient(o);
+  }
+  function plane() {
+    const o = { pos: [], nrm: [], tan: [], uv: [], idx: [] };
+    pushFace(o, [0, 1, 0], [1, 0, 0], [0, 0, 1], [0, 0, 0], 1.2, 1);
+    return orient(o);
+  }
+  function sphere(nu = 96, nv = 48) {
+    const o = { pos: [], nrm: [], tan: [], uv: [], idx: [] };
+    for (let j = 0; j <= nv; j++) {
+      const v = j / nv, th = v * Math.PI;                  // from north pole down
+      for (let i = 0; i <= nu; i++) {
+        const u = i / nu, ph = u * 2 * Math.PI;
+        const n = [Math.sin(th) * Math.sin(ph), Math.cos(th), Math.sin(th) * Math.cos(ph)];
+        o.pos.push(n[0], n[1], n[2]); o.nrm.push(...n);
+        const t = [Math.cos(ph), 0, -Math.sin(ph)];        // +u (east)
+        o.tan.push(...t, 1); o.uv.push(u * 2, v);           // 2:1 so texels stay square
+      }
+    }
+    for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+      const a = j * (nu + 1) + i, b = a + 1, c = a + nu + 1, d = c + 1;
+      o.idx.push(a, c, b, b, c, d);
+    }
+    // handedness: B must be dP/dv (south); fix w per vertex
+    for (let k = 0; k < o.nrm.length / 3; k++) {
+      const n = o.nrm.slice(k * 3, k * 3 + 3), t = o.tan.slice(k * 4, k * 4 + 3);
+      const cr = [n[1] * t[2] - n[2] * t[1], n[2] * t[0] - n[0] * t[2], n[0] * t[1] - n[1] * t[0]];
+      o.tan[k * 4 + 3] = cr[1] <= 0 ? 1 : -1;               // south has negative y
+    }
+    return orient(o);
+  }
+  function cylinder(nu = 96) {
+    const o = { pos: [], nrm: [], tan: [], uv: [], idx: [] };
+    for (let j = 0; j <= 1; j++) for (let i = 0; i <= nu; i++) {
+      const u = i / nu, ph = u * 2 * Math.PI, y = j === 0 ? 1 : -1;
+      const n = [Math.sin(ph), 0, Math.cos(ph)];
+      o.pos.push(n[0] * 0.8, y, n[2] * 0.8); o.nrm.push(...n); o.tan.push(Math.cos(ph), 0, -Math.sin(ph), 0); o.uv.push(u * 2, j);
+    }
+    for (let i = 0; i < nu; i++) { const a = i, b = i + 1, c = a + nu + 1, d = c + 1; o.idx.push(a, c, b, b, c, d); }
+    for (let k = 0; k < o.nrm.length / 3; k++) {
+      const n = o.nrm.slice(k * 3, k * 3 + 3), t = o.tan.slice(k * 4, k * 4 + 3);
+      const cr = [n[1] * t[2] - n[2] * t[1], n[2] * t[0] - n[0] * t[2], n[0] * t[1] - n[1] * t[0]];
+      o.tan[k * 4 + 3] = cr[1] <= 0 ? 1 : -1;
+    }
+    pushFace(o, [0, 1, 0], [1, 0, 0], [0, 0, 1], [0, 1, 0], 0.8, 1);
+    o.idx.splice(o.idx.length - 6);   // replace square cap by a disc fan below
+    const capBase = o.pos.length / 3;
+    for (const y of [1, -1]) {
+      const c0 = o.pos.length / 3;
+      o.pos.push(0, y, 0); o.nrm.push(0, y, 0); o.tan.push(1, 0, 0, 1); o.uv.push(0.5, 0.5);
+      for (let i = 0; i <= nu; i++) {
+        const ph = (i / nu) * 2 * Math.PI, x = Math.sin(ph) * 0.8, z = Math.cos(ph) * 0.8;
+        o.pos.push(x, y, z); o.nrm.push(0, y, 0); o.tan.push(1, 0, 0, y > 0 ? 1 : -1); o.uv.push(0.5 + x / 1.6, 0.5 + (y > 0 ? z : -z) / 1.6);
+      }
+      for (let i = 0; i < nu; i++) o.idx.push(c0, c0 + 1 + i, c0 + 2 + i);
+    }
+    void capBase;
+    return orient(o);
+  }
+
+  // ---------------------------------------------------------------- GL setup
+  function setup() {
+    const gl = GPU.gl;
+    const sh = (type, src) => {
+      const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS) && !gl.isContextLost()) throw new Error('3D shader: ' + gl.getShaderInfoLog(s));
+      return s;
+    };
+    const p = gl.createProgram();
+    gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, FS));
+    gl.bindAttribLocation(p, 0, 'a_pos'); gl.bindAttribLocation(p, 1, 'a_nrm'); gl.bindAttribLocation(p, 2, 'a_tan'); gl.bindAttribLocation(p, 3, 'a_uv');
+    gl.linkProgram(p);
+    st.prog = p;
+    st.loc = {};
+    const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < n; i++) { const u = gl.getActiveUniform(p, i); st.loc[u.name] = gl.getUniformLocation(p, u.name); }
+    st.meshes = {};
+    for (const [name, gen] of Object.entries({ cube, sphere, plane, cylinder })) {
+      const m = gen(), vao = gl.createVertexArray();
+      gl.bindVertexArray(vao);
+      [[m.pos, 3], [m.nrm, 3], [m.tan, 4], [m.uv, 2]].forEach(([arr, size], k) => {
+        const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(k); gl.vertexAttribPointer(k, size, gl.FLOAT, false, 0, 0);
+      });
+      const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(m.idx), gl.STATIC_DRAW);
+      gl.bindVertexArray(null);
+      st.meshes[name] = { vao, count: m.idx.length };
+    }
+    st.sampler = gl.createSampler();
+    gl.samplerParameteri(st.sampler, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.samplerParameteri(st.sampler, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.samplerParameteri(st.sampler, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.samplerParameteri(st.sampler, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    st.aniso = gl.getExtension('EXT_texture_filter_anisotropic');
+    if (st.aniso) gl.samplerParameterf(st.sampler, st.aniso.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(st.aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+    st.mips = {};
+    st.gen = GPU.gen;
+  }
+
+  // Copy a cached result into a mipmapped texture (only when it changed).
+  function mipOf(slot, out, key) {
+    const gl = GPU.gl;
+    let m = st.mips[slot];
+    const size = out.tex.size;
+    if (!m || m.size !== size) {
+      if (m) gl.deleteTexture(m.tex);
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texStorage2D(gl.TEXTURE_2D, Math.log2(size) + 1, GPU.float ? gl.RGBA16F : gl.RGBA8, size, size);
+      m = st.mips[slot] = { tex, size, key: null };
+    }
+    if (m.key !== key) {
+      GPU.run('copy', { tex: m.tex, size, fmt: 'mip', gen: GPU.gen }, { u_in0: out.tex, u_has0: true, u_col0: false, u_conv0: 0, u_def0: [0, 0, 0, 1], u_res: [size, size], u_outConv: 0 });
+      gl.bindTexture(gl.TEXTURE_2D, m.tex);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      m.key = key;
+    }
+    return m.tex;
+  }
+
+  // ---------------------------------------------------------------- math
+  const mul = (a, b) => { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; } return o; };
+  const persp = (fov, asp, n, f) => { const t = 1 / Math.tan(fov / 2); return new Float32Array([t / asp, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) / (n - f), -1, 0, 0, (2 * f * n) / (n - f), 0]); };
+  const rotY = (a) => new Float32Array([Math.cos(a), 0, -Math.sin(a), 0, 0, 1, 0, 0, Math.sin(a), 0, Math.cos(a), 0, 0, 0, 0, 1]);
+  const rotX = (a) => new Float32Array([1, 0, 0, 0, 0, Math.cos(a), Math.sin(a), 0, 0, -Math.sin(a), Math.cos(a), 0, 0, 0, 0, 1]);
+  const trans = (x, y, z) => new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
+
+  // ---------------------------------------------------------------- draw
+  // region: [x, y, w, h] in GL canvas pixels (y from bottom). m: { base, normal, orm } = { out, key, linear, dx } | null
+  function draw(region, m, o) {
+    if (GPU.isLost()) return;
+    if (st.gen !== GPU.gen) setup();
+    const gl = GPU.gl;
+    const [x, y, w, h] = region;
+    // prepare mipmapped copies first (offscreen passes must not be scissored)
+    const slots = [['base', 'u_base', 'u_hasBase'], ['normal', 'u_nrm', 'u_hasN'], ['orm', 'u_orm', 'u_hasORM']];
+    const texs = slots.map(([k]) => (m[k] ? mipOf(k, m[k].out, m[k].key) : null));
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(x, y, w, h);
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(x, y, w, h);
+    gl.clearColor(0.075, 0.08, 0.09, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.CULL_FACE);
+    gl.cullFace(gl.BACK);
+    gl.useProgram(st.prog);
+    const L = st.loc;
+    const model = mul(rotX(o.pitch), rotY(o.yaw));
+    const view = trans(0, 0, -o.dist);
+    const proj = persp(0.7, w / h, 0.1, 50);
+    gl.uniformMatrix4fv(L.u_mvp, false, mul(proj, mul(view, model)));
+    gl.uniformMatrix4fv(L.u_model, false, model);
+    gl.uniform3f(L.u_cam, 0, 0, o.dist);
+    const az = (o.az * Math.PI) / 180, el = (o.el * Math.PI) / 180;
+    gl.uniform3f(L.u_L, Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
+    gl.uniform1f(L.u_lightI, o.light); gl.uniform1f(L.u_envI, o.env); gl.uniform1f(L.u_tiling, o.tiling); gl.uniform1f(L.u_nStrength, o.nStrength);
+    gl.uniform3f(L.u_sky, 0.55, 0.62, 0.72); gl.uniform3f(L.u_ground, 0.16, 0.14, 0.12);
+    slots.forEach(([k, su, hu], unit) => {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      const src = m[k];
+      gl.bindTexture(gl.TEXTURE_2D, texs[unit]);
+      gl.bindSampler(unit, st.sampler);
+      gl.uniform1i(L[su], unit);
+      gl.uniform1i(L[hu], src ? 1 : 0);
+    });
+    gl.uniform1i(L.u_baseLinear, m.base && m.base.linear ? 1 : 0);
+    gl.uniform1i(L.u_ndx, m.normal && m.normal.dx ? 1 : 0);
+    const mesh = st.meshes[o.mesh] || st.meshes.cube;
+    gl.bindVertexArray(mesh.vao);
+    gl.drawElements(gl.TRIANGLES, mesh.count, gl.UNSIGNED_INT, 0);
+    gl.bindVertexArray(null);
+    for (let u = 0; u < 3; u++) { gl.activeTexture(gl.TEXTURE0 + u); gl.bindTexture(gl.TEXTURE_2D, null); gl.bindSampler(u, null); }
+    gl.disable(gl.CULL_FACE);
+    gl.disable(gl.SCISSOR_TEST);
+  }
+
+  return { draw };
+})();
+
+
 // ===== ui-preview.js =====
 // ---------------------------------------------------------------------------
 // Preview panel: draws the selected node's cached GPU result on the WebGL
 // canvas (no readback), channel views, 3x3 tiling, half offset, normal
-// lighting, zoom/pan and a pixel probe (single-pixel readback on hover).
+// lighting, zoom/pan, a pixel probe (single-pixel readback on hover) and the
+// 3D material view (layouts 2D / 3D / 2D+3D in the same canvas).
 // ---------------------------------------------------------------------------
 const Preview = (() => {
   const $ = (s) => document.querySelector(s);
-  const st = { view: 0, tile3: false, half: false, zoom: 1, pan: [0, 0], az: 135, el: 40, conv: 'auto', probe: null };
-  let canvas, wrap, info, raf = 0;
+  const st = {
+    view: 0, tile3: false, half: false, zoom: 1, pan: [0, 0], az: 135, el: 40, conv: 'auto', probe: null,
+    layout: '2d', r2d: null, r3d: null,
+    m: { mesh: 'cube', tiling: 1, yaw: 0.6, pitch: 0.45, dist: 4.2, az: 35, el: 40, light: 2.2, env: 0.9, nStrength: 1, autoRot: false },
+  };
+  let canvas, wrap, info, raf = 0, rotRaf = 0;
 
   function init() {
     canvas = $('#view'); wrap = $('#canvas-wrap'); info = $('#pinfo');
     document.querySelectorAll('#preview [data-view]').forEach((b) => b.addEventListener('click', () => setView({ mode: +b.dataset.view })));
+    document.querySelectorAll('#preview [data-layout]').forEach((b) => b.addEventListener('click', () => setView({ layout: b.dataset.layout })));
     $('#btn-tile').onclick = () => setView({ tile3: !st.tile3 });
     $('#btn-half').onclick = () => setView({ half: !st.half });
     $('#btn-vfit').onclick = () => { st.zoom = 1; st.pan = [0, 0]; draw(); };
@@ -4681,44 +5195,91 @@ const Preview = (() => {
     $('#l-el').oninput = () => { st.el = +$('#l-el').value; draw(); };
     $('#l-conv').onchange = () => { st.conv = $('#l-conv').value; draw(); };
     $('#view-port').onchange = () => { App.state.viewPort = +$('#view-port').value; draw(); };
+    $('#m-mesh').onchange = () => { st.m.mesh = $('#m-mesh').value; draw(); };
+    $('#m-tiling').onchange = () => { st.m.tiling = +$('#m-tiling').value; draw(); };
+    $('#m-az').oninput = () => { st.m.az = +$('#m-az').value; draw(); };
+    $('#m-el').oninput = () => { st.m.el = +$('#m-el').value; draw(); };
+    $('#m-light').oninput = () => { st.m.light = +$('#m-light').value; draw(); };
+    $('#m-rot').onchange = () => { st.m.autoRot = $('#m-rot').checked; spin(); };
     new ResizeObserver(resize).observe(wrap);
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
-      const r = canvas.getBoundingClientRect(), dpr = devicePixelRatio || 1;
-      const mx = (e.clientX - r.left) * dpr - canvas.width / 2, my = (e.clientY - r.top) * dpr - canvas.height / 2;
+      const p = local(e);
+      if (in3d(p)) { st.m.dist = Math.min(12, Math.max(2, st.m.dist * Math.exp(e.deltaY * 0.001))); draw(); return; }
+      if (!st.r2d) return;
+      const r = st.r2d;
+      const mx = p[0] - r.x - r.w / 2, my = p[1] - r.y - r.h / 2;
       const z = Math.min(32, Math.max(0.1, st.zoom * Math.exp(-e.deltaY * 0.0015)));
       st.pan = [mx - ((mx - st.pan[0]) * z) / st.zoom, my - ((my - st.pan[1]) * z) / st.zoom];
       st.zoom = z;
       draw();
     }, { passive: false });
     canvas.addEventListener('pointerdown', (e) => {
-      const sx = e.clientX, sy = e.clientY, p0 = st.pan.slice(), dpr = devicePixelRatio || 1;
+      const p0 = local(e), dpr = devicePixelRatio || 1, sx = e.clientX, sy = e.clientY;
       canvas.setPointerCapture(e.pointerId);
-      const mv = (ev) => { st.pan = [p0[0] + (ev.clientX - sx) * dpr, p0[1] + (ev.clientY - sy) * dpr]; draw(); };
+      let mv;
+      if (in3d(p0)) {
+        const m0 = { ...st.m };
+        mv = (ev) => {
+          const dx = ev.clientX - sx, dy = ev.clientY - sy;
+          if (ev.shiftKey) {   // move the light
+            st.m.az = ((m0.az + dx * 0.5 + 540) % 360) - 180; st.m.el = Math.min(90, Math.max(5, m0.el - dy * 0.3));
+            $('#m-az').value = st.m.az; $('#m-el').value = st.m.el;
+          } else { st.m.yaw = m0.yaw + dx * 0.01; st.m.pitch = Math.min(1.5, Math.max(-1.5, m0.pitch + dy * 0.01)); }
+          draw();
+        };
+      } else {
+        const pan0 = st.pan.slice();
+        mv = (ev) => { st.pan = [pan0[0] + (ev.clientX - sx) * dpr, pan0[1] + (ev.clientY - sy) * dpr]; draw(); };
+      }
       const up = () => { canvas.removeEventListener('pointermove', mv); canvas.removeEventListener('pointerup', up); };
       canvas.addEventListener('pointermove', mv);
       canvas.addEventListener('pointerup', up);
     });
-    canvas.addEventListener('dblclick', () => { st.zoom = 1; st.pan = [0, 0]; draw(); });
+    canvas.addEventListener('dblclick', (e) => {
+      if (in3d(local(e))) { Object.assign(st.m, { yaw: 0.6, pitch: 0.45, dist: 4.2 }); } else { st.zoom = 1; st.pan = [0, 0]; }
+      draw();
+    });
     canvas.addEventListener('mousemove', (e) => { st.probe = [e.clientX, e.clientY]; scheduleInfo(); });
     canvas.addEventListener('mouseleave', () => { st.probe = null; scheduleInfo(); });
     syncButtons();
   }
+
+  function local(e) {
+    const r = canvas.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+    return [(e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr];
+  }
+  const inR = (p, r) => r && p[0] >= r.x && p[1] >= r.y && p[0] < r.x + r.w && p[1] < r.y + r.h;
+  const in3d = (p) => inR(p, st.r3d);
 
   function setView(o) {
     if ('mode' in o) st.view = o.mode;
     if ('tile3' in o) st.tile3 = !!o.tile3;
     if ('half' in o) st.half = !!o.half;
     if ('zoom' in o) st.zoom = o.zoom;
+    if ('layout' in o && ['2d', '3d', 'split'].includes(o.layout)) { st.layout = o.layout; App.requestEval(); }
+    if (o.material) Object.assign(st.m, o.material);
     syncButtons();
+    spin();
     draw();
   }
 
   function syncButtons() {
     document.querySelectorAll('#preview [data-view]').forEach((b) => b.classList.toggle('on', +b.dataset.view === st.view));
+    document.querySelectorAll('#preview [data-layout]').forEach((b) => b.classList.toggle('on', b.dataset.layout === st.layout));
     $('#btn-tile').classList.toggle('on', st.tile3);
     $('#btn-half').classList.toggle('on', st.half);
-    $('#lightbar').classList.toggle('show', st.view === 6);
+    $('#lightbar').classList.toggle('show', st.view === 6 && st.layout !== '3d');
+    $('#bar3d').classList.toggle('show', st.layout !== '2d');
+    $('#m-mesh').value = st.m.mesh; $('#m-tiling').value = st.m.tiling; $('#m-rot').checked = st.m.autoRot;
+  }
+
+  function spin() {
+    cancelAnimationFrame(rotRaf);
+    if (!st.m.autoRot || st.layout === '2d') return;
+    let last = performance.now();
+    const step = (now) => { st.m.yaw += (now - last) * 0.0006; last = now; draw(); rotRaf = requestAnimationFrame(step); };
+    rotRaf = requestAnimationFrame(step);
   }
 
   function resize() {
@@ -4733,10 +5294,41 @@ const Preview = (() => {
     const id = App.viewedId();
     if (!id) return null;
     const node = Graph.nodes.get(id);
-    const e = Engine.get(id, App.state.displayRes) || Engine.get(id, App.previewRes());
+    const e = entryOf(id);
     if (!e) return { id, node, entry: null };
     const port = NODES[node.type].outputs.length > 1 ? Math.min(App.state.viewPort, e.outs.length - 1) : 0;
     return { id, node, entry: e, out: e.outs[port], port };
+  }
+  function entryOf(id) { return Engine.get(id, App.state.displayRes) || Engine.get(id, App.previewRes()); }
+
+  // ---- material (3D) ----
+  function outputByUsage(u) { return [...Graph.nodes.values()].find((n) => n.type === 'output' && n.params.usage === u) || null; }
+  function materialIds() {
+    if (st.layout === '2d') return [];
+    return ['basecolor', 'normal', 'orm'].map(outputByUsage).filter(Boolean).map((n) => n.id);
+  }
+  function normalIsDX(outNode) {
+    if (outNode.params.normalY === 'gl') return false;
+    if (outNode.params.normalY === 'dx') return true;
+    for (const id of Graph.upstream(outNode.id)) {
+      const n = Graph.nodes.get(id);
+      if (n && n.type === 'normal') return n.params.convention === 'dx';
+    }
+    return false;
+  }
+  function material(cur) {
+    const m = { base: null, normal: null, orm: null, from: {} };
+    const pick = (u) => {
+      const n = outputByUsage(u);
+      const e = n && entryOf(n.id);
+      return e ? { node: n, out: e.outs[0], key: e.key } : null;
+    };
+    const b = pick('basecolor'), nn = pick('normal'), o = pick('orm');
+    if (b) { m.base = { out: b.out, key: b.key, linear: b.out.space === 'color' }; m.from.base = b.node.params.filename; }
+    else if (cur && cur.out) { m.base = { out: cur.out, key: cur.entry.key + ':' + cur.port, linear: cur.out.space === 'color' }; m.from.base = '(выбранная нода)'; }
+    if (nn) { m.normal = { out: nn.out, key: nn.key, dx: normalIsDX(nn.node) }; m.from.normal = nn.node.params.filename; }
+    if (o) { m.orm = { out: o.out, key: o.key }; m.from.orm = o.node.params.filename; }
+    return m;
   }
 
   function normalConv(cur) {
@@ -4754,6 +5346,15 @@ const Preview = (() => {
     return [Math.cos(e) * Math.cos(a), Math.cos(e) * Math.sin(a), Math.sin(e)];
   }
 
+  function layoutRegions() {
+    const W = canvas.width, H = canvas.height;
+    if (st.layout === '2d') return { r2d: { x: 0, y: 0, w: W, h: H }, r3d: null };
+    if (st.layout === '3d') return { r2d: null, r3d: { x: 0, y: 0, w: W, h: H } };
+    if (W >= H) { const a = Math.floor(W / 2); return { r2d: { x: 0, y: 0, w: a, h: H }, r3d: { x: a, y: 0, w: W - a, h: H } }; }
+    const a = Math.floor(H / 2);
+    return { r2d: { x: 0, y: 0, w: W, h: a }, r3d: { x: 0, y: a, w: W, h: H - a } };
+  }
+
   function drawNow() {
     if (GPU.isLost()) return;
     const cur = current();
@@ -4768,11 +5369,21 @@ const Preview = (() => {
       sel.value = App.state.viewPort;
       sel.style.display = '';
     } else sel.style.display = 'none';
-    GPU.run('display', null, {
-      u_tex: cur && cur.out ? cur.out.tex : null, u_has: !!(cur && cur.out), u_isColor: !!(cur && cur.out && cur.out.space === 'color'),
-      u_view: st.view, u_canvas: [canvas.width, canvas.height], u_zoom: st.zoom, u_pan: st.pan,
-      u_tile3: st.tile3, u_half: st.half, u_flip: true, u_ndx: normalConv(cur), u_light: lightVec(), u_bg: [0.063, 0.067, 0.078],
-    }, { width: canvas.width, height: canvas.height, samplers: { u_tex: 'repeat' } });
+    Object.assign(st, layoutRegions());
+    const H = canvas.height;
+    if (st.r2d) {
+      const r = st.r2d;
+      GPU.run('display', null, {
+        u_tex: cur && cur.out ? cur.out.tex : null, u_has: !!(cur && cur.out), u_isColor: !!(cur && cur.out && cur.out.space === 'color'),
+        u_view: st.view, u_canvas: [r.w, r.h], u_origin: [r.x, H - r.y - r.h], u_zoom: st.zoom, u_pan: st.pan,
+        u_tile3: st.tile3, u_half: st.half, u_flip: true, u_ndx: normalConv(cur), u_light: lightVec(), u_bg: [0.063, 0.067, 0.078],
+      }, { width: canvas.width, height: canvas.height, viewport: [r.x, H - r.y - r.h, r.w, r.h], samplers: { u_tex: 'repeat' } });
+    }
+    if (st.r3d) {
+      const r = st.r3d;
+      st.mat = material(cur);
+      Material3D.draw([r.x, H - r.y - r.h, r.w, r.h], st.mat, st.m);
+    }
     scheduleInfo();
   }
 
@@ -4782,9 +5393,15 @@ const Preview = (() => {
   function updateInfo() {
     const cur = current();
     info.textContent = '';
-    if (!cur) { info.textContent = 'Нет выбранной ноды и основного Output.'; return; }
     const add = (t, title) => { const s = document.createElement('span'); s.textContent = t; if (title) s.title = title; info.append(s); };
-    add(NODES[cur.node.type].title + (cur.id === App.state.selected ? '' : ' (основной выход)'));
+    if (st.layout !== '2d' && st.mat) {
+      const f = st.mat.from;
+      add(`3D: Base ${f.base || '—'} · Normal ${f.normal || '—'} · ORM ${f.orm || '—'}`,
+        'Материал собирается из нод Output с назначением Base Color / Normal / ORM. Мышь: вращать, Shift+мышь: свет, колесо: приблизить, двойной щелчок: сброс.');
+      if (st.layout === '3d') return;
+    }
+    if (!cur) { info.textContent = 'Нет выбранной ноды и основного Output.'; return; }
+    add(nodeTitle(cur.node) + (cur.id === App.state.selected ? '' : ' (основной выход)'));
     if (!cur.out) return;
     const res = cur.out.tex.size;
     add(`${res}×${res}` + (res !== Graph.state.resolution ? ` (проект ${Graph.state.resolution})` : ''));
@@ -4799,12 +5416,13 @@ const Preview = (() => {
 
   // Inverse of the display mapping: canvas point -> texel (x, y down).
   function probeTexel(res) {
-    if (!st.probe) return null;
-    const r = canvas.getBoundingClientRect(), dpr = devicePixelRatio || 1;
-    const fx = (st.probe[0] - r.left) * dpr, fy = (st.probe[1] - r.top) * dpr;
-    const size = Math.min(canvas.width, canvas.height) * st.zoom;
-    let u = (fx - (canvas.width / 2 + st.pan[0])) / size + 0.5;
-    let v = (fy - (canvas.height / 2 + st.pan[1])) / size + 0.5;
+    if (!st.probe || !st.r2d) return null;
+    const r = canvas.getBoundingClientRect(), dpr = devicePixelRatio || 1, R = st.r2d;
+    const fx = (st.probe[0] - r.left) * dpr - R.x, fy = (st.probe[1] - r.top) * dpr - R.y;
+    if (fx < 0 || fy < 0 || fx >= R.w || fy >= R.h) return null;
+    const size = Math.min(R.w, R.h) * st.zoom;
+    let u = (fx - (R.w / 2 + st.pan[0])) / size + 0.5;
+    let v = (fy - (R.h / 2 + st.pan[1])) / size + 0.5;
     if (st.tile3) { u = (u - 0.5) * 3 + 0.5; v = (v - 0.5) * 3 + 0.5; }
     const lim = st.tile3 ? 1 : 0;
     if (u < -lim || v < -lim || u >= 1 + lim || v >= 1 + lim) return null;
@@ -4813,7 +5431,7 @@ const Preview = (() => {
     return [Math.min(res - 1, Math.floor(u * res)), Math.min(res - 1, Math.floor(v * res))];
   }
 
-  return { init, draw, resize, setView, state: st };
+  return { init, draw, resize, setView, materialIds, state: st };
 })();
 
 
@@ -4855,43 +5473,40 @@ const EXAMPLES = [
     },
   },
   {
-    title: '3. Три маски → Combine RGBA (ORM) → Output',
-    graph: {
-      resolution: 512, activeOutput: 'n5', selected: 'n4',
-      nodes: [
-        { id: 'n1', type: 'voronoi', x: 0, y: 0, params: { mode: 'border', scale: 5, seed: 21 } },
-        { id: 'n2', type: 'noise', x: 0, y: 150, params: { type: 'perlin', scale: 6, octaves: 4, seed: 5 } },
-        { id: 'n3', type: 'shape', x: 0, y: 300, params: { shape: 'rect', sizeX: 0.6, sizeY: 0.6, softness: 0.02 } },
-        { id: 'n6', type: 'levels', x: 230, y: 0, params: { inBlack: 0, inWhite: 0.35, outBlack: 0.25 } },
-        { id: 'n4', type: 'combine', x: 460, y: 120, params: { preset: 'orm' } },
-        { id: 'n5', type: 'output', x: 690, y: 120, params: { filename: 'tile_ORM' } },
-      ],
-      links: [
-        { from: 'n1', fromPort: 0, to: 'n6', toPort: 0 }, { from: 'n6', fromPort: 0, to: 'n4', toPort: 0 },
-        { from: 'n2', fromPort: 0, to: 'n4', toPort: 1 }, { from: 'n3', fromPort: 0, to: 'n4', toPort: 2 },
-        { from: 'n4', fromPort: 0, to: 'n5', toPort: 0 },
-      ],
-    },
+    title: "3. Маски → Combine RGBA (ORM) + материал: металлические панели",
+    graph: {"resolution":512,"activeOutput":"n26","selected":null,"nodes":[{"id":"n1","type":"tiler","x":0,"y":0,"params":{"pattern":"square","countX":3,"countY":3,"rowOffset":0,"sizeX":0.985,"sizeY":0.985,"bevel":0.03,"posRand":0,"sizeRand":0,"rotation":0,"rotRand":0,"rotSnap":false,"valRand":1,"density":1,"blend":"max","seed":7}},{"id":"n2","type":"tiler","x":0,"y":174,"params":{"pattern":"square","countX":3,"countY":3,"rowOffset":0,"sizeX":0.84,"sizeY":0.84,"bevel":0,"posRand":0,"sizeRand":0,"rotation":0,"rotRand":0,"rotSnap":false,"valRand":0,"density":1,"blend":"max","seed":1}},{"id":"n3","type":"invert","x":230,"y":0,"params":{"r":true,"g":true,"b":true,"a":false}},{"id":"n4","type":"blend","x":460,"y":0,"params":{"mode":"min","opacity":1,"alpha":"same"}},{"id":"n5","type":"tiler","x":0,"y":348,"params":{"pattern":"disc","countX":24,"countY":24,"rowOffset":0,"sizeX":0.4,"sizeY":0.4,"bevel":0.5,"posRand":0,"sizeRand":0,"rotation":0,"rotRand":0,"rotSnap":false,"valRand":0,"density":1,"blend":"max","seed":1}},{"id":"n6","type":"blend","x":690,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n7","type":"noise","x":0,"y":522,"params":{"type":"value","fractal":"fbm","tile":true,"scale":4,"grain":1,"stretch":8,"seed":2,"octaves":4,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n8","type":"levels","x":230,"y":174,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.93,"outWhite":1,"alpha":false}},{"id":"n9","type":"blend","x":460,"y":174,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n10","type":"levels","x":690,"y":174,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0,"outWhite":0.75,"alpha":false}},{"id":"n11","type":"blend","x":920,"y":0,"params":{"mode":"add","opacity":0.35,"alpha":"same"}},{"id":"n12","type":"levels","x":230,"y":348,"params":{"inBlack":0.4,"inWhite":0.42,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n13","type":"noise","x":0,"y":696,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":5,"grain":1,"stretch":1,"seed":17,"octaves":7,"persistence":0.5,"lacunarity":2,"warp":0.4,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n14","type":"levels","x":230,"y":522,"params":{"inBlack":0.36,"inWhite":0.4,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n15","type":"blend","x":460,"y":348,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n16","type":"ramp","x":230,"y":696,"params":{"stops":[{"p":0,"c":[0.42745098039215684,0.4392156862745098,0.4549019607843137,1]},{"p":1,"c":[0.6509803921568628,0.6627450980392157,0.6784313725490196,1]}],"interp":"linear","source":"L","space":"color"}},{"id":"n17","type":"constant","x":0,"y":870,"params":{"mode":"color","value":0.5,"color":[0.29,0.34,0.2,1]}},{"id":"n18","type":"blend","x":690,"y":348,"params":{"mode":"mix","opacity":1,"alpha":"same"}},{"id":"n19","type":"levels","x":1150,"y":0,"params":{"inBlack":0,"inWhite":0.6,"gamma":1,"outBlack":0.4,"outWhite":1,"alpha":false}},{"id":"n20","type":"levels","x":230,"y":870,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.28,"outWhite":0.45,"alpha":false}},{"id":"n21","type":"blend","x":920,"y":174,"params":{"mode":"max","opacity":1,"alpha":"same"}},{"id":"n22","type":"levels","x":690,"y":522,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0,"outWhite":0.7,"alpha":false}},{"id":"n23","type":"invert","x":690,"y":696,"params":{"r":true,"g":true,"b":true,"a":false}},{"id":"n24","type":"normal","x":1150,"y":174,"params":{"source":"L","strength":3,"blur":0.5,"invert":false,"convention":"gl","invertX":false,"wrap":"repeat"}},{"id":"n25","type":"combine","x":1380,"y":0,"params":{"preset":"orm","rSrc":"R","rVal":1,"rInv":false,"gSrc":"R","gVal":0.5,"gInv":false,"bSrc":"R","bVal":0,"bInv":false,"aSrc":"C","aVal":1,"aInv":false}},{"id":"n26","type":"output","x":920,"y":348,"params":{"usage":"basecolor","normalY":"auto","filename":"metal_panels_basecolor"}},{"id":"n27","type":"output","x":1380,"y":190,"params":{"usage":"normal","normalY":"auto","filename":"metal_panels_normal"}},{"id":"n28","type":"output","x":1610,"y":0,"params":{"usage":"orm","normalY":"auto","filename":"metal_panels_orm"}}],"links":[{"from":"n2","fromPort":0,"to":"n3","toPort":0},{"from":"n1","fromPort":0,"to":"n4","toPort":0},{"from":"n3","fromPort":0,"to":"n4","toPort":1},{"from":"n5","fromPort":0,"to":"n6","toPort":0},{"from":"n4","fromPort":0,"to":"n6","toPort":1},{"from":"n7","fromPort":0,"to":"n8","toPort":0},{"from":"n1","fromPort":0,"to":"n9","toPort":0},{"from":"n8","fromPort":0,"to":"n9","toPort":1},{"from":"n9","fromPort":0,"to":"n10","toPort":0},{"from":"n10","fromPort":0,"to":"n11","toPort":0},{"from":"n6","fromPort":0,"to":"n11","toPort":1},{"from":"n1","fromPort":1,"to":"n12","toPort":0},{"from":"n13","fromPort":0,"to":"n14","toPort":0},{"from":"n12","fromPort":0,"to":"n15","toPort":0},{"from":"n14","fromPort":0,"to":"n15","toPort":1},{"from":"n7","fromPort":0,"to":"n16","toPort":0},{"from":"n16","fromPort":0,"to":"n18","toPort":0},{"from":"n17","fromPort":0,"to":"n18","toPort":1},{"from":"n15","fromPort":0,"to":"n18","toPort":2},{"from":"n11","fromPort":0,"to":"n19","toPort":0},{"from":"n7","fromPort":0,"to":"n20","toPort":0},{"from":"n20","fromPort":0,"to":"n21","toPort":0},{"from":"n15","fromPort":0,"to":"n22","toPort":0},{"from":"n22","fromPort":0,"to":"n21","toPort":1},{"from":"n15","fromPort":0,"to":"n23","toPort":0},{"from":"n11","fromPort":0,"to":"n24","toPort":0},{"from":"n19","fromPort":0,"to":"n25","toPort":0},{"from":"n21","fromPort":0,"to":"n25","toPort":1},{"from":"n23","fromPort":0,"to":"n25","toPort":2},{"from":"n18","fromPort":0,"to":"n26","toPort":0},{"from":"n24","fromPort":0,"to":"n27","toPort":0},{"from":"n25","fromPort":0,"to":"n28","toPort":0}],"exposed":[{"node":"n1","key":"countX","label":"Панелей по X"},{"node":"n1","key":"countY","label":"Панелей по Y"},{"node":"n12","key":"inBlack","label":"Доля окрашенных панелей (0 = все)"},{"node":"n14","key":"inBlack","label":"Износ краски"},{"node":"n17","key":"color","label":"Цвет краски"},{"node":"n24","key":"strength","label":"Сила нормали"}],"animation":{"frames":16,"frameSize":256,"fps":24}},
   },
   {
     title: "Кирпичная стена", template: true,
-    graph: {"resolution":1024,"activeOutput":"n19","selected":null,"nodes":[{"id":"n1","type":"tiler","x":0,"y":0,"params":{"pattern":"square","countX":4,"countY":10,"rowOffset":0.5,"sizeX":0.94,"sizeY":0.84,"bevel":0.14,"posRand":0,"sizeRand":0,"rotation":0,"rotRand":0,"rotSnap":false,"valRand":0.3,"density":1,"blend":"max","seed":3}},{"id":"n2","type":"noise","x":0,"y":174,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":16,"grain":1,"stretch":1,"seed":8,"octaves":6,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"contrast":1,"invert":false}},{"id":"n3","type":"warp","x":230,"y":0,"params":{"mode":"gradient","intensity":0.006,"angle":0,"wrap":"repeat"}},{"id":"n4","type":"splatter","x":0,"y":348,"params":{"pattern":"gauss","count":300,"size":0.05,"aspect":1,"sizeRand":0.6,"bevel":0.3,"rotation":0,"rotRand":180,"valRand":0.5,"blend":"max","seed":5}},{"id":"n5","type":"levels","x":230,"y":174,"params":{"inBlack":0.25,"inWhite":0.9,"gamma":1,"outBlack":0,"outWhite":0.6,"alpha":false}},{"id":"n6","type":"levels","x":230,"y":348,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.72,"outWhite":1,"alpha":false}},{"id":"n7","type":"blend","x":460,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n8","type":"blend","x":690,"y":0,"params":{"mode":"multiply","opacity":0.6,"alpha":"same"}},{"id":"n9","type":"invert","x":460,"y":174,"params":{"r":true,"g":true,"b":true,"a":false}},{"id":"n10","type":"ramp","x":230,"y":522,"params":{"stops":[{"p":0,"c":[0.23921568627450981,0.0784313725490196,0.043137254901960784,1]},{"p":0.2,"c":[0.3607843137254902,0.12156862745098039,0.06274509803921569,1]},{"p":0.4,"c":[0.49411764705882355,0.17647058823529413,0.09019607843137255,1]},{"p":0.6,"c":[0.611764705882353,0.25098039215686274,0.1411764705882353,1]},{"p":0.8,"c":[0.6980392156862745,0.35294117647058826,0.21176470588235294,1]},{"p":1,"c":[0.5490196078431373,0.41568627450980394,0.34509803921568627,1]}],"interp":"linear","source":"L","space":"color"}},{"id":"n11","type":"constant","x":0,"y":522,"params":{"mode":"color","value":0.5,"color":[0.62,0.59,0.54,1]}},{"id":"n12","type":"levels","x":460,"y":348,"params":{"inBlack":0,"inWhite":0.08,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n13","type":"blend","x":690,"y":174,"params":{"mode":"mix","opacity":1,"alpha":"same"}},{"id":"n14","type":"blend","x":920,"y":0,"params":{"mode":"multiply","opacity":0.8,"alpha":"same"}},{"id":"n15","type":"levels","x":920,"y":174,"params":{"inBlack":0,"inWhite":0.5,"gamma":1,"outBlack":0.35,"outWhite":1,"alpha":false}},{"id":"n16","type":"levels","x":230,"y":696,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.8,"outWhite":0.95,"alpha":false}},{"id":"n17","type":"normal","x":920,"y":348,"params":{"source":"L","strength":4,"blur":0.6,"invert":false,"convention":"gl","invertX":false,"wrap":"repeat"}},{"id":"n18","type":"combine","x":1150,"y":0,"params":{"preset":"orm","rSrc":"R","rVal":1,"rInv":false,"gSrc":"R","gVal":0.5,"gInv":false,"bSrc":"R","bVal":0,"bInv":false,"aSrc":"C","aVal":1,"aInv":false}},{"id":"n19","type":"output","x":1150,"y":190,"params":{"filename":"brick_albedo"}},{"id":"n20","type":"output","x":1150,"y":364,"params":{"filename":"brick_normal"}},{"id":"n21","type":"output","x":1380,"y":0,"params":{"filename":"brick_orm"}}],"links":[{"from":"n1","fromPort":0,"to":"n3","toPort":0},{"from":"n2","fromPort":0,"to":"n3","toPort":1},{"from":"n4","fromPort":0,"to":"n5","toPort":0},{"from":"n2","fromPort":0,"to":"n6","toPort":0},{"from":"n3","fromPort":0,"to":"n7","toPort":0},{"from":"n6","fromPort":0,"to":"n7","toPort":1},{"from":"n7","fromPort":0,"to":"n8","toPort":0},{"from":"n5","fromPort":0,"to":"n9","toPort":0},{"from":"n9","fromPort":0,"to":"n8","toPort":1},{"from":"n1","fromPort":1,"to":"n10","toPort":0},{"from":"n3","fromPort":0,"to":"n12","toPort":0},{"from":"n11","fromPort":0,"to":"n13","toPort":0},{"from":"n10","fromPort":0,"to":"n13","toPort":1},{"from":"n12","fromPort":0,"to":"n13","toPort":2},{"from":"n13","fromPort":0,"to":"n14","toPort":0},{"from":"n6","fromPort":0,"to":"n14","toPort":1},{"from":"n8","fromPort":0,"to":"n15","toPort":0},{"from":"n2","fromPort":0,"to":"n16","toPort":0},{"from":"n8","fromPort":0,"to":"n17","toPort":0},{"from":"n15","fromPort":0,"to":"n18","toPort":0},{"from":"n16","fromPort":0,"to":"n18","toPort":1},{"from":"n14","fromPort":0,"to":"n19","toPort":0},{"from":"n17","fromPort":0,"to":"n20","toPort":0},{"from":"n18","fromPort":0,"to":"n21","toPort":0}],"exposed":[{"node":"n1","key":"countX","label":"Кирпичей по X"},{"node":"n1","key":"countY","label":"Рядов"},{"node":"n1","key":"bevel","label":"Скос кирпичей"},{"node":"n1","key":"valRand","label":"Разброс цвета кирпичей"},{"node":"n1","key":"seed","label":"Seed раскладки"},{"node":"n10","key":"stops","label":"Цвета кирпичей"},{"node":"n11","key":"color","label":"Цвет раствора"},{"node":"n3","key":"intensity","label":"Неровность краёв"},{"node":"n4","key":"count","label":"Сколы (количество)"},{"node":"n14","key":"opacity","label":"Грязь"},{"node":"n17","key":"strength","label":"Сила нормали"}]},
+    graph: {"resolution":1024,"activeOutput":"n19","selected":null,"nodes":[{"id":"n1","type":"tiler","x":0,"y":0,"params":{"pattern":"square","countX":4,"countY":10,"rowOffset":0.5,"sizeX":0.94,"sizeY":0.84,"bevel":0.14,"posRand":0,"sizeRand":0,"rotation":0,"rotRand":0,"rotSnap":false,"valRand":0.3,"density":1,"blend":"max","seed":3}},{"id":"n2","type":"noise","x":0,"y":174,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":16,"grain":1,"stretch":1,"seed":8,"octaves":6,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n3","type":"warp","x":230,"y":0,"params":{"mode":"gradient","intensity":0.006,"angle":0,"wrap":"repeat"}},{"id":"n4","type":"splatter","x":0,"y":348,"params":{"pattern":"gauss","count":300,"size":0.05,"aspect":1,"sizeRand":0.6,"bevel":0.3,"rotation":0,"rotRand":180,"valRand":0.5,"blend":"max","seed":5}},{"id":"n5","type":"levels","x":230,"y":174,"params":{"inBlack":0.25,"inWhite":0.9,"gamma":1,"outBlack":0,"outWhite":0.6,"alpha":false}},{"id":"n6","type":"levels","x":230,"y":348,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.72,"outWhite":1,"alpha":false}},{"id":"n7","type":"blend","x":460,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n8","type":"blend","x":690,"y":0,"params":{"mode":"multiply","opacity":0.6,"alpha":"same"}},{"id":"n9","type":"invert","x":460,"y":174,"params":{"r":true,"g":true,"b":true,"a":false}},{"id":"n10","type":"ramp","x":230,"y":522,"params":{"stops":[{"p":0,"c":[0.23921568627450981,0.0784313725490196,0.043137254901960784,1]},{"p":0.2,"c":[0.3607843137254902,0.12156862745098039,0.06274509803921569,1]},{"p":0.4,"c":[0.49411764705882355,0.17647058823529413,0.09019607843137255,1]},{"p":0.6,"c":[0.611764705882353,0.25098039215686274,0.1411764705882353,1]},{"p":0.8,"c":[0.6980392156862745,0.35294117647058826,0.21176470588235294,1]},{"p":1,"c":[0.5490196078431373,0.41568627450980394,0.34509803921568627,1]}],"interp":"linear","source":"L","space":"color"}},{"id":"n11","type":"constant","x":0,"y":522,"params":{"mode":"color","value":0.5,"color":[0.62,0.59,0.54,1]}},{"id":"n12","type":"levels","x":460,"y":348,"params":{"inBlack":0,"inWhite":0.08,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n13","type":"blend","x":690,"y":174,"params":{"mode":"mix","opacity":1,"alpha":"same"}},{"id":"n14","type":"blend","x":920,"y":0,"params":{"mode":"multiply","opacity":0.8,"alpha":"same"}},{"id":"n15","type":"levels","x":920,"y":174,"params":{"inBlack":0,"inWhite":0.5,"gamma":1,"outBlack":0.35,"outWhite":1,"alpha":false}},{"id":"n16","type":"levels","x":230,"y":696,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.8,"outWhite":0.95,"alpha":false}},{"id":"n17","type":"normal","x":920,"y":348,"params":{"source":"L","strength":4,"blur":0.6,"invert":false,"convention":"gl","invertX":false,"wrap":"repeat"}},{"id":"n18","type":"combine","x":1150,"y":0,"params":{"preset":"orm","rSrc":"R","rVal":1,"rInv":false,"gSrc":"R","gVal":0.5,"gInv":false,"bSrc":"R","bVal":0,"bInv":false,"aSrc":"C","aVal":1,"aInv":false}},{"id":"n19","type":"output","x":1150,"y":190,"params":{"usage":"basecolor","normalY":"auto","filename":"brick_basecolor"}},{"id":"n20","type":"output","x":1150,"y":364,"params":{"usage":"normal","normalY":"auto","filename":"brick_normal"}},{"id":"n21","type":"output","x":1380,"y":0,"params":{"usage":"orm","normalY":"auto","filename":"brick_orm"}}],"links":[{"from":"n1","fromPort":0,"to":"n3","toPort":0},{"from":"n2","fromPort":0,"to":"n3","toPort":1},{"from":"n4","fromPort":0,"to":"n5","toPort":0},{"from":"n2","fromPort":0,"to":"n6","toPort":0},{"from":"n3","fromPort":0,"to":"n7","toPort":0},{"from":"n6","fromPort":0,"to":"n7","toPort":1},{"from":"n7","fromPort":0,"to":"n8","toPort":0},{"from":"n5","fromPort":0,"to":"n9","toPort":0},{"from":"n9","fromPort":0,"to":"n8","toPort":1},{"from":"n1","fromPort":1,"to":"n10","toPort":0},{"from":"n3","fromPort":0,"to":"n12","toPort":0},{"from":"n11","fromPort":0,"to":"n13","toPort":0},{"from":"n10","fromPort":0,"to":"n13","toPort":1},{"from":"n12","fromPort":0,"to":"n13","toPort":2},{"from":"n13","fromPort":0,"to":"n14","toPort":0},{"from":"n6","fromPort":0,"to":"n14","toPort":1},{"from":"n8","fromPort":0,"to":"n15","toPort":0},{"from":"n2","fromPort":0,"to":"n16","toPort":0},{"from":"n8","fromPort":0,"to":"n17","toPort":0},{"from":"n15","fromPort":0,"to":"n18","toPort":0},{"from":"n16","fromPort":0,"to":"n18","toPort":1},{"from":"n14","fromPort":0,"to":"n19","toPort":0},{"from":"n17","fromPort":0,"to":"n20","toPort":0},{"from":"n18","fromPort":0,"to":"n21","toPort":0}],"exposed":[{"node":"n1","key":"countX","label":"Кирпичей по X"},{"node":"n1","key":"countY","label":"Рядов"},{"node":"n1","key":"bevel","label":"Скос кирпичей"},{"node":"n1","key":"valRand","label":"Разброс цвета кирпичей"},{"node":"n1","key":"seed","label":"Seed раскладки"},{"node":"n10","key":"stops","label":"Цвета кирпичей"},{"node":"n11","key":"color","label":"Цвет раствора"},{"node":"n3","key":"intensity","label":"Неровность краёв"},{"node":"n4","key":"count","label":"Сколы (количество)"},{"node":"n14","key":"opacity","label":"Грязь"},{"node":"n17","key":"strength","label":"Сила нормали"}],"animation":{"frames":16,"frameSize":256,"fps":24}},
   },
   {
     title: "Асфальт с трещинами", template: true,
-    graph: {"resolution":1024,"activeOutput":"n18","selected":null,"nodes":[{"id":"n1","type":"noise","x":0,"y":0,"params":{"type":"white","fractal":"fbm","tile":true,"scale":4,"grain":1,"stretch":1,"seed":4,"octaves":2,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"contrast":1,"invert":false}},{"id":"n2","type":"levels","x":230,"y":0,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0,"outWhite":0.35,"alpha":false}},{"id":"n3","type":"splatter","x":0,"y":174,"params":{"pattern":"disc","count":4000,"size":0.02,"aspect":1,"sizeRand":0.6,"bevel":0.35,"rotation":0,"rotRand":180,"valRand":0.7,"blend":"top","seed":9}},{"id":"n4","type":"blend","x":460,"y":0,"params":{"mode":"max","opacity":1,"alpha":"same"}},{"id":"n5","type":"voronoi","x":0,"y":348,"params":{"mode":"crackle","metric":"euclid","tile":true,"scale":4,"seed":12,"randomness":1}},{"id":"n6","type":"noise","x":0,"y":522,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":6,"grain":1,"stretch":1,"seed":31,"octaves":4,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"contrast":1,"invert":false}},{"id":"n7","type":"warp","x":230,"y":174,"params":{"mode":"gradient","intensity":0.02,"angle":0,"wrap":"repeat"}},{"id":"n8","type":"levels","x":460,"y":174,"params":{"inBlack":0,"inWhite":0.025,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n9","type":"blend","x":690,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n10","type":"noise","x":0,"y":696,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":3,"grain":1,"stretch":1,"seed":2,"octaves":6,"persistence":0.5,"lacunarity":2,"warp":0.3,"warpScale":2,"contrast":1,"invert":false}},{"id":"n11","type":"levels","x":230,"y":348,"params":{"inBlack":0.3,"inWhite":0.75,"gamma":1,"outBlack":0.75,"outWhite":1,"alpha":false}},{"id":"n12","type":"ramp","x":920,"y":0,"params":{"stops":[{"p":0,"c":[0.13,0.13,0.135,1]},{"p":0.3,"c":[0.22,0.22,0.22,1]},{"p":0.7,"c":[0.4,0.39,0.37,1]},{"p":1,"c":[0.58,0.56,0.52,1]}],"interp":"linear","source":"L","space":"color"}},{"id":"n13","type":"blend","x":1150,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n14","type":"levels","x":920,"y":174,"params":{"inBlack":0,"inWhite":0.45,"gamma":1,"outBlack":0.4,"outWhite":1,"alpha":false}},{"id":"n15","type":"levels","x":230,"y":522,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.95,"outWhite":0.75,"alpha":false}},{"id":"n16","type":"normal","x":920,"y":348,"params":{"source":"L","strength":2.5,"blur":0.6,"invert":false,"convention":"gl","invertX":false,"wrap":"repeat"}},{"id":"n17","type":"combine","x":1150,"y":174,"params":{"preset":"orm","rSrc":"R","rVal":1,"rInv":false,"gSrc":"R","gVal":0.5,"gInv":false,"bSrc":"R","bVal":0,"bInv":false,"aSrc":"C","aVal":1,"aInv":false}},{"id":"n18","type":"output","x":1380,"y":0,"params":{"filename":"asphalt_albedo"}},{"id":"n19","type":"output","x":1150,"y":364,"params":{"filename":"asphalt_normal"}},{"id":"n20","type":"output","x":1380,"y":174,"params":{"filename":"asphalt_orm"}}],"links":[{"from":"n1","fromPort":0,"to":"n2","toPort":0},{"from":"n2","fromPort":0,"to":"n4","toPort":0},{"from":"n3","fromPort":0,"to":"n4","toPort":1},{"from":"n5","fromPort":0,"to":"n7","toPort":0},{"from":"n6","fromPort":0,"to":"n7","toPort":1},{"from":"n7","fromPort":0,"to":"n8","toPort":0},{"from":"n4","fromPort":0,"to":"n9","toPort":0},{"from":"n8","fromPort":0,"to":"n9","toPort":1},{"from":"n10","fromPort":0,"to":"n11","toPort":0},{"from":"n9","fromPort":0,"to":"n12","toPort":0},{"from":"n12","fromPort":0,"to":"n13","toPort":0},{"from":"n11","fromPort":0,"to":"n13","toPort":1},{"from":"n9","fromPort":0,"to":"n14","toPort":0},{"from":"n3","fromPort":0,"to":"n15","toPort":0},{"from":"n9","fromPort":0,"to":"n16","toPort":0},{"from":"n14","fromPort":0,"to":"n17","toPort":0},{"from":"n15","fromPort":0,"to":"n17","toPort":1},{"from":"n13","fromPort":0,"to":"n18","toPort":0},{"from":"n16","fromPort":0,"to":"n19","toPort":0},{"from":"n17","fromPort":0,"to":"n20","toPort":0}],"exposed":[{"node":"n3","key":"count","label":"Щебень: количество"},{"node":"n3","key":"size","label":"Щебень: размер"},{"node":"n3","key":"seed","label":"Seed щебня"},{"node":"n8","key":"inWhite","label":"Ширина трещин"},{"node":"n5","key":"scale","label":"Масштаб трещин"},{"node":"n11","key":"outBlack","label":"Светлость пятен (1 = нет)"},{"node":"n12","key":"stops","label":"Цвета"},{"node":"n16","key":"strength","label":"Сила нормали"}]},
+    graph: {"resolution":1024,"activeOutput":"n18","selected":null,"nodes":[{"id":"n1","type":"noise","x":0,"y":0,"params":{"type":"white","fractal":"fbm","tile":true,"scale":4,"grain":1,"stretch":1,"seed":4,"octaves":2,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n2","type":"levels","x":230,"y":0,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0,"outWhite":0.35,"alpha":false}},{"id":"n3","type":"splatter","x":0,"y":174,"params":{"pattern":"disc","count":4000,"size":0.02,"aspect":1,"sizeRand":0.6,"bevel":0.35,"rotation":0,"rotRand":180,"valRand":0.7,"blend":"top","seed":9}},{"id":"n4","type":"blend","x":460,"y":0,"params":{"mode":"max","opacity":1,"alpha":"same"}},{"id":"n5","type":"voronoi","x":0,"y":348,"params":{"mode":"crackle","metric":"euclid","tile":true,"scale":4,"seed":12,"randomness":1,"evolution":0}},{"id":"n6","type":"noise","x":0,"y":522,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":6,"grain":1,"stretch":1,"seed":31,"octaves":4,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n7","type":"warp","x":230,"y":174,"params":{"mode":"gradient","intensity":0.02,"angle":0,"wrap":"repeat"}},{"id":"n8","type":"levels","x":460,"y":174,"params":{"inBlack":0,"inWhite":0.025,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n9","type":"blend","x":690,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n10","type":"noise","x":0,"y":696,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":3,"grain":1,"stretch":1,"seed":2,"octaves":6,"persistence":0.5,"lacunarity":2,"warp":0.3,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n11","type":"levels","x":230,"y":348,"params":{"inBlack":0.3,"inWhite":0.75,"gamma":1,"outBlack":0.75,"outWhite":1,"alpha":false}},{"id":"n12","type":"ramp","x":920,"y":0,"params":{"stops":[{"p":0,"c":[0.13,0.13,0.135,1]},{"p":0.3,"c":[0.22,0.22,0.22,1]},{"p":0.7,"c":[0.4,0.39,0.37,1]},{"p":1,"c":[0.58,0.56,0.52,1]}],"interp":"linear","source":"L","space":"color"}},{"id":"n13","type":"blend","x":1150,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n14","type":"levels","x":920,"y":174,"params":{"inBlack":0,"inWhite":0.45,"gamma":1,"outBlack":0.4,"outWhite":1,"alpha":false}},{"id":"n15","type":"levels","x":230,"y":522,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.95,"outWhite":0.75,"alpha":false}},{"id":"n16","type":"normal","x":920,"y":348,"params":{"source":"L","strength":2.5,"blur":0.6,"invert":false,"convention":"gl","invertX":false,"wrap":"repeat"}},{"id":"n17","type":"combine","x":1150,"y":174,"params":{"preset":"orm","rSrc":"R","rVal":1,"rInv":false,"gSrc":"R","gVal":0.5,"gInv":false,"bSrc":"R","bVal":0,"bInv":false,"aSrc":"C","aVal":1,"aInv":false}},{"id":"n18","type":"output","x":1380,"y":0,"params":{"usage":"basecolor","normalY":"auto","filename":"asphalt_basecolor"}},{"id":"n19","type":"output","x":1150,"y":364,"params":{"usage":"normal","normalY":"auto","filename":"asphalt_normal"}},{"id":"n20","type":"output","x":1380,"y":174,"params":{"usage":"orm","normalY":"auto","filename":"asphalt_orm"}}],"links":[{"from":"n1","fromPort":0,"to":"n2","toPort":0},{"from":"n2","fromPort":0,"to":"n4","toPort":0},{"from":"n3","fromPort":0,"to":"n4","toPort":1},{"from":"n5","fromPort":0,"to":"n7","toPort":0},{"from":"n6","fromPort":0,"to":"n7","toPort":1},{"from":"n7","fromPort":0,"to":"n8","toPort":0},{"from":"n4","fromPort":0,"to":"n9","toPort":0},{"from":"n8","fromPort":0,"to":"n9","toPort":1},{"from":"n10","fromPort":0,"to":"n11","toPort":0},{"from":"n9","fromPort":0,"to":"n12","toPort":0},{"from":"n12","fromPort":0,"to":"n13","toPort":0},{"from":"n11","fromPort":0,"to":"n13","toPort":1},{"from":"n9","fromPort":0,"to":"n14","toPort":0},{"from":"n3","fromPort":0,"to":"n15","toPort":0},{"from":"n9","fromPort":0,"to":"n16","toPort":0},{"from":"n14","fromPort":0,"to":"n17","toPort":0},{"from":"n15","fromPort":0,"to":"n17","toPort":1},{"from":"n13","fromPort":0,"to":"n18","toPort":0},{"from":"n16","fromPort":0,"to":"n19","toPort":0},{"from":"n17","fromPort":0,"to":"n20","toPort":0}],"exposed":[{"node":"n3","key":"count","label":"Щебень: количество"},{"node":"n3","key":"size","label":"Щебень: размер"},{"node":"n3","key":"seed","label":"Seed щебня"},{"node":"n8","key":"inWhite","label":"Ширина трещин"},{"node":"n5","key":"scale","label":"Масштаб трещин"},{"node":"n11","key":"outBlack","label":"Светлость пятен (1 = нет)"},{"node":"n12","key":"stops","label":"Цвета"},{"node":"n16","key":"strength","label":"Сила нормали"}],"animation":{"frames":16,"frameSize":256,"fps":24}},
   },
   {
     title: "Булыжная мостовая", template: true,
-    graph: {"resolution":1024,"activeOutput":"n17","selected":null,"nodes":[{"id":"n1","type":"tiler","x":0,"y":0,"params":{"pattern":"square","countX":8,"countY":10,"rowOffset":0.5,"sizeX":1.04,"sizeY":0.96,"bevel":0.45,"posRand":0.12,"sizeRand":0.12,"rotation":0,"rotRand":10,"rotSnap":false,"valRand":0.35,"density":1,"blend":"top","seed":21}},{"id":"n2","type":"noise","x":0,"y":174,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":8,"grain":1,"stretch":1,"seed":6,"octaves":4,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"contrast":1,"invert":false}},{"id":"n3","type":"levels","x":230,"y":0,"params":{"inBlack":0,"inWhite":1,"gamma":2.4,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n4","type":"warp","x":460,"y":0,"params":{"mode":"gradient","intensity":0.012,"angle":0,"wrap":"repeat"}},{"id":"n5","type":"noise","x":0,"y":348,"params":{"type":"perlin","fractal":"billow","tile":true,"scale":24,"grain":1,"stretch":1,"seed":13,"octaves":5,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"contrast":1,"invert":false}},{"id":"n6","type":"levels","x":230,"y":174,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.8,"outWhite":1,"alpha":false}},{"id":"n7","type":"blend","x":690,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n8","type":"ramp","x":230,"y":348,"params":{"stops":[{"p":0,"c":[0.3,0.29,0.27,1]},{"p":0.5,"c":[0.45,0.43,0.4,1]},{"p":1,"c":[0.62,0.6,0.56,1]}],"interp":"linear","source":"L","space":"color"}},{"id":"n9","type":"ramp","x":230,"y":522,"params":{"stops":[{"p":0,"c":[0.11764705882352941,0.0784313725490196,0.050980392156862744,1]},{"p":0.25,"c":[0.23137254901960785,0.1607843137254902,0.10588235294117647,1]},{"p":0.5,"c":[0.35294117647058826,0.24705882352941178,0.16470588235294117,1]},{"p":0.75,"c":[0.47843137254901963,0.35294117647058826,0.24705882352941178,1]},{"p":1,"c":[0.611764705882353,0.48627450980392156,0.3607843137254902,1]}],"interp":"linear","source":"L","space":"color"}},{"id":"n10","type":"levels","x":920,"y":0,"params":{"inBlack":0.02,"inWhite":0.2,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n11","type":"blend","x":1150,"y":0,"params":{"mode":"mix","opacity":1,"alpha":"same"}},{"id":"n12","type":"blend","x":1380,"y":0,"params":{"mode":"multiply","opacity":0.5,"alpha":"same"}},{"id":"n13","type":"levels","x":920,"y":174,"params":{"inBlack":0,"inWhite":0.55,"gamma":1,"outBlack":0.3,"outWhite":1,"alpha":false}},{"id":"n14","type":"levels","x":920,"y":348,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.95,"outWhite":0.7,"alpha":false}},{"id":"n15","type":"normal","x":920,"y":522,"params":{"source":"L","strength":6,"blur":0.6,"invert":false,"convention":"gl","invertX":false,"wrap":"repeat"}},{"id":"n16","type":"combine","x":1150,"y":174,"params":{"preset":"orm","rSrc":"R","rVal":1,"rInv":false,"gSrc":"R","gVal":0.5,"gInv":false,"bSrc":"R","bVal":0,"bInv":false,"aSrc":"C","aVal":1,"aInv":false}},{"id":"n17","type":"output","x":1610,"y":0,"params":{"filename":"cobblestone_albedo"}},{"id":"n18","type":"output","x":1150,"y":364,"params":{"filename":"cobblestone_normal"}},{"id":"n19","type":"output","x":1380,"y":174,"params":{"filename":"cobblestone_orm"}}],"links":[{"from":"n1","fromPort":0,"to":"n3","toPort":0},{"from":"n3","fromPort":0,"to":"n4","toPort":0},{"from":"n2","fromPort":0,"to":"n4","toPort":1},{"from":"n5","fromPort":0,"to":"n6","toPort":0},{"from":"n4","fromPort":0,"to":"n7","toPort":0},{"from":"n6","fromPort":0,"to":"n7","toPort":1},{"from":"n1","fromPort":1,"to":"n8","toPort":0},{"from":"n5","fromPort":0,"to":"n9","toPort":0},{"from":"n7","fromPort":0,"to":"n10","toPort":0},{"from":"n9","fromPort":0,"to":"n11","toPort":0},{"from":"n8","fromPort":0,"to":"n11","toPort":1},{"from":"n10","fromPort":0,"to":"n11","toPort":2},{"from":"n11","fromPort":0,"to":"n12","toPort":0},{"from":"n6","fromPort":0,"to":"n12","toPort":1},{"from":"n7","fromPort":0,"to":"n13","toPort":0},{"from":"n7","fromPort":0,"to":"n14","toPort":0},{"from":"n7","fromPort":0,"to":"n15","toPort":0},{"from":"n13","fromPort":0,"to":"n16","toPort":0},{"from":"n14","fromPort":0,"to":"n16","toPort":1},{"from":"n12","fromPort":0,"to":"n17","toPort":0},{"from":"n15","fromPort":0,"to":"n18","toPort":0},{"from":"n16","fromPort":0,"to":"n19","toPort":0}],"exposed":[{"node":"n1","key":"countX","label":"Камней по X"},{"node":"n1","key":"countY","label":"Рядов"},{"node":"n1","key":"posRand","label":"Разброс положения"},{"node":"n1","key":"rotRand","label":"Разброс поворота"},{"node":"n3","key":"gamma","label":"Скруглённость"},{"node":"n1","key":"seed","label":"Seed"},{"node":"n8","key":"stops","label":"Цвета камня"},{"node":"n9","key":"stops","label":"Цвета земли"},{"node":"n15","key":"strength","label":"Сила нормали"}]},
+    graph: {"resolution":1024,"activeOutput":"n30","selected":null,"nodes":[{"id":"n1","type":"voronoi","x":0,"y":0,"params":{"mode":"border","metric":"euclid","tile":true,"scale":7,"seed":5,"randomness":0.85,"evolution":0}},{"id":"n2","type":"voronoi","x":0,"y":174,"params":{"mode":"cell","metric":"euclid","tile":true,"scale":7,"seed":5,"randomness":0.85,"evolution":0}},{"id":"n3","type":"noise","x":0,"y":348,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":6,"grain":1,"stretch":1,"seed":9,"octaves":4,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n4","type":"warp","x":230,"y":0,"params":{"mode":"gradient","intensity":0.012,"angle":0,"wrap":"repeat"}},{"id":"n5","type":"warp","x":230,"y":174,"params":{"mode":"gradient","intensity":0.012,"angle":0,"wrap":"repeat"}},{"id":"n6","type":"gaussian","x":460,"y":0,"params":{"sigma":5,"wrap":"repeat","alphaAware":false}},{"id":"n7","type":"levels","x":690,"y":0,"params":{"inBlack":0.1,"inWhite":0.7,"gamma":2.2,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n8","type":"levels","x":460,"y":174,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.7,"outWhite":1,"alpha":false}},{"id":"n9","type":"blend","x":920,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n10","type":"noise","x":0,"y":522,"params":{"type":"perlin","fractal":"billow","tile":true,"scale":18,"grain":1,"stretch":1,"seed":13,"octaves":6,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n11","type":"levels","x":230,"y":348,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.82,"outWhite":1,"alpha":false}},{"id":"n12","type":"blend","x":1150,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n13","type":"splatter","x":0,"y":696,"params":{"pattern":"disc","count":2500,"size":0.012,"aspect":1,"sizeRand":0.6,"bevel":0.5,"rotation":0,"rotRand":180,"valRand":0.5,"blend":"max","seed":31}},{"id":"n14","type":"levels","x":230,"y":522,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0,"outWhite":0.22,"alpha":false}},{"id":"n15","type":"blend","x":1380,"y":0,"params":{"mode":"max","opacity":1,"alpha":"same"}},{"id":"n16","type":"ramp","x":460,"y":348,"params":{"stops":[{"p":0,"c":[0.30980392156862746,0.2901960784313726,0.26666666666666666,1]},{"p":0.35,"c":[0.43137254901960786,0.403921568627451,0.3686274509803922,1]},{"p":0.6,"c":[0.5215686274509804,0.49019607843137253,0.44313725490196076,1]},{"p":0.8,"c":[0.43529411764705883,0.41568627450980394,0.4,1]},{"p":1,"c":[0.5529411764705883,0.47843137254901963,0.4,1]}],"interp":"linear","source":"L","space":"color"}},{"id":"n17","type":"levels","x":230,"y":696,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.7,"outWhite":1,"alpha":false}},{"id":"n18","type":"blend","x":690,"y":174,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n19","type":"noise","x":0,"y":870,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":10,"grain":1,"stretch":1,"seed":44,"octaves":5,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n20","type":"ramp","x":230,"y":870,"params":{"stops":[{"p":0,"c":[0.16470588235294117,0.12549019607843137,0.08627450980392157,1]},{"p":0.45,"c":[0.24705882352941178,0.19215686274509805,0.13333333333333333,1]},{"p":0.7,"c":[0.2901960784313726,0.2901960784313726,0.14901960784313725,1]},{"p":1,"c":[0.3333333333333333,0.3764705882352941,0.18823529411764706,1]}],"interp":"linear","source":"L","space":"color"}},{"id":"n21","type":"blend","x":460,"y":522,"params":{"mode":"screen","opacity":0.5,"alpha":"same"}},{"id":"n22","type":"levels","x":1150,"y":174,"params":{"inBlack":0.02,"inWhite":0.12,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n23","type":"blend","x":1380,"y":174,"params":{"mode":"mix","opacity":1,"alpha":"same"}},{"id":"n24","type":"levels","x":1610,"y":0,"params":{"inBlack":0,"inWhite":0.45,"gamma":1,"outBlack":0.55,"outWhite":1,"alpha":false}},{"id":"n25","type":"blend","x":1840,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n26","type":"levels","x":1610,"y":174,"params":{"inBlack":0,"inWhite":0.5,"gamma":1,"outBlack":0.2,"outWhite":1,"alpha":false}},{"id":"n27","type":"levels","x":1380,"y":348,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.96,"outWhite":0.72,"alpha":false}},{"id":"n28","type":"normal","x":1610,"y":348,"params":{"source":"L","strength":5,"blur":0.8,"invert":false,"convention":"gl","invertX":false,"wrap":"repeat"}},{"id":"n29","type":"combine","x":1840,"y":174,"params":{"preset":"orm","rSrc":"R","rVal":1,"rInv":false,"gSrc":"R","gVal":0.5,"gInv":false,"bSrc":"R","bVal":0,"bInv":false,"aSrc":"C","aVal":1,"aInv":false}},{"id":"n30","type":"output","x":2070,"y":0,"params":{"usage":"basecolor","normalY":"auto","filename":"cobblestone_basecolor"}},{"id":"n31","type":"output","x":1840,"y":364,"params":{"usage":"normal","normalY":"auto","filename":"cobblestone_normal"}},{"id":"n32","type":"output","x":2070,"y":174,"params":{"usage":"orm","normalY":"auto","filename":"cobblestone_orm"}}],"links":[{"from":"n1","fromPort":0,"to":"n4","toPort":0},{"from":"n3","fromPort":0,"to":"n4","toPort":1},{"from":"n2","fromPort":0,"to":"n5","toPort":0},{"from":"n3","fromPort":0,"to":"n5","toPort":1},{"from":"n4","fromPort":0,"to":"n6","toPort":0},{"from":"n6","fromPort":0,"to":"n7","toPort":0},{"from":"n5","fromPort":0,"to":"n8","toPort":0},{"from":"n7","fromPort":0,"to":"n9","toPort":0},{"from":"n8","fromPort":0,"to":"n9","toPort":1},{"from":"n10","fromPort":0,"to":"n11","toPort":0},{"from":"n9","fromPort":0,"to":"n12","toPort":0},{"from":"n11","fromPort":0,"to":"n12","toPort":1},{"from":"n13","fromPort":0,"to":"n14","toPort":0},{"from":"n12","fromPort":0,"to":"n15","toPort":0},{"from":"n14","fromPort":0,"to":"n15","toPort":1},{"from":"n5","fromPort":0,"to":"n16","toPort":0},{"from":"n10","fromPort":0,"to":"n17","toPort":0},{"from":"n16","fromPort":0,"to":"n18","toPort":0},{"from":"n17","fromPort":0,"to":"n18","toPort":1},{"from":"n19","fromPort":0,"to":"n20","toPort":0},{"from":"n20","fromPort":0,"to":"n21","toPort":0},{"from":"n14","fromPort":0,"to":"n21","toPort":1},{"from":"n9","fromPort":0,"to":"n22","toPort":0},{"from":"n21","fromPort":0,"to":"n23","toPort":0},{"from":"n18","fromPort":0,"to":"n23","toPort":1},{"from":"n22","fromPort":0,"to":"n23","toPort":2},{"from":"n15","fromPort":0,"to":"n24","toPort":0},{"from":"n23","fromPort":0,"to":"n25","toPort":0},{"from":"n24","fromPort":0,"to":"n25","toPort":1},{"from":"n15","fromPort":0,"to":"n26","toPort":0},{"from":"n22","fromPort":0,"to":"n27","toPort":0},{"from":"n15","fromPort":0,"to":"n28","toPort":0},{"from":"n26","fromPort":0,"to":"n29","toPort":0},{"from":"n27","fromPort":0,"to":"n29","toPort":1},{"from":"n25","fromPort":0,"to":"n30","toPort":0},{"from":"n28","fromPort":0,"to":"n31","toPort":0},{"from":"n29","fromPort":0,"to":"n32","toPort":0}],"exposed":[{"node":"n1","key":"scale","label":"Размер камней (меньше = крупнее)"},{"node":"n1","key":"seed","label":"Seed камней"},{"node":"n7","key":"inBlack","label":"Ширина швов"},{"node":"n7","key":"gamma","label":"Округлость"},{"node":"n4","key":"intensity","label":"Неровность краёв"},{"node":"n6","key":"sigma","label":"Сглаженность камней"},{"node":"n16","key":"stops","label":"Цвета камня"},{"node":"n20","key":"stops","label":"Цвета земли/мха"},{"node":"n13","key":"count","label":"Мелкий гравий"},{"node":"n28","key":"strength","label":"Сила нормали"}],"animation":{"frames":16,"frameSize":256,"fps":24}},
   },
   {
     title: "Деревянные доски", template: true,
-    graph: {"resolution":1024,"activeOutput":"n18","selected":null,"nodes":[{"id":"n1","type":"tiler","x":0,"y":0,"params":{"pattern":"square","countX":2,"countY":6,"rowOffset":0.5,"sizeX":1,"sizeY":0.97,"bevel":0.04,"posRand":0,"sizeRand":0,"rotation":0,"rotRand":0,"rotSnap":false,"valRand":0.5,"density":1,"blend":"max","seed":4}},{"id":"n2","type":"noise","x":0,"y":174,"params":{"type":"value","fractal":"fbm","tile":true,"scale":16,"grain":1,"stretch":0.125,"seed":7,"octaves":5,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"contrast":1,"invert":false}},{"id":"n3","type":"noise","x":0,"y":348,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":2,"grain":1,"stretch":0.25,"seed":3,"octaves":4,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"contrast":1,"invert":false}},{"id":"n4","type":"waves","x":230,"y":0,"params":{"shape":"sine","mode":"linear","countX":0,"countY":32,"rings":8,"centerX":0.5,"centerY":0.5,"phase":0,"duty":0.5,"distort":4}},{"id":"n5","type":"blend","x":460,"y":0,"params":{"mode":"multiply","opacity":0.5,"alpha":"same"}},{"id":"n6","type":"ramp","x":690,"y":0,"params":{"stops":[{"p":0,"c":[0.1803921568627451,0.10196078431372549,0.054901960784313725,1]},{"p":0.2,"c":[0.30196078431372547,0.17647058823529413,0.09019607843137255,1]},{"p":0.4,"c":[0.43137254901960786,0.26666666666666666,0.1411764705882353,1]},{"p":0.6,"c":[0.5607843137254902,0.36470588235294116,0.2,1]},{"p":0.8,"c":[0.6901960784313725,0.49019607843137253,0.2901960784313726,1]},{"p":1,"c":[0.788235294117647,0.6039215686274509,0.4,1]}],"interp":"linear","source":"L","space":"color"}},{"id":"n7","type":"levels","x":230,"y":174,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.65,"outWhite":1,"alpha":false}},{"id":"n8","type":"blend","x":920,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n9","type":"levels","x":230,"y":348,"params":{"inBlack":0,"inWhite":0.05,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n10","type":"constant","x":0,"y":522,"params":{"mode":"color","value":0.5,"color":[0.12,0.07,0.04,1]}},{"id":"n11","type":"blend","x":1150,"y":0,"params":{"mode":"mix","opacity":1,"alpha":"same"}},{"id":"n12","type":"levels","x":690,"y":174,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.85,"outWhite":1,"alpha":false}},{"id":"n13","type":"blend","x":920,"y":174,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n14","type":"levels","x":1150,"y":174,"params":{"inBlack":0,"inWhite":0.3,"gamma":1,"outBlack":0.4,"outWhite":1,"alpha":false}},{"id":"n15","type":"levels","x":690,"y":348,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.55,"outWhite":0.8,"alpha":false}},{"id":"n16","type":"normal","x":1150,"y":348,"params":{"source":"L","strength":3,"blur":0.6,"invert":false,"convention":"gl","invertX":false,"wrap":"repeat"}},{"id":"n17","type":"combine","x":1380,"y":0,"params":{"preset":"orm","rSrc":"R","rVal":1,"rInv":false,"gSrc":"R","gVal":0.5,"gInv":false,"bSrc":"R","bVal":0,"bInv":false,"aSrc":"C","aVal":1,"aInv":false}},{"id":"n18","type":"output","x":1380,"y":190,"params":{"filename":"wood_planks_albedo"}},{"id":"n19","type":"output","x":1380,"y":364,"params":{"filename":"wood_planks_normal"}},{"id":"n20","type":"output","x":1610,"y":0,"params":{"filename":"wood_planks_orm"}}],"links":[{"from":"n3","fromPort":0,"to":"n4","toPort":0},{"from":"n4","fromPort":0,"to":"n5","toPort":0},{"from":"n2","fromPort":0,"to":"n5","toPort":1},{"from":"n5","fromPort":0,"to":"n6","toPort":0},{"from":"n1","fromPort":1,"to":"n7","toPort":0},{"from":"n6","fromPort":0,"to":"n8","toPort":0},{"from":"n7","fromPort":0,"to":"n8","toPort":1},{"from":"n1","fromPort":0,"to":"n9","toPort":0},{"from":"n10","fromPort":0,"to":"n11","toPort":0},{"from":"n8","fromPort":0,"to":"n11","toPort":1},{"from":"n9","fromPort":0,"to":"n11","toPort":2},{"from":"n5","fromPort":0,"to":"n12","toPort":0},{"from":"n1","fromPort":0,"to":"n13","toPort":0},{"from":"n12","fromPort":0,"to":"n13","toPort":1},{"from":"n13","fromPort":0,"to":"n14","toPort":0},{"from":"n5","fromPort":0,"to":"n15","toPort":0},{"from":"n13","fromPort":0,"to":"n16","toPort":0},{"from":"n14","fromPort":0,"to":"n17","toPort":0},{"from":"n15","fromPort":0,"to":"n17","toPort":1},{"from":"n11","fromPort":0,"to":"n18","toPort":0},{"from":"n16","fromPort":0,"to":"n19","toPort":0},{"from":"n17","fromPort":0,"to":"n20","toPort":0}],"exposed":[{"node":"n1","key":"countY","label":"Досок"},{"node":"n1","key":"countX","label":"Стыков в ряду"},{"node":"n1","key":"valRand","label":"Разброс тона досок"},{"node":"n4","key":"countY","label":"Частота волокон"},{"node":"n4","key":"distort","label":"Извилистость"},{"node":"n6","key":"stops","label":"Цвета дерева"},{"node":"n1","key":"seed","label":"Seed"},{"node":"n16","key":"strength","label":"Сила нормали"}]},
+    graph: {"resolution":1024,"activeOutput":"n25","selected":null,"nodes":[{"id":"n1","type":"tiler","x":0,"y":0,"params":{"pattern":"square","countX":2,"countY":6,"rowOffset":0.5,"sizeX":0.997,"sizeY":0.97,"bevel":0.025,"posRand":0,"sizeRand":0,"rotation":0,"rotRand":0,"rotSnap":false,"valRand":1,"density":1,"blend":"max","seed":4}},{"id":"n2","type":"noise","x":0,"y":174,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":1,"grain":1,"stretch":4,"seed":3,"octaves":5,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n3","type":"splatter","x":0,"y":348,"params":{"pattern":"gauss","count":5,"size":0.13,"aspect":0.5,"sizeRand":0.5,"bevel":0.3,"rotation":0,"rotRand":8,"valRand":0.2,"blend":"max","seed":12}},{"id":"n4","type":"blend","x":230,"y":0,"params":{"mode":"add","opacity":1,"alpha":"same"}},{"id":"n5","type":"waves","x":460,"y":0,"params":{"shape":"sine","mode":"linear","countX":0,"countY":32,"rings":8,"centerX":0.5,"centerY":0.5,"phase":0,"duty":0.5,"distort":8}},{"id":"n6","type":"levels","x":690,"y":0,"params":{"inBlack":0.68,"inWhite":1,"gamma":0.8,"outBlack":1,"outWhite":0,"alpha":false}},{"id":"n7","type":"noise","x":0,"y":522,"params":{"type":"value","fractal":"fbm","tile":true,"scale":4,"grain":1,"stretch":8,"seed":21,"octaves":3,"persistence":0.6,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1.8,"invert":false}},{"id":"n8","type":"blend","x":920,"y":0,"params":{"mode":"multiply","opacity":0.35,"alpha":"same"}},{"id":"n9","type":"levels","x":230,"y":174,"params":{"inBlack":0.55,"inWhite":0.9,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n10","type":"invert","x":460,"y":174,"params":{"r":true,"g":true,"b":true,"a":false}},{"id":"n11","type":"blend","x":1150,"y":0,"params":{"mode":"multiply","opacity":0.8,"alpha":"same"}},{"id":"n12","type":"warp","x":1380,"y":0,"params":{"mode":"directional","intensity":0.5,"angle":90,"wrap":"repeat"}},{"id":"n13","type":"ramp","x":1610,"y":0,"params":{"stops":[{"p":0,"c":[0.35294117647058826,0.20392156862745098,0.09803921568627451,1]},{"p":0.45,"c":[0.5490196078431373,0.35294117647058826,0.19215686274509805,1]},{"p":0.8,"c":[0.6980392156862745,0.4823529411764706,0.2823529411764706,1]},{"p":1,"c":[0.7803921568627451,0.5725490196078431,0.3764705882352941,1]}],"interp":"smooth","source":"L","space":"color"}},{"id":"n14","type":"levels","x":230,"y":348,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.7,"outWhite":1,"alpha":false}},{"id":"n15","type":"blend","x":1840,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n16","type":"levels","x":230,"y":522,"params":{"inBlack":0,"inWhite":0.1,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n17","type":"constant","x":0,"y":696,"params":{"mode":"color","value":0.5,"color":[0.09,0.055,0.035,1]}},{"id":"n18","type":"blend","x":2070,"y":0,"params":{"mode":"mix","opacity":1,"alpha":"same"}},{"id":"n19","type":"levels","x":1610,"y":174,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.88,"outWhite":1,"alpha":false}},{"id":"n20","type":"blend","x":1840,"y":174,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n21","type":"levels","x":2070,"y":174,"params":{"inBlack":0,"inWhite":0.2,"gamma":1,"outBlack":0.4,"outWhite":1,"alpha":false}},{"id":"n22","type":"levels","x":1610,"y":348,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.75,"outWhite":0.5,"alpha":false}},{"id":"n23","type":"normal","x":2070,"y":348,"params":{"source":"L","strength":2,"blur":0.4,"invert":false,"convention":"gl","invertX":false,"wrap":"repeat"}},{"id":"n24","type":"combine","x":2300,"y":0,"params":{"preset":"orm","rSrc":"R","rVal":1,"rInv":false,"gSrc":"R","gVal":0.5,"gInv":false,"bSrc":"R","bVal":0,"bInv":false,"aSrc":"C","aVal":1,"aInv":false}},{"id":"n25","type":"output","x":2300,"y":190,"params":{"usage":"basecolor","normalY":"auto","filename":"wood_planks_basecolor"}},{"id":"n26","type":"output","x":2300,"y":364,"params":{"usage":"normal","normalY":"auto","filename":"wood_planks_normal"}},{"id":"n27","type":"output","x":2530,"y":0,"params":{"usage":"orm","normalY":"auto","filename":"wood_planks_orm"}}],"links":[{"from":"n2","fromPort":0,"to":"n4","toPort":0},{"from":"n3","fromPort":0,"to":"n4","toPort":1},{"from":"n4","fromPort":0,"to":"n5","toPort":0},{"from":"n5","fromPort":0,"to":"n6","toPort":0},{"from":"n6","fromPort":0,"to":"n8","toPort":0},{"from":"n7","fromPort":0,"to":"n8","toPort":1},{"from":"n3","fromPort":0,"to":"n9","toPort":0},{"from":"n9","fromPort":0,"to":"n10","toPort":0},{"from":"n8","fromPort":0,"to":"n11","toPort":0},{"from":"n10","fromPort":0,"to":"n11","toPort":1},{"from":"n11","fromPort":0,"to":"n12","toPort":0},{"from":"n1","fromPort":1,"to":"n12","toPort":1},{"from":"n12","fromPort":0,"to":"n13","toPort":0},{"from":"n1","fromPort":1,"to":"n14","toPort":0},{"from":"n13","fromPort":0,"to":"n15","toPort":0},{"from":"n14","fromPort":0,"to":"n15","toPort":1},{"from":"n1","fromPort":0,"to":"n16","toPort":0},{"from":"n17","fromPort":0,"to":"n18","toPort":0},{"from":"n15","fromPort":0,"to":"n18","toPort":1},{"from":"n16","fromPort":0,"to":"n18","toPort":2},{"from":"n12","fromPort":0,"to":"n19","toPort":0},{"from":"n1","fromPort":0,"to":"n20","toPort":0},{"from":"n19","fromPort":0,"to":"n20","toPort":1},{"from":"n20","fromPort":0,"to":"n21","toPort":0},{"from":"n12","fromPort":0,"to":"n22","toPort":0},{"from":"n20","fromPort":0,"to":"n23","toPort":0},{"from":"n21","fromPort":0,"to":"n24","toPort":0},{"from":"n22","fromPort":0,"to":"n24","toPort":1},{"from":"n18","fromPort":0,"to":"n25","toPort":0},{"from":"n23","fromPort":0,"to":"n26","toPort":0},{"from":"n24","fromPort":0,"to":"n27","toPort":0}],"exposed":[{"node":"n1","key":"countY","label":"Досок"},{"node":"n1","key":"countX","label":"Стыков в ряду"},{"node":"n1","key":"seed","label":"Seed досок"},{"node":"n14","key":"outBlack","label":"Однотонность досок"},{"node":"n5","key":"countY","label":"Частота годичных колец"},{"node":"n5","key":"distort","label":"Извилистость"},{"node":"n3","key":"count","label":"Сучки"},{"node":"n3","key":"seed","label":"Seed сучков"},{"node":"n13","key":"stops","label":"Цвета древесины"},{"node":"n23","key":"strength","label":"Сила нормали"}],"animation":{"frames":16,"frameSize":256,"fps":24}},
   },
   {
     title: "Окрашенный металл: сколы и царапины", template: true,
-    graph: {"resolution":1024,"activeOutput":"n20","selected":null,"nodes":[{"id":"n1","type":"noise","x":0,"y":0,"params":{"type":"value","fractal":"fbm","tile":true,"scale":32,"grain":1,"stretch":0.125,"seed":2,"octaves":4,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"contrast":1,"invert":false}},{"id":"n2","type":"ramp","x":230,"y":0,"params":{"stops":[{"p":0,"c":[0.42,0.43,0.45,1]},{"p":1,"c":[0.7,0.71,0.73,1]}],"interp":"linear","source":"L","space":"color"}},{"id":"n3","type":"noise","x":0,"y":174,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":4,"grain":1,"stretch":1,"seed":17,"octaves":7,"persistence":0.5,"lacunarity":2,"warp":0.4,"warpScale":2,"contrast":1,"invert":false}},{"id":"n4","type":"levels","x":230,"y":174,"params":{"inBlack":0.3,"inWhite":0.36,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n5","type":"splatter","x":0,"y":348,"params":{"pattern":"square","count":60,"size":0.18,"aspect":0.02,"sizeRand":0.5,"bevel":0,"rotation":25,"rotRand":25,"valRand":0.6,"blend":"max","seed":8}},{"id":"n6","type":"invert","x":230,"y":348,"params":{"r":true,"g":true,"b":true,"a":false}},{"id":"n7","type":"blend","x":460,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n8","type":"constant","x":0,"y":522,"params":{"mode":"color","value":0.5,"color":[0.16,0.36,0.55,1]}},{"id":"n9","type":"blend","x":690,"y":0,"params":{"mode":"mix","opacity":1,"alpha":"same"}},{"id":"n10","type":"noise","x":0,"y":696,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":6,"grain":1,"stretch":1,"seed":40,"octaves":6,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"contrast":1,"invert":false}},{"id":"n11","type":"levels","x":230,"y":522,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.75,"outWhite":1,"alpha":false}},{"id":"n12","type":"blend","x":920,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n13","type":"levels","x":690,"y":174,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.5,"outWhite":0.6,"alpha":false}},{"id":"n14","type":"blend","x":920,"y":174,"params":{"mode":"multiply","opacity":0.1,"alpha":"same"}},{"id":"n15","type":"levels","x":230,"y":696,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.8,"outWhite":1,"alpha":false}},{"id":"n16","type":"levels","x":690,"y":348,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.35,"outWhite":0.7,"alpha":false}},{"id":"n17","type":"invert","x":690,"y":522,"params":{"r":true,"g":true,"b":true,"a":false}},{"id":"n18","type":"normal","x":1150,"y":0,"params":{"source":"L","strength":3,"blur":0.6,"invert":false,"convention":"gl","invertX":false,"wrap":"repeat"}},{"id":"n19","type":"combine","x":920,"y":348,"params":{"preset":"orm","rSrc":"R","rVal":1,"rInv":false,"gSrc":"R","gVal":0.5,"gInv":false,"bSrc":"R","bVal":0,"bInv":false,"aSrc":"C","aVal":1,"aInv":false}},{"id":"n20","type":"output","x":1150,"y":174,"params":{"filename":"painted_metal_albedo"}},{"id":"n21","type":"output","x":1380,"y":0,"params":{"filename":"painted_metal_normal"}},{"id":"n22","type":"output","x":1150,"y":348,"params":{"filename":"painted_metal_orm"}}],"links":[{"from":"n1","fromPort":0,"to":"n2","toPort":0},{"from":"n3","fromPort":0,"to":"n4","toPort":0},{"from":"n5","fromPort":0,"to":"n6","toPort":0},{"from":"n4","fromPort":0,"to":"n7","toPort":0},{"from":"n6","fromPort":0,"to":"n7","toPort":1},{"from":"n2","fromPort":0,"to":"n9","toPort":0},{"from":"n8","fromPort":0,"to":"n9","toPort":1},{"from":"n7","fromPort":0,"to":"n9","toPort":2},{"from":"n10","fromPort":0,"to":"n11","toPort":0},{"from":"n9","fromPort":0,"to":"n12","toPort":0},{"from":"n11","fromPort":0,"to":"n12","toPort":1},{"from":"n7","fromPort":0,"to":"n13","toPort":0},{"from":"n13","fromPort":0,"to":"n14","toPort":0},{"from":"n1","fromPort":0,"to":"n14","toPort":1},{"from":"n10","fromPort":0,"to":"n15","toPort":0},{"from":"n7","fromPort":0,"to":"n16","toPort":0},{"from":"n7","fromPort":0,"to":"n17","toPort":0},{"from":"n14","fromPort":0,"to":"n18","toPort":0},{"from":"n15","fromPort":0,"to":"n19","toPort":0},{"from":"n16","fromPort":0,"to":"n19","toPort":1},{"from":"n17","fromPort":0,"to":"n19","toPort":2},{"from":"n12","fromPort":0,"to":"n20","toPort":0},{"from":"n18","fromPort":0,"to":"n21","toPort":0},{"from":"n19","fromPort":0,"to":"n22","toPort":0}],"exposed":[{"node":"n8","key":"color","label":"Цвет краски"},{"node":"n4","key":"inBlack","label":"Облезлость краски"},{"node":"n3","key":"seed","label":"Seed сколов"},{"node":"n5","key":"count","label":"Царапины: количество"},{"node":"n5","key":"rotation","label":"Царапины: угол"},{"node":"n11","key":"outBlack","label":"Чистота (1 = без грязи)"},{"node":"n18","key":"strength","label":"Сила нормали"}]},
+    graph: {"resolution":1024,"activeOutput":"n20","selected":null,"nodes":[{"id":"n1","type":"noise","x":0,"y":0,"params":{"type":"value","fractal":"fbm","tile":true,"scale":32,"grain":1,"stretch":0.125,"seed":2,"octaves":4,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n2","type":"ramp","x":230,"y":0,"params":{"stops":[{"p":0,"c":[0.42,0.43,0.45,1]},{"p":1,"c":[0.7,0.71,0.73,1]}],"interp":"linear","source":"L","space":"color"}},{"id":"n3","type":"noise","x":0,"y":174,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":4,"grain":1,"stretch":1,"seed":17,"octaves":7,"persistence":0.5,"lacunarity":2,"warp":0.4,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n4","type":"levels","x":230,"y":174,"params":{"inBlack":0.3,"inWhite":0.36,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n5","type":"splatter","x":0,"y":348,"params":{"pattern":"square","count":60,"size":0.18,"aspect":0.02,"sizeRand":0.5,"bevel":0,"rotation":25,"rotRand":25,"valRand":0.6,"blend":"max","seed":8}},{"id":"n6","type":"invert","x":230,"y":348,"params":{"r":true,"g":true,"b":true,"a":false}},{"id":"n7","type":"blend","x":460,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n8","type":"constant","x":0,"y":522,"params":{"mode":"color","value":0.5,"color":[0.16,0.36,0.55,1]}},{"id":"n9","type":"blend","x":690,"y":0,"params":{"mode":"mix","opacity":1,"alpha":"same"}},{"id":"n10","type":"noise","x":0,"y":696,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":6,"grain":1,"stretch":1,"seed":40,"octaves":6,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n11","type":"levels","x":230,"y":522,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.75,"outWhite":1,"alpha":false}},{"id":"n12","type":"blend","x":920,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n13","type":"levels","x":690,"y":174,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.5,"outWhite":0.6,"alpha":false}},{"id":"n14","type":"blend","x":920,"y":174,"params":{"mode":"multiply","opacity":0.1,"alpha":"same"}},{"id":"n15","type":"levels","x":230,"y":696,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.8,"outWhite":1,"alpha":false}},{"id":"n16","type":"levels","x":690,"y":348,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.35,"outWhite":0.7,"alpha":false}},{"id":"n17","type":"invert","x":690,"y":522,"params":{"r":true,"g":true,"b":true,"a":false}},{"id":"n18","type":"normal","x":1150,"y":0,"params":{"source":"L","strength":3,"blur":0.6,"invert":false,"convention":"gl","invertX":false,"wrap":"repeat"}},{"id":"n19","type":"combine","x":920,"y":348,"params":{"preset":"orm","rSrc":"R","rVal":1,"rInv":false,"gSrc":"R","gVal":0.5,"gInv":false,"bSrc":"R","bVal":0,"bInv":false,"aSrc":"C","aVal":1,"aInv":false}},{"id":"n20","type":"output","x":1150,"y":174,"params":{"usage":"basecolor","normalY":"auto","filename":"painted_metal_basecolor"}},{"id":"n21","type":"output","x":1380,"y":0,"params":{"usage":"normal","normalY":"auto","filename":"painted_metal_normal"}},{"id":"n22","type":"output","x":1150,"y":348,"params":{"usage":"orm","normalY":"auto","filename":"painted_metal_orm"}}],"links":[{"from":"n1","fromPort":0,"to":"n2","toPort":0},{"from":"n3","fromPort":0,"to":"n4","toPort":0},{"from":"n5","fromPort":0,"to":"n6","toPort":0},{"from":"n4","fromPort":0,"to":"n7","toPort":0},{"from":"n6","fromPort":0,"to":"n7","toPort":1},{"from":"n2","fromPort":0,"to":"n9","toPort":0},{"from":"n8","fromPort":0,"to":"n9","toPort":1},{"from":"n7","fromPort":0,"to":"n9","toPort":2},{"from":"n10","fromPort":0,"to":"n11","toPort":0},{"from":"n9","fromPort":0,"to":"n12","toPort":0},{"from":"n11","fromPort":0,"to":"n12","toPort":1},{"from":"n7","fromPort":0,"to":"n13","toPort":0},{"from":"n13","fromPort":0,"to":"n14","toPort":0},{"from":"n1","fromPort":0,"to":"n14","toPort":1},{"from":"n10","fromPort":0,"to":"n15","toPort":0},{"from":"n7","fromPort":0,"to":"n16","toPort":0},{"from":"n7","fromPort":0,"to":"n17","toPort":0},{"from":"n14","fromPort":0,"to":"n18","toPort":0},{"from":"n15","fromPort":0,"to":"n19","toPort":0},{"from":"n16","fromPort":0,"to":"n19","toPort":1},{"from":"n17","fromPort":0,"to":"n19","toPort":2},{"from":"n12","fromPort":0,"to":"n20","toPort":0},{"from":"n18","fromPort":0,"to":"n21","toPort":0},{"from":"n19","fromPort":0,"to":"n22","toPort":0}],"exposed":[{"node":"n8","key":"color","label":"Цвет краски"},{"node":"n4","key":"inBlack","label":"Облезлость краски"},{"node":"n3","key":"seed","label":"Seed сколов"},{"node":"n5","key":"count","label":"Царапины: количество"},{"node":"n5","key":"rotation","label":"Царапины: угол"},{"node":"n11","key":"outBlack","label":"Чистота (1 = без грязи)"},{"node":"n18","key":"strength","label":"Сила нормали"}],"animation":{"frames":16,"frameSize":256,"fps":24}},
+  },
+  {
+    title: "Огонь (флипбук)", fx: true,
+    graph: {"resolution":512,"activeOutput":"n10","selected":null,"nodes":[{"id":"n1","type":"noise","x":0,"y":0,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":3,"grain":1,"stretch":2,"seed":6,"octaves":5,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false},"anim":{"evolution":{"to":1,"curve":"linear"}}},{"id":"n2","type":"transform","x":230,"y":0,"params":{"offsetX":0,"offsetY":0,"scaleX":1,"scaleY":1,"rotation":0,"wrap":"repeat"},"anim":{"offsetY":{"to":-1,"curve":"linear"}}},{"id":"n3","type":"shape","x":0,"y":174,"params":{"shape":"ellipse","sizeX":0.55,"sizeY":0.74,"posX":0.5,"posY":0.55,"rotation":0,"softness":0.28,"thickness":0.08,"repeat":false}},{"id":"n4","type":"gradient","x":0,"y":348,"params":{"type":"linear","centerX":0.5,"centerY":0.5,"rotation":90,"scale":1,"repeat":"clamp","invert":true}},{"id":"n5","type":"levels","x":230,"y":174,"params":{"inBlack":0,"inWhite":1,"gamma":0.6,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n6","type":"blend","x":460,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n7","type":"blend","x":690,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n8","type":"levels","x":920,"y":0,"params":{"inBlack":0.06,"inWhite":0.34,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n9","type":"ramp","x":1150,"y":0,"params":{"stops":[{"p":0,"c":[0,0,0,0]},{"p":0.18,"c":[0.22745098039215686,0.0196078431372549,0,0.5]},{"p":0.4,"c":[0.7686274509803922,0.16470588235294117,0,1]},{"p":0.65,"c":[1,0.5411764705882353,0.06274509803921569,1]},{"p":0.85,"c":[1,0.8235294117647058,0.2901960784313726,1]},{"p":1,"c":[1,0.984313725490196,0.8784313725490196,1]}],"interp":"smooth","source":"L","space":"color"}},{"id":"n10","type":"output","x":1380,"y":0,"params":{"usage":"generic","normalY":"auto","filename":"fire_flipbook"}}],"links":[{"from":"n1","fromPort":0,"to":"n2","toPort":0},{"from":"n4","fromPort":0,"to":"n5","toPort":0},{"from":"n2","fromPort":0,"to":"n6","toPort":0},{"from":"n3","fromPort":0,"to":"n6","toPort":1},{"from":"n6","fromPort":0,"to":"n7","toPort":0},{"from":"n5","fromPort":0,"to":"n7","toPort":1},{"from":"n7","fromPort":0,"to":"n8","toPort":0},{"from":"n8","fromPort":0,"to":"n9","toPort":0},{"from":"n9","fromPort":0,"to":"n10","toPort":0}],"exposed":[{"node":"n1","key":"scale","label":"Размер языков"},{"node":"n3","key":"sizeX","label":"Ширина пламени"},{"node":"n8","key":"inWhite","label":"Яркость"},{"node":"n9","key":"stops","label":"Цвета огня"},{"node":"n1","key":"seed","label":"Seed"}],"animation":{"frames":16,"frameSize":256,"fps":24}},
+  },
+  {
+    title: "Дым (флипбук)", fx: true,
+    graph: {"resolution":512,"activeOutput":"n9","selected":null,"nodes":[{"id":"n1","type":"noise","x":0,"y":0,"params":{"type":"perlin","fractal":"billow","tile":true,"scale":4,"grain":1,"stretch":1,"seed":14,"octaves":6,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false},"anim":{"evolution":{"to":1,"curve":"linear"}}},{"id":"n2","type":"noise","x":0,"y":174,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":2,"grain":1,"stretch":1,"seed":3,"octaves":3,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false},"anim":{"evolution":{"to":1,"curve":"linear"}}},{"id":"n3","type":"warp","x":230,"y":0,"params":{"mode":"gradient","intensity":0.02,"angle":0,"wrap":"repeat"}},{"id":"n4","type":"gradient","x":0,"y":348,"params":{"type":"radial","centerX":0.5,"centerY":0.5,"rotation":0,"scale":1.05,"repeat":"clamp","invert":true}},{"id":"n5","type":"levels","x":230,"y":174,"params":{"inBlack":0,"inWhite":1,"gamma":0.7,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n6","type":"blend","x":460,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n7","type":"levels","x":690,"y":0,"params":{"inBlack":0.04,"inWhite":0.4,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n8","type":"ramp","x":920,"y":0,"params":{"stops":[{"p":0,"c":[0.16470588235294117,0.16470588235294117,0.16470588235294117,0]},{"p":0.25,"c":[0.41568627450980394,0.41568627450980394,0.41568627450980394,0.6]},{"p":0.6,"c":[0.7058823529411765,0.7058823529411765,0.7058823529411765,0.92]},{"p":1,"c":[0.9490196078431372,0.9490196078431372,0.9490196078431372,1]}],"interp":"smooth","source":"L","space":"color"}},{"id":"n9","type":"output","x":1150,"y":0,"params":{"usage":"generic","normalY":"auto","filename":"smoke_flipbook"}}],"links":[{"from":"n1","fromPort":0,"to":"n3","toPort":0},{"from":"n2","fromPort":0,"to":"n3","toPort":1},{"from":"n4","fromPort":0,"to":"n5","toPort":0},{"from":"n3","fromPort":0,"to":"n6","toPort":0},{"from":"n5","fromPort":0,"to":"n6","toPort":1},{"from":"n6","fromPort":0,"to":"n7","toPort":0},{"from":"n7","fromPort":0,"to":"n8","toPort":0},{"from":"n8","fromPort":0,"to":"n9","toPort":0}],"exposed":[{"node":"n1","key":"scale","label":"Размер клубов"},{"node":"n7","key":"inWhite","label":"Плотность"},{"node":"n8","key":"stops","label":"Цвет дыма"},{"node":"n1","key":"seed","label":"Seed"}],"animation":{"frames":16,"frameSize":256,"fps":24}},
+  },
+  {
+    title: "Энергетическое кольцо (флипбук)", fx: true,
+    graph: {"resolution":512,"activeOutput":"n7","selected":null,"nodes":[{"id":"n1","type":"shape","x":0,"y":0,"params":{"shape":"ring","sizeX":0.6,"sizeY":0.6,"posX":0.5,"posY":0.5,"rotation":0,"softness":0.08,"thickness":0.03,"repeat":false},"anim":{"thickness":{"to":0.09,"curve":"pingpong"}}},{"id":"n2","type":"noise","x":0,"y":174,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":6,"grain":1,"stretch":1,"seed":2,"octaves":4,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false},"anim":{"evolution":{"to":1,"curve":"linear"}}},{"id":"n3","type":"warp","x":230,"y":0,"params":{"mode":"gradient","intensity":0.015,"angle":0,"wrap":"repeat"}},{"id":"n4","type":"gaussian","x":460,"y":0,"params":{"sigma":10,"wrap":"repeat","alphaAware":false}},{"id":"n5","type":"blend","x":690,"y":0,"params":{"mode":"add","opacity":0.9,"alpha":"same"}},{"id":"n6","type":"ramp","x":920,"y":0,"params":{"stops":[{"p":0,"c":[0,0,0.06274509803921569,0]},{"p":0.2,"c":[0.10588235294117647,0.0392156862745098,0.43137254901960786,0.6]},{"p":0.5,"c":[0.1843137254901961,0.4196078431372549,1,1]},{"p":0.8,"c":[0.5607843137254902,0.9098039215686274,1,1]},{"p":1,"c":[1,1,1,1]}],"interp":"smooth","source":"L","space":"color"}},{"id":"n7","type":"output","x":1150,"y":0,"params":{"usage":"generic","normalY":"auto","filename":"energy_ring_flipbook"}}],"links":[{"from":"n1","fromPort":0,"to":"n3","toPort":0},{"from":"n2","fromPort":0,"to":"n3","toPort":1},{"from":"n3","fromPort":0,"to":"n4","toPort":0},{"from":"n3","fromPort":0,"to":"n5","toPort":0},{"from":"n4","fromPort":0,"to":"n5","toPort":1},{"from":"n5","fromPort":0,"to":"n6","toPort":0},{"from":"n6","fromPort":0,"to":"n7","toPort":0}],"exposed":[{"node":"n1","key":"sizeX","label":"Размер кольца X"},{"node":"n1","key":"sizeY","label":"Размер кольца Y"},{"node":"n3","key":"intensity","label":"Искажение"},{"node":"n4","key":"sigma","label":"Свечение"},{"node":"n6","key":"stops","label":"Цвета"}],"animation":{"frames":16,"frameSize":256,"fps":24}},
   },
 ];
 
@@ -4902,7 +5517,7 @@ const EXAMPLES = [
 // ---------------------------------------------------------------------------
 const App = (() => {
   const $ = (s) => document.querySelector(s);
-  const state = { selected: null, selectedLink: null, viewPort: 0, interactive: false, displayRes: 512, dirty: false, ready: false };
+  const state = { selected: null, selectedLink: null, viewPort: 0, interactive: false, playing: false, displayRes: 512, dirty: false, ready: false };
   let evalRaf = 0, idleTimer = 0, thumbQueue = [], thumbTimer = 0;
   const CAT_ORDER = ['Источники', 'Узоры', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
   const KEYWORDS = {
@@ -4934,7 +5549,7 @@ const App = (() => {
       requestEval();
     });
     GraphView.init(); ParamsPanel.init(); Preview.init();
-    buildCatalog(); bindToolbar(); bindKeys(); bindSplitters();
+    buildCatalog(); bindToolbar(); bindKeys(); bindSplitters(); bindTimeline();
     $('#status-gpu').textContent = GPU.precisionNote;
     $('#status-gpu').title = GPU.precisionNote;
     window.addEventListener('beforeunload', (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
@@ -4959,6 +5574,90 @@ const App = (() => {
     $('#fatal').classList.add('show');
   }
 
+  // ---------------------------------------------------------------- animation
+  let timelineForced = false, playRaf = 0, playLast = 0, playFrame = 0;
+  function bindTimeline() {
+    $('#btn-anim').onclick = () => { timelineForced = !timelineForced; animChanged(); };
+    $('#tl-play').onclick = () => (state.playing ? stop() : play());
+    $('#tl-frame').oninput = () => { stop(); setFrame(+$('#tl-frame').value); };
+    const setSettings = () => {
+      const a = Graph.state.animation;
+      a.frames = +$('#tl-frames').value; a.frameSize = +$('#tl-size').value;
+      a.fps = Math.min(60, Math.max(1, +$('#tl-fps').value || 24));
+      commit(); animChanged(); setFrame(Math.min(playFrame, a.frames - 1));
+    };
+    $('#tl-frames').onchange = setSettings; $('#tl-size').onchange = setSettings; $('#tl-fps').onchange = setSettings;
+    $('#tl-export').onclick = () => exportSpriteSheet();
+  }
+  function animChanged() {
+    const any = Anim.any();
+    $('#timeline').classList.toggle('show', any || timelineForced);
+    $('#btn-anim').classList.toggle('on', any || timelineForced);
+    const a = Anim.settings();
+    $('#tl-frames').value = a.frames; $('#tl-size').value = a.frameSize; $('#tl-fps').value = a.fps;
+    $('#tl-frame').max = a.frames - 1;
+    $('#tl-sheet').textContent = `лист ${a.layout[0] * a.frameSize}×${a.layout[1] * a.frameSize} (${a.layout[0]}×${a.layout[1]})`;
+    $('#tl-label').textContent = `${playFrame + 1}/${a.frames}`;
+  }
+  function setFrame(k) {
+    const F = Anim.settings().frames;
+    playFrame = ((k % F) + F) % F;
+    Anim.t = playFrame / F;
+    $('#tl-frame').value = playFrame;
+    $('#tl-label').textContent = `${playFrame + 1}/${F}`;
+    requestEval();
+  }
+  function play() {
+    if (state.playing) return;
+    flush();                                  // one full evaluation (thumbnails) before playback
+    state.playing = true; $('#tl-play').textContent = '⏸'; playLast = performance.now();
+    const step = (now) => {
+      if (!state.playing) return;
+      if (now - playLast >= 1000 / Anim.settings().fps) { playLast = now; setFrame(playFrame + 1); }
+      playRaf = requestAnimationFrame(step);
+    };
+    playRaf = requestAnimationFrame(step);
+  }
+  function stop() {
+    if (!state.playing) return;
+    state.playing = false; cancelAnimationFrame(playRaf); $('#tl-play').textContent = '▶'; requestEval();
+    GraphView.refreshMarks();
+  }
+
+  // Frames k = 0..N-1 (t = k/N), left→right, top→bottom; sheet is power-of-two.
+  function renderSpriteSheet(id, port = 0, opts = {}) {
+    const a = { ...Anim.settings(), ...opts };
+    const [cols, rows] = Anim.LAYOUTS[a.frames];
+    const fs = a.frameSize, W = cols * fs, H = rows * fs;
+    const pot = (v) => v > 0 && (v & (v - 1)) === 0;
+    if (!pot(fs) || !pot(W) || !pot(H)) throw new Error('Размер листа должен быть степенью двойки');
+    const sheet = new Uint8Array(W * H * 4);
+    const store = new Map(), t0 = Anim.t;
+    try {
+      for (let k = 0; k < a.frames; k++) {
+        Anim.t = k / a.frames;
+        const r = Engine.renderBytes(id, port, fs, { store });
+        const ox = (k % cols) * fs, oy = Math.floor(k / cols) * fs;
+        for (let y = 0; y < fs; y++) sheet.set(r.bytes.subarray(y * fs * 4, (y + 1) * fs * 4), ((oy + y) * W + ox) * 4);
+      }
+    } finally { Anim.t = t0; Engine.freeStore(store); }
+    return { bytes: sheet, width: W, height: H, cols, rows, frames: a.frames, frameSize: fs };
+  }
+
+  async function exportSpriteSheet(id = viewedId(), port = state.viewPort) {
+    if (!id) { toast('Выберите ноду или добавьте Output.', 'warn'); return; }
+    try {
+      status('Рендер спрайт-шита…');
+      const t0 = performance.now();
+      const r = renderSpriteSheet(id, port);
+      const png = await PNG.encodeAsync(r.bytes, r.width, r.height);
+      const base = exportFileName(id, port).replace(/\.png$/, '');
+      const name = `${base}_sheet_${r.cols}x${r.rows}_${r.frameSize}px.png`;
+      download(png, name, 'image/png');
+      toast(`Спрайт-шит: ${name} — ${r.width}×${r.height}, ${r.frames} кадров (${Math.round(performance.now() - t0)} мс)`);
+    } catch (e) { console.warn(e); toast('Ошибка экспорта спрайт-шита: ' + e.message, 'err'); }
+  }
+
   // ---------------------------------------------------------------- UI bits
   function buildCatalog() {
     const list = $('#catalog-list'), search = $('#search');
@@ -4969,8 +5668,22 @@ const App = (() => {
       for (const cat of CAT_ORDER) {
         const items = Object.keys(NODES).filter((t) => NODES[t].cat === cat &&
           (!q || (NODES[t].title + ' ' + t + ' ' + (KEYWORDS[t] || '')).toLowerCase().includes(q)));
-        if (!items.length) continue;
+        const extras = CATALOG_EXTRA.map((x, k) => ({ ...x, k })).filter((x) => NODES[x.type].cat === cat &&
+          (!q || (x.title + ' ' + x.type + ' ' + (KEYWORDS[x.type] || '') + ' basecolor albedo normal orm material материал').toLowerCase().includes(q)));
+        if (!items.length && !extras.length) continue;
         const h = document.createElement('h4'); h.textContent = cat; list.append(h);
+        if (cat === 'Выход') h.dataset.cat = cat;
+        for (const x of extras) {
+          const it = document.createElement('div');
+          it.className = 'item';
+          it.textContent = x.title;
+          it.dataset.type = x.type + '#' + x.k;
+          it.title = x.desc + '\n\nЩелчок — добавить, или перетащите на граф';
+          it.draggable = true;
+          it.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/ptl-node', x.type + '#' + x.k); e.dataTransfer.effectAllowed = 'copy'; });
+          it.addEventListener('click', () => { const c = GraphView.center(); addNode(x.type, c.x - 88, c.y - 50, x.params); });
+          list.append(it);
+        }
         for (const t of items) {
           const it = document.createElement('div');
           it.className = 'item' + (q && first ? ' hl' : '');
@@ -5117,6 +5830,15 @@ const App = (() => {
       <li>При наведении внизу видны значения пикселя (8 бит, как в экспортируемом PNG).</li>
       <li>Во время движения ползунка предпросмотр считается в уменьшенном разрешении, после отпускания — в полном.</li>
       </ul>
+      <h3>Материал в 3D</h3>
+      <p>Добавьте ноды <b>Выход: Base Color</b>, <b>Выход: Normal</b> и <b>Выход: ORM</b> (или выберите назначение в обычном Output) и включите <b>3D</b> или <b>2D|3D</b> над предпросмотром. Мышь вращает объект, Shift+мышь двигает свет, колесо приближает, двойной щелчок сбрасывает вид. Форма (куб, сфера, цилиндр, плоскость), повтор текстуры и свет — в строке под кнопками.</p>
+      <h3>Анимация и спрайт-шиты</h3>
+      <ul>
+      <li>Нажмите <b>⏱</b> у любого числового параметра: значение ползунка — начало, в появившейся строке задаётся конец и кривая.</li>
+      <li>Для бесшовной петли анимируйте периодические параметры ровно на один период с кривой «Линейно»: <b>Эволюция</b> шума/Вороного 0 → 1, <b>Фаза</b> волн 0 → 1, <b>Смещение</b> Transform 0 → 1. Или используйте «Туда-обратно».</li>
+      <li>Таймлайн под предпросмотром: ▶, кадр, число кадров (4–64), размер кадра (64–512), FPS и <b>Спрайт-шит PNG</b>. Лист всегда степени двойки (например, 16 кадров по 256 → 1024×1024, сетка 4×4), кадры слева направо, сверху вниз.</li>
+      <li>Прозрачность берётся из альфы точек Color Ramp. Готовые эффекты — в меню «Примеры и шаблоны…» → «Анимированные эффекты».</li>
+      </ul>
       <h3>Файлы</h3>
       <ul>
       <li><b>Сохранить</b> — скачивает проект .json со встроенными изображениями; <b>Открыть…</b> — загружает его обратно (или перетащите .json в окно).</li>
@@ -5135,7 +5857,7 @@ const App = (() => {
     ex.textContent = '';
     const opt = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; return o; };
     ex.append(opt('', 'Примеры и шаблоны…'));
-    const groups = [['Примеры', (e) => !e.template], ['Шаблоны текстур (Albedo + Normal + ORM)', (e) => e.template]];
+    const groups = [['Примеры', (e) => !e.template && !e.fx], ['Шаблоны материалов (Base Color + Normal + ORM)', (e) => e.template], ['Анимированные эффекты (спрайт-шиты)', (e) => e.fx]];
     for (const [label, test] of groups) {
       const g = document.createElement('optgroup');
       g.label = label;
@@ -5306,6 +6028,7 @@ const App = (() => {
     ParamsPanel.build();
     Engine.purge([previewRes()]);
     updateUndo();
+    animChanged();
     requestEval();
   }
 
@@ -5313,6 +6036,7 @@ const App = (() => {
   function redo() { if (History.redo()) { state.dirty = true; afterLoad(); status('Повторено.'); } }
 
   function loadGraph(data) {
+    stop();
     Graph.load(data);
     state.selected = data.selected && Graph.nodes.has(data.selected) ? data.selected : null;
     afterLoad();
@@ -5325,7 +6049,9 @@ const App = (() => {
     loadGraph(JSON.parse(JSON.stringify(ex.graph)));
     commit();
     status(`Загружен ${ex.template ? 'шаблон' : 'пример'} «${ex.title}». Предыдущий граф можно вернуть через Отмену.`);
-    if (ex.template) { state.selected = null; ParamsPanel.build(); GraphView.refreshMarks(); }
+    if (ex.template || ex.fx) { state.selected = null; ParamsPanel.build(); GraphView.refreshMarks(); }
+    if (ex.template || /ORM/.test(ex.title)) Preview.setView({ layout: 'split' });
+    if (ex.fx) { Preview.setView({ layout: '2d', mode: 1 }); setFrame(0); setTimeout(() => { if (Anim.any()) play(); }, 400); }
   }
 
   function newProject() {
@@ -5369,10 +6095,18 @@ const App = (() => {
     const pres = previewRes();
     const viewed = viewedId();
     const t0 = performance.now();
+    if (state.playing) {
+      state.displayRes = pres;
+      const memo = new Map();
+      for (const id of liveIds(viewed)) Engine.evaluate(id, pres, memo);
+      Preview.draw();
+      return;
+    }
     if (state.interactive) {
       const r = dragRes(pres);
       state.displayRes = r;
-      if (viewed) Engine.evaluate(viewed, r, new Map());
+      const memo = new Map();
+      for (const id of liveIds(viewed)) Engine.evaluate(id, r, memo);
       // settle to full quality shortly after the last live change
       clearTimeout(idleTimer);
       idleTimer = setTimeout(() => { state.interactive = false; requestEval(); }, 350);
@@ -5388,6 +6122,13 @@ const App = (() => {
     GraphView.refreshMarks();
     ParamsPanel.refreshStatus();
     Preview.draw();
+  }
+
+  // Nodes that must be fresh during drags/playback: the viewed one + material outputs shown in 3D.
+  function liveIds(viewed) {
+    const ids = viewed ? [viewed] : [];
+    if (typeof Preview.materialIds === 'function') for (const id of Preview.materialIds()) if (!ids.includes(id)) ids.push(id);
+    return ids;
   }
 
   function queueThumbs(res) {
@@ -5582,7 +6323,7 @@ const App = (() => {
 
   return {
     init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId,
-    undo, redo, flush, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    undo, redo, flush, animChanged, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };
@@ -5727,6 +6468,35 @@ const PTL = (() => {
       if (!x) throw new Error(`PTL: нет вынесенного параметра "${label}". Есть: ${Graph.state.exposed.map((e) => e.label).join(' | ')}`);
       return api.setParams(x.node, { [x.key]: value });
     },
+    // ---- animation / sprite sheets
+    animate(id, key, opts = {}) {
+      const n = need(id), d = NODES[n.type].params.find((q) => q.key === key);
+      if (!d || (d.type !== 'float' && d.type !== 'int')) throw new Error(`PTL: анимировать можно только числовой параметр; "${key}" не подходит`);
+      if (opts.from != null) n.params[key] = +opts.from;
+      n.anim = n.anim || {};
+      n.anim[key] = { to: +opts.to, curve: opts.curve || 'linear' };
+      if (!Anim.CURVES[n.anim[key].curve]) throw new Error('PTL: кривая: ' + Object.keys(Anim.CURVES).join(', '));
+      Graph.touch(n); after();
+    },
+    unanimate(id, key) { const n = need(id); if (n.anim) delete n.anim[key]; Graph.touch(n); after(); },
+    animation(o) {
+      if (o) {
+        const a = Graph.state.animation;
+        if (o.frames != null) { if (!Anim.LAYOUTS[o.frames]) throw new Error('PTL: frames = 4, 8, 16, 32 или 64'); a.frames = o.frames; }
+        if (o.frameSize != null) { if (![64, 128, 256, 512].includes(o.frameSize)) throw new Error('PTL: frameSize = 64, 128, 256 или 512'); a.frameSize = o.frameSize; }
+        if (o.fps != null) a.fps = Math.min(60, Math.max(1, +o.fps));
+        after();
+      }
+      const s = Anim.settings();
+      return { ...s, sheet: [s.layout[0] * s.frameSize, s.layout[1] * s.frameSize], time: Anim.t };
+    },
+    setFrame(k) { App.setFrame(k | 0); return Anim.t; },
+    async renderSpriteSheet(id, opts = {}) {
+      id = id || Graph.state.activeOutput; need(id);
+      const r = App.renderSpriteSheet(id, opts.port || 0, opts);
+      return { width: r.width, height: r.height, cols: r.cols, rows: r.rows, frames: r.frames, png: await PNG.encodeAsync(r.bytes, r.width, r.height) };
+    },
+    exportSpriteSheet(id) { return App.exportSpriteSheet(id || App.viewedId()); },
     rampPresets() { return Object.keys(RAMP_PRESETS); },
     rampPreset(name) { const r = rampFromPreset(name); if (!r) throw new Error(`PTL: нет градиента "${name}". Есть: ${Object.keys(RAMP_PRESETS).join(', ')}`); return r; },
     library: {
@@ -5816,6 +6586,7 @@ const PTL = (() => {
       cached(id, port) { return Engine.readCachedBytes(id, port || 0, App.state.displayRes); },
       liveTextures: () => GPU.liveTextures,
       historySize: () => History.size,
+      sheet: (id, port) => App.renderSpriteSheet(id, port || 0),
     },
   };
   return api;
