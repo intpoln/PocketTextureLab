@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Pocket Texture Lab v0.3.0 — offline procedural texture editor in one HTML file.
+  Pocket Texture Lab v0.3.1 — offline procedural texture editor in one HTML file.
   Author: intpoln — https://github.com/intpoln/PocketTextureLab
   FOR AI AGENTS / AUTOMATION: this page exposes a full JavaScript API as
   `window.PTL`. Call `PTL.help()` for the manual (it is also embedded below in
@@ -17,11 +17,14 @@
 <meta name="author" content="intpoln — https://github.com/intpoln/PocketTextureLab">
 <title>Pocket Texture Lab</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232d6fb8'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%2358c27d'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%23e0b04d'/%3E%3C/svg%3E">
-<meta name="version" content="0.3.0">
+<meta name="version" content="0.3.1">
 <script type="text/markdown" id="ptl-changelog">
 # История версий
 
 Пока версия начинается с 0 — программа в активной разработке и может содержать ошибки.
+
+## 0.3.1
+- Исправлено: если перед этим что-то выделялось или редактировалось в другой панели, нода при перетаскивании сдвигалась на пару пикселей и останавливалась. Перетаскивание (ноды, провода, рамка, сдвиг графа) больше не зависит от захвата указателя; выделенный текст сбрасывается, а недописанное значение в поле параметра применяется.
 
 ## 0.3.0
 - Названия нод, входов/выходов, параметров и режимов — на английском, как в Substance Designer, Houdini, After Effects и Photoshop: Levels, Blend (Multiply, Screen, Add…), Hue / Saturation (Lightness), Gradient Map, Transform 2D, Gaussian Blur, Tile Sampler и т.д. Русское название — во всплывающей подсказке; поиск понимает оба языка (blur / размытие, multiply / умножение). Старые проекты открываются как раньше.
@@ -543,7 +546,7 @@ main { position: relative; }
 #app-version:hover { background: var(--acc2); color: var(--fg); }
 #marquee { position: absolute; display: none; border: 1px solid var(--acc); background: rgba(78,161,255,.12); pointer-events: none; z-index: 5; }
 .node.sel.primary { box-shadow: 0 0 0 2px var(--acc), 0 2px 10px #000a; }
-#graph { cursor: default; }
+#graph { cursor: default; user-select: none; -webkit-user-select: none; }
 
 /* preview pinned to a node (double click) */
 .node.pinned { outline: 2px solid #58c27d; outline-offset: 2px; }
@@ -627,7 +630,7 @@ main { position: relative; }
 <div id="agent-note" class="sr-only">Note for AI agents and screen readers: this is Pocket Texture Lab, a procedural texture editor. It is fully scriptable through the JavaScript object window.PTL. Run PTL.help() in the page for the complete manual (also embedded in this document as script#ptl-agent-guide), PTL.examples() for ready texture templates (brick, asphalt, cobblestone, wood, painted metal) and PTL.exportAll() to download the PNG maps.</div>
 <div id="app">
   <header id="toolbar">
-    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.3.0</button></span>
+    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.3.1</button></span>
     <button id="btn-mmenu" title="Меню">☰</button>
     <select id="examples" title="Встроенные примеры, шаблоны текстур и ваши шаблоны"></select>
     <button id="btn-lib" title="Мои пресеты и шаблоны (хранятся в браузере), экспорт/импорт">Библиотека</button>
@@ -5430,6 +5433,7 @@ const GraphView = (() => {
   function init() {
     root = $('#graph'); inner = $('#graph-inner'); nodesEl = $('#nodes'); wiresEl = $('#wires');
     root.addEventListener('pointerdown', onBgDown);
+    root.addEventListener('dragstart', (e) => e.preventDefault());   // no native drag of text/thumbnails
     bindTouch();
     root.addEventListener('wheel', onWheel, { passive: false });
     root.addEventListener('dragover', (e) => { e.preventDefault(); });
@@ -5616,24 +5620,38 @@ const GraphView = (() => {
   }
 
   // ---- interactions -------------------------------------------------------
+  // Drags listen on the window, not on the grabbed element: a lost pointer capture (element
+  // re-rendered, focus/selection elsewhere on the page) must not stop the drag halfway.
   function drag(e, onMove, onUp) {
-    const target = e.currentTarget || e.target;
-    try { target.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
-    const move = (ev) => onMove(ev);
+    const target = e.currentTarget || e.target, pid = e.pointerId;
+    try { target.setPointerCapture(pid); } catch (_) { /* optional */ }
+    clearTextSelection();
+    const move = (ev) => { if (ev.pointerId === pid) onMove(ev); };
     const up = (ev) => {
-      target.removeEventListener('pointermove', move);
-      target.removeEventListener('pointerup', up);
-      target.removeEventListener('pointercancel', up);
+      if (ev.pointerId !== pid) return;
+      window.removeEventListener('pointermove', move, true);
+      window.removeEventListener('pointerup', up, true);
+      window.removeEventListener('pointercancel', up, true);
       onUp(ev);
     };
-    target.addEventListener('pointermove', move);
-    target.addEventListener('pointerup', up);
-    target.addEventListener('pointercancel', up);
+    window.addEventListener('pointermove', move, true);
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', up, true);
+  }
+  // A text selection left in another panel makes the browser start its own text drag-and-drop
+  // (which cancels our pointer drag after a few pixels) — drop it when a graph drag begins.
+  function clearTextSelection() {
+    const s = window.getSelection && window.getSelection();
+    if (s && s.rangeCount && !s.isCollapsed) s.removeAllRanges();
+    const a = document.activeElement;
+    if (a && a !== document.body && !root.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) a.blur();   // commits a half-typed value
   }
 
   function startMove(e, id) {
     if (e.button !== 0) return;
     e.stopPropagation();
+    e.preventDefault();   // no text selection / native drag from the header
+    root.focus({ preventScroll: true });
     if (e.ctrlKey || e.metaKey || e.shiftKey) { App.select(id, { toggle: true }); return; }
     App.select(id, { keep: true });
     // move the whole selection when the grabbed node belongs to it
@@ -8554,7 +8572,7 @@ window.PTL = PTL;
 
 // ===== main.js =====
 // Entry point.
-const PTL_VERSION = '0.3.0';
+const PTL_VERSION = '0.3.1';
 (() => {
   const start = () => {
     try {

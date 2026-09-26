@@ -1212,6 +1212,27 @@ await test('Превью закрепляется двойным щелчком,
   await page.context().close();
 });
 
+await test('Перетаскивание ноды не обрывается (выделенный текст / фокус в другой панели / потеря захвата)', async () => {
+  const page = await openPage();
+  const id = await page.evaluate(() => { PTL.select(PTL.getGraph().nodes[0].id); PTL.fitGraph(); return PTL.getGraph().nodes[1].id; });
+  await idle(page);
+  // half-typed value in the params panel + a text selection in the panel
+  const inp = page.locator('#params input[type=number]').first();
+  await inp.click(); await inp.fill('0.3');
+  await page.evaluate(() => { const r = document.createRange(); r.selectNodeContents(document.querySelector('#params .sub')); getSelection().addRange(r); });
+  const h = await page.locator(`.node[data-id="${id}"] .head`).boundingBox();
+  const x0 = await page.evaluate((id) => PTL.getNode(id).x, id);
+  await page.mouse.move(h.x + 20, h.y + 8); await page.mouse.down();
+  await page.mouse.move(h.x + 40, h.y + 8, { steps: 3 });
+  // the browser drops pointer capture mid-drag (what native text drag / re-render does)
+  const sel = await page.evaluate((id) => { const el = document.querySelector(`.node[data-id="${id}"] .head`); for (let k = 0; k < 5; k++) try { el.releasePointerCapture(k); } catch (e) {} return String(getSelection()); }, id);
+  await page.mouse.move(h.x + 260, h.y + 8, { steps: 12 }); await page.mouse.up();
+  const dx = await page.evaluate((id) => PTL.getNode(id).x, id) - x0;
+  const zoom = await page.evaluate(() => GraphView.view.z);
+  ok(Math.abs(dx - 240 / zoom) < 3 && sel === '', 'нода едет за курсором до конца, выделенный текст сброшен', { dx: +dx.toFixed(1), expect: +(240 / zoom).toFixed(1), sel });
+  await page.context().close();
+});
+
 await browser.close();
 
 console.log('\n# Внешние запросы: ' + (netRequests.length ? netRequests.join(', ') : 'нет'));

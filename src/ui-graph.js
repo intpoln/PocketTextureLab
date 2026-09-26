@@ -11,6 +11,7 @@ const GraphView = (() => {
   function init() {
     root = $('#graph'); inner = $('#graph-inner'); nodesEl = $('#nodes'); wiresEl = $('#wires');
     root.addEventListener('pointerdown', onBgDown);
+    root.addEventListener('dragstart', (e) => e.preventDefault());   // no native drag of text/thumbnails
     bindTouch();
     root.addEventListener('wheel', onWheel, { passive: false });
     root.addEventListener('dragover', (e) => { e.preventDefault(); });
@@ -197,24 +198,38 @@ const GraphView = (() => {
   }
 
   // ---- interactions -------------------------------------------------------
+  // Drags listen on the window, not on the grabbed element: a lost pointer capture (element
+  // re-rendered, focus/selection elsewhere on the page) must not stop the drag halfway.
   function drag(e, onMove, onUp) {
-    const target = e.currentTarget || e.target;
-    try { target.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
-    const move = (ev) => onMove(ev);
+    const target = e.currentTarget || e.target, pid = e.pointerId;
+    try { target.setPointerCapture(pid); } catch (_) { /* optional */ }
+    clearTextSelection();
+    const move = (ev) => { if (ev.pointerId === pid) onMove(ev); };
     const up = (ev) => {
-      target.removeEventListener('pointermove', move);
-      target.removeEventListener('pointerup', up);
-      target.removeEventListener('pointercancel', up);
+      if (ev.pointerId !== pid) return;
+      window.removeEventListener('pointermove', move, true);
+      window.removeEventListener('pointerup', up, true);
+      window.removeEventListener('pointercancel', up, true);
       onUp(ev);
     };
-    target.addEventListener('pointermove', move);
-    target.addEventListener('pointerup', up);
-    target.addEventListener('pointercancel', up);
+    window.addEventListener('pointermove', move, true);
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', up, true);
+  }
+  // A text selection left in another panel makes the browser start its own text drag-and-drop
+  // (which cancels our pointer drag after a few pixels) — drop it when a graph drag begins.
+  function clearTextSelection() {
+    const s = window.getSelection && window.getSelection();
+    if (s && s.rangeCount && !s.isCollapsed) s.removeAllRanges();
+    const a = document.activeElement;
+    if (a && a !== document.body && !root.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) a.blur();   // commits a half-typed value
   }
 
   function startMove(e, id) {
     if (e.button !== 0) return;
     e.stopPropagation();
+    e.preventDefault();   // no text selection / native drag from the header
+    root.focus({ preventScroll: true });
     if (e.ctrlKey || e.metaKey || e.shiftKey) { App.select(id, { toggle: true }); return; }
     App.select(id, { keep: true });
     // move the whole selection when the grabbed node belongs to it
