@@ -68,7 +68,6 @@ const GraphView = (() => {
       d.className = 'port in';
       d.innerHTML = '<span class="dot"></span><span class="lbl"></span>';
       d.querySelector('.lbl').textContent = inputLabel(n, k);
-      d.title = `${inputLabel(n, k)} — не подключён: ${p.defText}`;
       d.dataset.port = k;
       d.querySelector('.dot').addEventListener('pointerdown', (e) => startWireFromIn(e, n.id, k));
       ins.appendChild(d);
@@ -133,8 +132,17 @@ const GraphView = (() => {
       const be = rec.el.querySelector('.badge.err');
       be.textContent = err ? '⚠' : '';
       be.title = err || '';
-      rec.ins.forEach((d, k) => d.querySelector('.dot').classList.toggle('on', !!Graph.inputLink(id, k)));
-      rec.outs.forEach((d, k) => d.querySelector('.dot').classList.toggle('on', Graph.links.some((l) => l.from === id && l.fromPort === k)));
+      const node = Graph.nodes.get(id), def = NODES[node.type];
+      rec.ins.forEach((d, k) => {
+        const kind = portKind(node, 'in', k), dot = d.querySelector('.dot');
+        dot.className = 'dot k-' + kind + (Graph.inputLink(id, k) ? ' on' : '');
+        d.title = `${inputLabel(node, k)} — принимает: ${KIND_TEXT[kind]}${kind === 'gray' ? ' (цвет будет сведён к яркости/каналу)' : ''}. Не подключён: ${def.inputs[k].defText}`;
+      });
+      rec.outs.forEach((d, k) => {
+        const kind = portKind(node, 'out', k), dot = d.querySelector('.dot');
+        dot.className = 'dot k-' + kind + (Graph.links.some((l) => l.from === id && l.fromPort === k) ? ' on' : '');
+        d.title = `${def.outputs[k]} — выдаёт: ${KIND_TEXT[kind]}`;
+      });
     }
   }
 
@@ -157,7 +165,8 @@ const GraphView = (() => {
       const d = curve(portPos(l.from, 'out', l.fromPort), portPos(l.to, 'in', l.toPort));
       const p = document.createElementNS(ns, 'path');
       p.setAttribute('d', d);
-      p.setAttribute('class', 'w' + (sel && sel.to === l.to && sel.toPort === l.toPort ? ' sel' : ''));
+      const src = Graph.nodes.get(l.from);
+      p.setAttribute('class', 'w k-' + (src ? portKind(src, 'out', l.fromPort) : 'any') + (sel && sel.to === l.to && sel.toPort === l.toPort ? ' sel' : ''));
       const h = document.createElementNS(ns, 'path');
       h.setAttribute('d', d);
       h.setAttribute('class', 'hit');

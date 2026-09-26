@@ -3,7 +3,7 @@
 // cycle prevention, (de)serialisation and snapshot-based undo/redo.
 // ---------------------------------------------------------------------------
 const Graph = (() => {
-  const g = { nodes: new Map(), links: [], resolution: 512, activeOutput: null, nextId: 1 };
+  const g = { nodes: new Map(), links: [], resolution: 512, activeOutput: null, nextId: 1, exposed: [] };
   let stampCounter = 1;
 
   function newStamp() { return ++stampCounter; }
@@ -21,6 +21,7 @@ const Graph = (() => {
   function removeNode(id) {
     g.nodes.delete(id);
     g.links = g.links.filter((l) => l.from !== id && l.to !== id);
+    g.exposed = g.exposed.filter((x) => x.node !== id);
     if (g.activeOutput === id) {
       const o = [...g.nodes.values()].find((n) => n.type === 'output');
       g.activeOutput = o ? o.id : null;
@@ -75,6 +76,7 @@ const Graph = (() => {
       nextId: g.nextId,
       nodes: [...g.nodes.values()].map((n) => ({ id: n.id, type: n.type, x: n.x, y: n.y, params: n.params })),
       links: g.links.map((l) => ({ ...l })),
+      exposed: g.exposed.map((x) => ({ ...x })),
     };
   }
 
@@ -95,6 +97,8 @@ const Graph = (() => {
       if (connect(l.from, l.fromPort | 0, l.to, l.toPort | 0)) console.warn('Пропущена связь', l);
     }
     g.resolution = [256, 512, 1024, 2048].includes(data.resolution) ? data.resolution : 512;
+    g.exposed = (Array.isArray(data.exposed) ? data.exposed : []).filter((x) => x && g.nodes.has(x.node) &&
+      NODES[g.nodes.get(x.node).type].params.some((d) => d.key === x.key)).map((x) => ({ node: x.node, key: x.key, label: String(x.label || x.key) }));
     g.activeOutput = data.activeOutput && g.nodes.has(data.activeOutput) ? data.activeOutput : null;
     if (!g.activeOutput) {
       const o = [...g.nodes.values()].find((n) => n.type === 'output');
@@ -117,9 +121,19 @@ const Graph = (() => {
 
   function touch(node) { node.stamp = newStamp(); }
 
+  // "Template parameters": selected node params shown at project level.
+  function isExposed(id, key) { return g.exposed.some((x) => x.node === id && x.key === key); }
+  function expose(id, key, label) {
+    const n = g.nodes.get(id);
+    const d = n && NODES[n.type].params.find((q) => q.key === key);
+    if (!d) throw new Error('Нет параметра ' + key);
+    if (!isExposed(id, key)) g.exposed.push({ node: id, key, label: label || d.label });
+  }
+  function unexpose(id, key) { g.exposed = g.exposed.filter((x) => !(x.node === id && x.key === key)); }
+
   return {
     state: g, addNode, removeNode, connect, disconnect, inputLink, outputsOf, reaches, upstream,
-    toJSON, load, touch,
+    toJSON, load, touch, isExposed, expose, unexpose,
     get nodes() { return g.nodes; }, get links() { return g.links; },
   };
 })();

@@ -2,7 +2,7 @@
   --bg: #16181c; --bg2: #1d2025; --bg3: #252930; --bg4: #2e333b; --line: #353a43;
   --fg: #d7dbe1; --fg2: #9aa2ad; --fg3: #6c7480; --acc: #4ea1ff; --acc2: #2d6fb8;
   --ok: #58c27d; --warn: #e0b04d; --err: #ec5f5f;
-  --wire: #8a93a0; --right-w: 380px; --preview-h: 360px; --cat-w: 200px;
+  --wire: #8a93a0; --k-gray: #a4abb5; --k-color: #f07ab4; --right-w: 380px; --preview-h: 360px; --cat-w: 200px;
   font-size: 13px;
 }
 * { box-sizing: border-box; }
@@ -37,6 +37,9 @@ main { flex: 1; display: flex; min-height: 0; }
 #graph-inner { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 #wires { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
 #wires path.w { fill: none; stroke: var(--wire); stroke-width: 2; }
+#wires path.w.k-gray { stroke: #8f96a0; }
+#wires path.w.k-color { stroke: #d86aa0; }
+#wires path.w.k-any { stroke: #b27fa8; }
 #wires path.w.sel { stroke: var(--acc); stroke-width: 3; }
 #wires path.hit { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; cursor: pointer; }
 #wires path.temp { fill: none; stroke: var(--acc); stroke-width: 2; stroke-dasharray: 5 4; }
@@ -48,6 +51,7 @@ main { flex: 1; display: flex; min-height: 0; }
 .node .head .badge.err { color: var(--err); }
 .node .head .badge.out { color: var(--warn); }
 .node[data-cat="Источники"] .head { border-top: 2px solid #5fb37a; }
+.node[data-cat="Узоры"] .head { border-top: 2px solid #3fc1b0; }
 .node[data-cat="Обработка"] .head { border-top: 2px solid #4ea1ff; }
 .node[data-cat="Размытие"] .head { border-top: 2px solid #b48cf2; }
 .node[data-cat="Нормали"] .head { border-top: 2px solid #8c8cf2; }
@@ -60,11 +64,16 @@ main { flex: 1; display: flex; min-height: 0; }
 .node .thumb { width: 64px; height: 64px; border-radius: 3px; background: #000; image-rendering: auto; flex: none; }
 .port { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--fg2); height: 16px; white-space: nowrap; }
 .port .lbl { overflow: hidden; text-overflow: ellipsis; }
-.port .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--bg); border: 2px solid var(--wire); flex: none; cursor: crosshair; }
+.port .dot { position: relative; width: 12px; height: 12px; border-radius: 50%; background: var(--kc, var(--wire)); flex: none; cursor: crosshair; }
+.port .dot:not(.on)::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--bg3); }
+.port .dot.k-gray { --kc: var(--k-gray); }
+.port .dot.k-color { --kc: var(--k-color); }
+.port .dot.k-any { background: linear-gradient(90deg, var(--k-gray) 50%, var(--k-color) 50%); }
+.kind-legend { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; }
+.kind-legend i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
 .port.in .dot { margin-left: -7px; }
 .port.out .dot { margin-right: -7px; }
-.port .dot.on { background: var(--wire); }
-.port .dot:hover, .port .dot.target { border-color: var(--acc); background: var(--acc); }
+.port .dot:hover, .port .dot.target { box-shadow: 0 0 0 3px var(--acc); }
 #graph-hud { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 6px; align-items: center; color: var(--fg3); font-size: 12px; }
 #graph-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--fg3); pointer-events: none; text-align: center; }
 .split-v { width: 5px; cursor: col-resize; background: var(--bg2); border-left: 1px solid var(--line); flex: none; }
@@ -128,4 +137,12 @@ main { flex: 1; display: flex; min-height: 0; }
 #fatal .box { max-width: 620px; border: 1px solid var(--err); border-radius: 8px; padding: 20px 24px; background: var(--bg2); line-height: 1.5; }
 #lost { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: #000c; color: var(--warn); text-align: center; padding: 10px; }
 #lost.show { display: flex; }
-#examples { max-width: 150px; }
+#examples { max-width: 190px; }
+
+.prow > label .pin { margin-left: auto; padding: 0 3px; font-size: 11px; background: none; border: none; opacity: .25; filter: grayscale(1); }
+.prow > label .pin:hover { opacity: .8; }
+.prow > label .pin.on { opacity: 1; filter: none; }
+.lib-list { margin: 4px 0 10px; }
+.lib-list div { display: flex; gap: 6px; align-items: center; padding: 3px 0; border-bottom: 1px solid var(--line); }
+.lib-list div span { flex: 1; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

@@ -62,6 +62,42 @@ vec4 process(vec2 uv, ivec2 px) {
 }`,
 };
 
+// Gradient presets for Color Ramp (sRGB hex stops). Scientific maps (viridis,
+// magma, inferno, plasma, turbo) are 8-point samples of the matplotlib/Google maps.
+const RAMP_PRESETS = {
+  'Серый (Grayscale)': ['#000000', '#ffffff'],
+  'Magma': ['#000004', '#1c1044', '#4f127b', '#812581', '#b5367a', '#e55964', '#fb8761', '#fcfdbf'],
+  'Inferno': ['#000004', '#1f0c48', '#550f6d', '#88226a', '#ba3655', '#e35933', '#f98e09', '#fcffa4'],
+  'Plasma': ['#0d0887', '#5302a3', '#8b0aa5', '#b83289', '#db5c68', '#f48849', '#febd2a', '#f0f921'],
+  'Viridis': ['#440154', '#46327e', '#365c8d', '#277f8e', '#1fa187', '#4ac16d', '#a0da39', '#fde725'],
+  'Turbo': ['#30123b', '#4662d7', '#36aaf9', '#1ae4b6', '#72fe5e', '#c8ef34', '#faba39', '#e6480a'],
+  'Огонь (Fire)': ['#000000', '#3b0000', '#8a0a00', '#d42a00', '#ff6a00', '#ffb000', '#ffe45c', '#ffffff'],
+  'Лава (Lava)': ['#0a0302', '#2a0703', '#6e1004', '#b82a05', '#f05a0a', '#ff9a1f', '#ffd35a'],
+  'Вода (Water)': ['#020b1f', '#06224d', '#0b4a82', '#1478b0', '#27a3c9', '#6fd0de', '#c6f1f2', '#ffffff'],
+  'Лёд (Ice)': ['#0b1a2e', '#1d4466', '#3f7ea6', '#86bbd8', '#c9e6f2', '#ffffff'],
+  'Земля (Terrain)': ['#0d1f4d', '#1c5c8c', '#1a7f80', '#d9cc8c', '#5a8c33', '#3d6b24', '#8c7a66', '#f2f4f7'],
+  'Трава (Grass)': ['#16240a', '#2a4212', '#3f6419', '#5b8424', '#7ea434', '#b1c85a'],
+  'Мох (Moss)': ['#1a1d0e', '#34391a', '#4f5a25', '#6f7a34', '#98a054'],
+  'Песок (Sand)': ['#5e4a2e', '#8c7048', '#b89a6a', '#d6bf8e', '#efe0b8'],
+  'Почва (Dirt)': ['#1e140d', '#3b291b', '#5a3f2a', '#7a5a3f', '#9c7c5c'],
+  'Камень (Rock)': ['#1f1d1b', '#3d3a36', '#5e5a54', '#807b73', '#a8a399', '#cfcac0'],
+  'Бетон (Concrete)': ['#4a4a48', '#6b6b67', '#8a8984', '#a6a59f', '#c2c1bb'],
+  'Кирпич (Brick)': ['#3d140b', '#5c1f10', '#7e2d17', '#9c4024', '#b25a36', '#8c6a58'],
+  'Дерево (Wood)': ['#2e1a0e', '#4d2d17', '#6e4424', '#8f5d33', '#b07d4a', '#c99a66'],
+  'Ржавчина (Rust)': ['#1f0e07', '#4a1c0a', '#7a320f', '#a64e17', '#c9702b', '#d99a5b'],
+  'Медь (Copper)': ['#2b1308', '#6b3417', '#b0602e', '#e0935a', '#f7c9a0'],
+  'Золото (Gold)': ['#2e1f05', '#6b4a0c', '#b08617', '#e0b93a', '#fff0a0'],
+  'Снег (Snow)': ['#7f8ea3', '#a9b6c8', '#d3dce8', '#f4f7fb', '#ffffff'],
+  'Закат (Sunset)': ['#1a1033', '#4b1d5c', '#8c2a63', '#d0485a', '#f57a4a', '#fdbf6f'],
+  'Радуга (Rainbow)': ['#ff0000', '#ff9900', '#ccff00', '#33ff00', '#00ff66', '#00ffff', '#0066ff', '#cc00ff'],
+  'Холодно–тепло (Coolwarm)': ['#3b4cc0', '#6f92f3', '#aac7fd', '#dddddd', '#f7b89c', '#e7745b', '#b40426'],
+};
+function rampFromPreset(name) {
+  const hex = RAMP_PRESETS[name];
+  if (!hex) return null;
+  return hex.map((h, k) => ({ p: hex.length > 1 ? +(k / (hex.length - 1)).toFixed(4) : 0, c: [...ColorUtil.fromHex(h), 1] }));
+}
+
 const NODES = {
   // ---------------------------------------------------------------- sources
   image: {
@@ -113,21 +149,32 @@ const NODES = {
 
   noise: {
     title: 'Шум (Noise)', cat: 'Источники', outputs: ['Шум'], inputs: [],
+    desc: 'Процедурный шум: Perlin, Value, клеточный Worley или белый; фракталы fBM/Ridged/Billow, растяжение, доменное искажение. Основа почти любой текстуры.',
     params: [
-      e('type', 'Тип', [['perlin', 'Градиентный (Perlin)'], ['value', 'Value Noise']], 'perlin'),
+      e('type', 'Тип', [['perlin', 'Градиентный (Perlin)'], ['value', 'Value Noise'], ['worley', 'Клеточный (Worley)'], ['white', 'Белый шум (White)']], 'perlin'),
+      e('fractal', 'Фрактал', [['fbm', 'Обычный (fBM) — облака'], ['ridged', 'Гребни (Ridged) — горы, трещины'], ['billow', 'Клубы (Billow) — камни, дым']], 'fbm',
+        { help: 'fBM: сумма октав. Ridged: 1−|2n−1| в квадрате — острые хребты и прожилки. Billow: |2n−1| — округлые «клубы».' }),
       b('tile', 'Бесшовный (Tileable)', true, { help: 'В режиме Tileable масштаб — целое число: период каждой октавы равен целому числу клеток, шум математически периодичен по u и v.' }),
-      f('scale', 'Масштаб (Scale)', 1, 64, 4, { step: 1, intWhen: (p) => p.tile }),
+      f('scale', 'Масштаб (Scale)', 1, 64, 4, { step: 1, intWhen: (p) => p.tile, visible: (p) => p.type !== 'white' }),
+      i('grain', 'Размер зерна (px проекта)', 1, 64, 1, { visible: (p) => p.type === 'white', help: 'Белый шум: одно случайное значение на квадрат grain×grain пикселей проекта.' }),
+      f('stretch', 'Растяжение по Y (×)', 0.125, 8, 1, { step: 0.125, help: 'Частота по Y = масштаб × растяжение (в Tileable округляется до целого). >1 — вытянутые по X волокна (дерево, шлифованный металл), <1 — по Y.' }),
       i('seed', 'Seed', 0, 99999, 1),
       i('octaves', 'Детализация (Detail, октавы)', 1, 8, 5),
       f('persistence', 'Шероховатость шума (Persistence)', 0, 1, 0.5, { help: 'Вклад каждой следующей октавы относительно предыдущей. Не путать с PBR roughness.' }),
+      i('lacunarity', 'Лакунарность (×частота на октаву)', 2, 4, 2, { help: 'Во сколько раз растёт частота с каждой октавой. Целое — чтобы шум оставался бесшовным.' }),
+      f('warp', 'Искажение (Domain Warp)', 0, 1, 0, { help: 'Сдвигает координаты другим периодическим шумом — «текучие», органические формы (мрамор, грязь, облака). Бесшовность сохраняется.' }),
+      i('warpScale', 'Масштаб искажения', 1, 16, 2, { visible: (p) => p.warp > 0 }),
       f('contrast', 'Контраст (Contrast)', 0, 4, 1),
+      b('invert', 'Инвертировать', false),
     ],
     seamFn: (p) => (p.tile ? '' : 'Tileable выключен — шум не периодичен, при повторе будет шов.'),
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
       ctx.pass('noise', out, {
-        u_type: p.type === 'value' ? 0 : 1, u_seed: p.seed, u_oct: p.octaves, u_scale: p.scale,
-        u_pers: p.persistence, u_contrast: p.contrast, u_tile: p.tile,
+        u_type: { value: 0, perlin: 1, worley: 2, white: 3 }[p.type], u_fractal: { fbm: 0, ridged: 1, billow: 2 }[p.fractal],
+        u_seed: p.seed, u_oct: p.octaves, u_lac: p.lacunarity, u_scale: p.scale, u_stretch: p.stretch,
+        u_grainCells: ctx.projRes / Math.max(1, p.grain), u_pers: p.persistence, u_contrast: p.contrast,
+        u_warp: p.warp, u_warpScale: p.warpScale, u_tile: p.tile, u_inv: p.invert,
       });
       return [{ tex: out, space: 'data' }];
     },
@@ -135,8 +182,10 @@ const NODES = {
 
   voronoi: {
     title: 'Вороной (Voronoi)', cat: 'Источники', outputs: ['Ячейки'], inputs: [],
+    desc: 'Клеточный шум: расстояния F1/F2, трещины F2−F1, границы ячеек, случайное значение ячейки; разные метрики. Камни, плитняк, чешуя, трещины, кристаллы.',
     params: [
-      e('mode', 'Режим', [['f1', 'Расстояние до точки (F1)'], ['border', 'Границы ячеек (Borders)'], ['cell', 'Значение ячейки (Cell)']], 'f1'),
+      e('mode', 'Режим', [['f1', 'Расстояние до точки (F1)'], ['f2', 'До второй точки (F2)'], ['crackle', 'Трещины (F2 − F1)'], ['border', 'Границы ячеек (Borders)'], ['cell', 'Значение ячейки (Cell)']], 'f1'),
+      e('metric', 'Метрика расстояния', [['euclid', 'Евклидова — круглые'], ['manhattan', 'Манхэттен — ромбы'], ['chebyshev', 'Чебышёв — квадраты']], 'euclid', { visible: (p) => p.mode !== 'border' && p.mode !== 'cell' }),
       b('tile', 'Бесшовный (Tileable)', true, { help: 'В режиме Tileable масштаб — целое число клеток на текстуру.' }),
       f('scale', 'Масштаб (Scale)', 1, 64, 8, { step: 1, intWhen: (p) => p.tile }),
       i('seed', 'Seed', 0, 99999, 1),
@@ -146,8 +195,8 @@ const NODES = {
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
       ctx.pass('voronoi', out, {
-        u_seed: p.seed, u_mode: { f1: 0, border: 1, cell: 2 }[p.mode], u_scale: p.scale,
-        u_rand: p.randomness, u_tile: p.tile,
+        u_seed: p.seed, u_mode: { f1: 0, border: 1, cell: 2, f2: 3, crackle: 4 }[p.mode], u_scale: p.scale,
+        u_rand: p.randomness, u_tile: p.tile, u_metric: { euclid: 0, manhattan: 1, chebyshev: 2 }[p.metric],
       });
       return [{ tex: out, space: 'data' }];
     },
@@ -196,6 +245,86 @@ const NODES = {
     },
   },
 
+  // ---------------------------------------------------------------- patterns
+  waves: {
+    title: 'Волны (Waves)', cat: 'Узоры', outputs: ['Волны'],
+    inputs: [{ label: 'Искажение', def: [0.5, 0.5, 0.5, 1], defText: '0.5 (без искажения)' }],
+    desc: 'Полосы/волны синус, треугольник, пила, меандр вдоль целого числа периодов; вход искажения даёт дерево, мрамор, песчаные дюны.',
+    params: [
+      e('shape', 'Форма', [['sine', 'Синус'], ['triangle', 'Треугольник'], ['saw', 'Пила'], ['square', 'Меандр (Square)']], 'sine'),
+      e('mode', 'Раскладка', [['linear', 'Линейные (бесшовно)'], ['rings', 'Кольца от центра']], 'linear'),
+      i('countX', 'Периодов по X', -32, 32, 8, { visible: (p) => p.mode === 'linear', help: 'Целые числа периодов по X и Y задают направление и частоту — узор всегда бесшовный. (8, 0) — вертикальные полосы, (4, 4) — диагональ.' }),
+      i('countY', 'Периодов по Y', -32, 32, 0, { visible: (p) => p.mode === 'linear' }),
+      f('rings', 'Колец', 0.5, 64, 8, { step: 0.5, visible: (p) => p.mode === 'rings' }),
+      f('centerX', 'Центр X', 0, 1, 0.5, { visible: (p) => p.mode === 'rings' }), f('centerY', 'Центр Y (вниз)', 0, 1, 0.5, { visible: (p) => p.mode === 'rings' }),
+      f('phase', 'Фаза', 0, 1, 0),
+      f('duty', 'Заполнение меандра', 0, 1, 0.5, { visible: (p) => p.shape === 'square' }),
+      f('distort', 'Сила искажения', 0, 8, 1, { step: 0.05, help: 'Сдвиг фазы на (вход − 0.5) × сила периодов. Подключите шум — получите годичные кольца, мрамор.' }),
+    ],
+    seamFn: (p) => (p.mode === 'rings' ? 'Кольца от центра не периодичны — при повторе будет шов.' : ''),
+    eval(ctx) {
+      const p = ctx.params, out = ctx.alloc();
+      const u = { u_shape: ['sine', 'triangle', 'saw', 'square'].indexOf(p.shape), u_rings: p.mode === 'rings', u_count: [p.countX, p.countY],
+        u_ringN: p.rings, u_center: [p.centerX, p.centerY], u_phase: p.phase, u_duty: p.duty, u_distort: p.distort };
+      ctx.bindIn(u, 0, 0, 'native');
+      ctx.pass('waves', out, u);
+      return [{ tex: out, space: 'data' }];
+    },
+  },
+
+  tiler: {
+    title: 'Раскладка (Tile Sampler)', cat: 'Узоры', outputs: ['Узор', 'Случайное'],
+    inputs: [{ label: 'Узор', def: [1, 1, 1, 1], defText: 'встроенная фигура (параметр «Фигура»)' }],
+    desc: 'Раскладывает фигуру или входное изображение сеткой X×Y со сдвигом рядов и случайными позицией, поворотом, размером и яркостью. Кирпичи, плитка, паркет, соты, заклёпки. Второй выход — случайное значение на каждую копию.',
+    params: [
+      e('pattern', 'Фигура', [['square', 'Прямоугольник'], ['disc', 'Круг'], ['gauss', 'Мягкое пятно'], ['input', 'Со входа «Узор»']], 'square'),
+      i('countX', 'Копий по X', 1, 64, 4), i('countY', 'Копий по Y', 1, 64, 8),
+      f('rowOffset', 'Сдвиг чётных рядов (доля ячейки)', -1, 1, 0.5, { help: 'Каждый нечётный ряд сдвигается на эту долю ширины ячейки: 0.5 — кирпичная кладка.' }),
+      f('sizeX', 'Размер X (доля ячейки)', 0, 2, 0.94), f('sizeY', 'Размер Y (доля ячейки)', 0, 2, 0.88),
+      f('bevel', 'Фаска (Bevel)', 0, 0.5, 0.08, { step: 0.005, visible: (p) => p.pattern !== 'input' && p.pattern !== 'gauss', help: 'Ширина скоса к краю в долях меньшей стороны копии. 0 — резкий край. Даёт рельеф для Height to Normal.' }),
+      f('posRand', 'Случайная позиция', 0, 1, 0, { help: 'Смещение копии в пределах ± доли ячейки.' }),
+      f('sizeRand', 'Случайный размер', 0, 1, 0),
+      f('rotation', 'Поворот, °', -180, 180, 0, { step: 1 }),
+      f('rotRand', 'Случайный поворот, ±°', 0, 180, 0, { step: 1 }),
+      b('rotSnap', 'Поворот только на 90°', false, { help: 'Случайный поворот кратен 90° — для плитки и паркета.' }),
+      f('valRand', 'Случайная яркость', 0, 1, 0.3, { help: 'Каждая копия темнее на случайную долю — разная высота/цвет кирпичей.' }),
+      f('density', 'Заполненность', 0, 1, 1, { help: 'Вероятность, что копия есть. <1 — выпавшие кирпичи, пропуски.' }),
+      e('blend', 'Наложение копий', [['max', 'Максимум (Max)'], ['add', 'Сложение (Add)'], ['top', 'Сверху — случайный порядок']], 'max'),
+      i('seed', 'Seed', 0, 99999, 1),
+    ],
+    presets: [
+      { label: 'Кирпичи', apply: { pattern: 'square', countX: 4, countY: 8, rowOffset: 0.5, sizeX: 0.94, sizeY: 0.86, bevel: 0.1, posRand: 0, sizeRand: 0, rotRand: 0, valRand: 0.35, density: 1 } },
+      { label: 'Плитка', apply: { pattern: 'square', countX: 6, countY: 6, rowOffset: 0, sizeX: 0.95, sizeY: 0.95, bevel: 0.04, posRand: 0, sizeRand: 0, rotRand: 0, valRand: 0.15, density: 1 } },
+      { label: 'Паркет', apply: { pattern: 'square', countX: 8, countY: 8, rowOffset: 0, sizeX: 0.96, sizeY: 0.3, bevel: 0.2, rotation: 0, rotRand: 90, rotSnap: true, valRand: 0.3, density: 1 } },
+      { label: 'Соты / горошек', apply: { pattern: 'disc', countX: 8, countY: 8, rowOffset: 0.5, sizeX: 0.9, sizeY: 0.9, bevel: 0.3, posRand: 0, sizeRand: 0, rotRand: 0, valRand: 0.1, density: 1 } },
+      { label: 'Булыжник', apply: { pattern: 'square', countX: 8, countY: 10, rowOffset: 0.5, sizeX: 1.04, sizeY: 0.96, bevel: 0.45, posRand: 0.12, sizeRand: 0.12, rotRand: 10, rotSnap: false, valRand: 0.35, density: 1, blend: 'top' } },
+    ],
+    seamFn: (p) => (p.countY % 2 && Math.abs(p.rowOffset) > 1e-6 ? 'Сдвиг рядов при нечётном числе рядов: у верхнего/нижнего края чередование рядов нарушится (узор всё равно периодичен).' : ''),
+    help: 'Сетка countX×countY всегда целая, поэтому раскладка бесшовна, в том числе со случайностями. Копии могут выходить за ячейку (размер до 2) — соседние ячейки учитываются.',
+    eval(ctx) { return scatterEval(ctx, 'tiler'); },
+  },
+
+  splatter: {
+    title: 'Разброс (Splatter)', cat: 'Узоры', outputs: ['Узор', 'Случайное'],
+    inputs: [{ label: 'Узор', def: [1, 1, 1, 1], defText: 'встроенная фигура (параметр «Фигура»)' }],
+    desc: 'Разбрасывает N копий фигуры или входного изображения в случайных местах со случайным поворотом, размером и яркостью, бесшовно. Камни, гравий, листья, пятна, капли, царапины, заклёпки.',
+    params: [
+      e('pattern', 'Фигура', [['disc', 'Круг'], ['gauss', 'Мягкое пятно'], ['square', 'Прямоугольник'], ['input', 'Со входа «Узор»']], 'disc'),
+      i('count', 'Количество', 1, 4000, 200),
+      f('size', 'Размер (доля текстуры)', 0.002, 1, 0.06, { step: 0.001 }),
+      f('aspect', 'Вытянутость (Y/X)', 0.02, 4, 1, { help: 'Маленькое значение с прямоугольником — царапины и волокна.' }),
+      f('sizeRand', 'Случайный размер', 0, 1, 0.5),
+      f('bevel', 'Фаска / мягкость', 0, 0.5, 0.3, { step: 0.005, visible: (p) => p.pattern !== 'input' && p.pattern !== 'gauss' }),
+      f('rotation', 'Поворот, °', -180, 180, 0, { step: 1 }),
+      f('rotRand', 'Случайный поворот, ±°', 0, 180, 180, { step: 1 }),
+      f('valRand', 'Случайная яркость', 0, 1, 0.5),
+      e('blend', 'Наложение копий', [['max', 'Максимум (Max)'], ['add', 'Сложение (Add)'], ['top', 'Сверху — случайный порядок']], 'max'),
+      i('seed', 'Seed', 0, 99999, 1),
+    ],
+    help: 'Копии распределяются по периодической сетке случайно (по одной или нескольку на ячейку) и переносятся через края — результат всегда бесшовный и воспроизводим по seed.',
+    eval(ctx) { return scatterEval(ctx, 'splatter'); },
+  },
+
   // ---------------------------------------------------------------- adjust
   levels: {
     title: 'Уровни (Levels)', cat: 'Обработка', outputs: ['Выход'],
@@ -241,6 +370,7 @@ const NODES = {
       e('source', 'Входное значение', [['L', 'Яркость (Luminance)'], ['R', 'Канал R']], 'L'),
       e('space', 'Выход', [['color', 'Цвет sRGB'], ['data', 'Данные']], 'color', { help: 'Цвет: точки задаются в sRGB, размытие/смешивание дальше идут в линейном свете. Данные: значения точек пишутся в каналы как есть.' }),
     ],
+    presets: Object.keys(RAMP_PRESETS).map((name) => ({ label: name, get apply() { return { stops: rampFromPreset(name) }; } })),
     help: 'Интерполяция идёт между значениями точек (в sRGB). При совпадающих позициях получается резкий переход: в самой позиции действует точка, стоящая в списке позже.',
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
@@ -317,6 +447,28 @@ const NODES = {
       const u = { u_off: [p.offsetX, p.offsetY], u_scl: [p.scaleX || 1e-3, p.scaleY || 1e-3], u_rot: p.rotation };
       ctx.bindIn(u, 0, 0, 'native');
       ctx.pass('transform', out, u, { u_in0: p.wrap });
+      return [{ tex: out, space: ctx.space(0) || 'data' }];
+    },
+  },
+
+  warp: {
+    title: 'Искажение (Warp)', cat: 'Обработка', outputs: ['Выход'],
+    inputs: [{ label: 'Вход', def: BLACK, defText: 'чёрный (0,0,0,1)' }, { label: 'Карта', def: [0.5, 0.5, 0.5, 1], defText: '0.5 (без сдвига)' }],
+    desc: 'Сдвигает пиксели входа по серой карте: в заданном направлении или вдоль её градиента. Делает узоры органичными: неровные кирпичи, мрамор, эрозия, «плывущие» пятна.',
+    params: [
+      e('mode', 'Режим', [['directional', 'Направленный (Directional)'], ['gradient', 'По градиенту карты (Warp)']], 'gradient'),
+      f('intensity', 'Сила', 0, 1, 0.1, { step: 0.001, help: 'Направленный: сдвиг (карта−0.5)·2·сила в долях текстуры. По градиенту: сдвиг = градиент карты (на единицу UV) · сила/10.' }),
+      f('angle', 'Угол, °', -180, 180, 0, { step: 1, visible: (p) => p.mode === 'directional' }),
+      e('wrap', 'Края', WRAP_OPTS, 'repeat'),
+    ],
+    seamFn: (p) => (p.wrap === 'clamp' ? CLAMP_SEAM : ''),
+    eval(ctx) {
+      const p = ctx.params, out = ctx.alloc();
+      const a = (p.angle * Math.PI) / 180;
+      const u = { u_mode: p.mode === 'gradient' ? 1 : 0, u_dir: [Math.cos(a), -Math.sin(a)], u_int: p.intensity, u_rep: p.wrap === 'repeat' };
+      ctx.bindIn(u, 0, 0, 'native');
+      ctx.bindIn(u, 1, 1, 'native');
+      ctx.pass('warp', out, u, { u_in0: p.wrap });
       return [{ tex: out, space: ctx.space(0) || 'data' }];
     },
   },
@@ -514,6 +666,43 @@ const NODES = {
   },
 };
 
+// Shared by Tiler and Splatter: instances on a periodic cell grid.
+function scatterEval(ctx, kind) {
+  const p = ctx.params;
+  let cells, perCell = 1, density, jitter, size, rowOff = 0;
+  if (kind === 'tiler') {
+    cells = [p.countX, p.countY];
+    size = [p.sizeX, p.sizeY];            // in cell units
+    density = p.density; jitter = p.posRand; rowOff = p.rowOffset;
+  } else {
+    const sz = [p.size, p.size * p.aspect];   // in UV
+    const reach = Math.hypot(sz[0], sz[1]) * 0.5;
+    const gMax = Math.max(1, Math.floor(2.5 / Math.max(reach, 1e-4)));
+    let G = Math.max(1, Math.ceil(Math.sqrt(p.count)));
+    if (G > gMax) G = gMax;
+    perCell = Math.min(32, Math.ceil(p.count / (G * G)));
+    density = p.count / (G * G * perCell);
+    cells = [G, G]; jitter = 1;
+    size = [sz[0] * G, sz[1] * G];
+  }
+  // search radius (cells) so that every instance overlapping a pixel is visited
+  const diag = Math.hypot(size[0] / cells[0], size[1] / cells[1]) * 0.5;
+  const ext = Math.max(diag * cells[0] + Math.abs(rowOff), diag * cells[1]) + jitter * 0.5;
+  const R = Math.min(4, Math.max(1, Math.ceil(ext)));
+  const u = {
+    u_cells: cells, u_rowOff: rowOff, u_jitter: jitter, u_size: size, u_sizeRand: p.sizeRand, u_rot: p.rotation,
+    u_rotRand: p.rotRand, u_rotSnap: !!p.rotSnap, u_valRand: p.valRand, u_density: density, u_perCell: perCell,
+    u_blend: { max: 0, add: 1, top: 2 }[p.blend], u_R: R, u_pattern: { input: 0, square: 1, disc: 2, gauss: 3 }[p.pattern],
+    u_bevel: p.bevel || 0, u_seed: p.seed,
+  };
+  ctx.bindIn(u, 0, 0, 'data');
+  return [0, 1].map((mode) => {
+    const out = ctx.alloc();
+    ctx.pass('scatter', out, { ...u, u_out: mode }, { u_in0: 'clamp' });
+    return { tex: out, space: 'data' };
+  });
+}
+
 // Levels / Invert / HSV: operate on file values; colour inputs are
 // sRGB-encoded on read and linearised again on write.
 function pointwise(ctx, shader, u) {
@@ -552,3 +741,57 @@ function inputLabel(node, k) {
   if (def.portLabels) return (def.portLabels[node.params[def.presetParam]] || def.portLabels.custom)[k];
   return def.inputs[k].label;
 }
+
+// ---------------------------------------------------------------------------
+// Port kinds — what an input expects / what an output produces:
+//   'gray'  — one value per pixel (masks, height, noise); colour inputs are
+//             reduced to luminance or a channel,
+//   'color' — RGB(A) colour,
+//   'any'   — works with both and keeps the kind of what comes in.
+// Shown as pin colours: grey, pink, half/half.
+// ---------------------------------------------------------------------------
+const PORT_KINDS = {
+  image: { in: [], out: ['any'] },
+  constant: { in: [], out: (p) => [p.mode === 'color' ? 'color' : 'gray'] },
+  noise: { in: [], out: ['gray'] }, voronoi: { in: [], out: ['gray'] }, shape: { in: [], out: ['gray'] },
+  gradient: { in: [], out: ['gray'] },
+  waves: { in: ['gray'], out: ['gray'] }, tiler: { in: ['gray'], out: ['gray', 'gray'] }, splatter: { in: ['gray'], out: ['gray', 'gray'] },
+  levels: { in: ['any'], out: ['any'] }, invert: { in: ['any'], out: ['any'] }, grayscale: { in: ['any'], out: ['gray'] },
+  ramp: { in: ['gray'], out: (p) => [p.space === 'data' ? 'any' : 'color'] }, hsv: { in: ['color'], out: ['color'] },
+  blend: { in: ['any', 'any', 'gray'], out: ['any'] }, transform: { in: ['any'], out: ['any'] }, warp: { in: ['any', 'gray'], out: ['any'] },
+  gaussian: { in: ['any'], out: ['any'] }, dirblur: { in: ['any'], out: ['any'] }, radialblur: { in: ['any'], out: ['any'] },
+  normal: { in: ['gray'], out: ['color'] }, split: { in: ['any'], out: ['gray', 'gray', 'gray', 'gray'] },
+  combine: { in: ['gray', 'gray', 'gray', 'gray'], out: ['color'] }, code: { in: ['any', 'any', 'any', 'any'], out: ['any'] },
+  output: { in: ['any'], out: [] },
+};
+const KIND_TEXT = { gray: 'оттенки серого', color: 'цвет', any: 'серое или цвет' };
+function portKind(node, dir, k) {
+  const pk = PORT_KINDS[node.type];
+  if (!pk) return 'any';
+  const list = typeof pk[dir] === 'function' ? pk[dir](node.params) : pk[dir];
+  return (list && list[k]) || 'any';
+}
+
+// One-line descriptions (catalog tooltip, PTL.nodeTypes()).
+const NODE_DESC = {
+  image: 'Загруженный PNG/JPEG: фото, альбедо (Цвет sRGB) или готовые маски/нормали (Данные).',
+  constant: 'Однородное серое значение или цвет RGBA.',
+  shape: 'Одна фигура: круг/эллипс, прямоугольник, кольцо с мягким краем; для Tiler/Splatter и масок.',
+  gradient: 'Линейный, радиальный или угловой градиент — маски перехода, виньетки.',
+  levels: 'Уровни: входные чёрная/белая точки, гамма, выходной диапазон; также порог (одинаковые точки).',
+  invert: 'Инверсия выбранных каналов (1 − x).',
+  grayscale: 'Цвет → серое: яркость или отдельный канал.',
+  ramp: 'Раскраска серого по градиенту из 2–8 цветов (gradient map). Главный способ получить цвет из масок.',
+  hsv: 'Сдвиг тона, насыщенность и яркость цветного изображения.',
+  blend: 'Смешивание двух изображений (Mix/Add/Multiply/Screen/Min/Max) с силой и маской.',
+  transform: 'Сдвиг, масштаб и поворот с повтором или обрезкой краёв.',
+  gaussian: 'Гауссово размытие в два прохода с переносом через края.',
+  dirblur: 'Размытие вдоль направления — штрихи, дождь, шлифовка.',
+  radialblur: 'Размытие от центра (Zoom) или по кругу (Spin).',
+  normal: 'Карта высот → tangent-space normal map (OpenGL/DirectX).',
+  split: 'Разделить RGBA на четыре серые карты.',
+  combine: 'Упаковать 4 серые карты в каналы RGBA (ORM, HDRP Mask, свой вариант).',
+  code: 'Своя GLSL-функция на пиксель: 4 входа, 4 ползунка — любой узор или операция, которых нет среди нод.',
+  output: 'Финальная карта для экспорта в PNG (имя файла).',
+};
+for (const t in NODES) if (!NODES[t].desc) NODES[t].desc = NODE_DESC[t] || '';

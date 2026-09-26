@@ -7,6 +7,29 @@ through the global object `window.PTL`. If you are an agent driving this page
 instead of clicking: it is faster, exact and every call is validated with
 readable error messages.
 
+## If you are an AI agent that has just opened this page
+
+You need nothing else — no repository, no install. Everything is in this file:
+
+1. Run JavaScript in the page (DevTools console, Playwright/Puppeteer `page.evaluate`, a browser
+   extension or «run JS» tool). The API is `window.PTL`; read `PTL.help()` (this text) and `PTL.nodeTypes()`.
+2. For «make me a <material> texture»: start from the closest template (`PTL.examples()`), or build a graph
+   from the recipes below. Keep 3 outputs: `<name>_albedo`, `<name>_normal`, `<name>_orm`.
+3. Verify with numbers (`PTL.stats`, `PTL.pixel`, `PTL.errors()`) and pictures (`await PTL.renderDataURL(id)`).
+4. Deliver: `await PTL.exportAll()` downloads every Output as PNG; `PTL.saveProject()` returns the editable
+   project JSON; or return `await PTL.renderPNGBase64(id)` to your caller.
+5. The user sees the graph you build live in the UI and can keep editing it; `PTL.autoLayout()` tidies it.
+
+If you drive the page from Node with Playwright in a headless sandbox, launch Chromium with
+`--use-angle=swiftshader --enable-unsafe-swiftshader` (software WebGL2). Headless example:
+
+```js
+const page = await browser.newPage();
+await page.goto('https://<host>/texture-lab.html'); // or file:///path/texture-lab.html
+await page.waitForFunction(() => window.PTL);
+const b64 = await page.evaluate(async () => { PTL.loadExample(4); return PTL.renderPNGBase64(PTL.getGraph().activeOutput); });
+```
+
 ## Quick start
 
 ```js
@@ -49,7 +72,15 @@ Editing (all validated; unknown params/enum values throw with the list of valid 
 - `PTL.disconnect(toId, toPort)`, `PTL.removeNode(id)`, `PTL.duplicate(id)`.
 - `PTL.setActiveOutput(outputId)`, `PTL.setResolution(256|512|1024|2048)`, `PTL.select(id)`.
 - `PTL.batch(fn)` — several edits as one undo step. `PTL.undo()`, `PTL.redo()`, `PTL.autoLayout()`.
-- `PTL.newProject()`, `PTL.examples()`, `PTL.loadExample(i)`.
+- `PTL.newProject()`, `PTL.examples()`, `PTL.getExample(i)` (graph JSON to study), `PTL.loadExample(i)`.
+- Template parameters (a few knobs shown at project level when nothing is selected):
+  `PTL.expose(id, key, label)`, `PTL.unexpose(id, key)`, `PTL.exposed()` → `[{node,key,label,value}]`,
+  `PTL.setExposed(label, value)`.
+- Colour gradients: `PTL.rampPresets()` (Magma, Inferno, Viridis, Fire, Water, Terrain, Rust, Wood, …);
+  `PTL.setParams(rampId, {stops: PTL.rampPreset('Magma')})` or `PTL.applyPreset(rampId, 'Magma')`.
+- Browser library (localStorage of this site): `PTL.library.saveNodePreset(id, name)`, `.nodePresets(type)`,
+  `.saveTemplate(name)`, `.templates()`, `await .loadTemplate(name)`.
+- `await PTL.exportAll()` — download every Output node as PNG.
 
 Images and projects
 - `await PTL.importImage(bytes | base64 | dataURL, {name, nodeId?, interp:'srgb'|'data', fit:'stretch'|'cover'|'tile'})` → image node id.
@@ -73,13 +104,36 @@ Rendering
 - Tileable noise/voronoi use integer scale (periodic in u and v). Blur/normal with `wrap:'repeat'` sample across edges.
 - Filter radii are in project pixels; lower-resolution previews scale them.
 
-## Node types (ids)
+## Node reference
 
-Sources: `image`, `constant`, `noise`, `voronoi`, `shape`, `gradient`.
-Adjust: `levels`, `invert`, `grayscale`, `ramp`, `hsv`, `blend` (inputs A=0, B=1, mask=2), `transform`.
-Blur: `gaussian`, `dirblur`, `radialblur`. Normal: `normal`. Channels: `split` (outputs R,G,B,A = ports 0..3),
-`combine` (inputs R,G,B,A = ports 0..3; presets `orm`, `hdrp`, `custom`; per channel `rSrc` R|G|B|A|L|C, `rVal`, `rInv`).
-Custom code: `code`. Output: `output` (param `filename`).
+Pin kinds (also coloured in the UI): **gray** = one value per pixel (mask/height), **color** = RGB(A),
+**any** = either (output keeps what came in). A colour sent into a gray input is reduced to luminance.
+`PTL.nodeTypes()` returns the same info (`description`, `inputs[].accepts`, `outputs[].produces`, params).
+
+| id | inputs → outputs | what it is for |
+|---|---|---|
+| `noise` | — → gray | Perlin / Value / Worley / White noise; `fractal` fbm·ridged·billow; `scale` (int when tile), `stretch` (anisotropy), `octaves`, `persistence`, `lacunarity`, `warp`+`warpScale` (domain warp), `contrast`, `invert`, `grain` (white). Base of almost everything. |
+| `voronoi` | — → gray | Cells: `mode` f1·f2·crackle(F2−F1)·border·cell (random value per cell); `metric` euclid·manhattan·chebyshev. Stones, cracks, scales, crystals. |
+| `shape` | — → gray | One ellipse/rect/ring with softness; stamp for tiler/splatter or a mask. |
+| `gradient` | — → gray | Linear/radial/angular ramps (not tileable). |
+| `waves` | distort(gray) → gray | Sine/triangle/saw/square stripes with integer periods `countX`,`countY`; distort input = wood grain, marble. |
+| `tiler` | pattern(gray) → pattern(gray), random(gray) | Tile Sampler: grid `countX×countY`, `rowOffset` (0.5 = bricks), size, `bevel`, random position/size/rotation/value, `density`, `blend` max·add·top. Presets: Кирпичи, Плитка, Паркет, Соты / горошек, Булыжник. Output 1 = random value per tile (use with `ramp` for per-brick colours). |
+| `splatter` | pattern(gray) → pattern(gray), random(gray) | Scatter `count` copies (≤4000) of a disc/gauss/rect or the input, random size/rotation/value, `aspect` (tiny = scratches). Always tileable. |
+| `image` | — → any | Imported PNG/JPEG (`interp` srgb/data, `fit`). |
+| `constant` | — → gray/color | Flat value or colour. |
+| `levels` | any → any | Remap/contrast/gamma; inBlack = inWhite gives a threshold. |
+| `invert` | any → any | 1 − x per channel. |
+| `grayscale` | any → gray | Luminance or one channel. |
+| `ramp` | gray → color | Gradient map, 2–8 stops `{p, c:[r,g,b,a]}` in sRGB. The way to colour masks. |
+| `hsv` | color → color | Hue shift, saturation, value. |
+| `blend` | A any, B any, mask gray → any | mix/add/multiply/screen/min/max with `opacity` and mask. |
+| `transform` | any → any | Offset/scale/rotate (repeat or clamp). |
+| `warp` | image any, map gray → any | Displace image by a map: `directional` (angle) or `gradient`. Makes things organic. |
+| `gaussian`, `dirblur`, `radialblur` | any → any | Blurs (radii in project pixels). |
+| `normal` | height gray → color | Height → normal map; `strength` (% of width), `convention` gl/dx, `blur`. |
+| `split` / `combine` | any → 4 gray / 4 gray → color | Channel (un)packing; combine presets `orm`, `hdrp`, `custom`. |
+| `code` | 4 any → any | Your GLSL per-pixel function (see below). |
+| `output` | any → file | Export target (`filename`). Several outputs allowed; `setActiveOutput`. |
 
 ## Writing new functionality: the `code` node (GLSL ES 3.00)
 
@@ -107,7 +161,72 @@ const c = PTL.addNode('code', { params: {
 PTL.errors()[c];   // undefined when it compiled
 ```
 
-## Typical recipes
+## How to make a game texture (method)
+
+1. **Build a height map first** (gray): combine noises / tiler / splatter with `blend` (max, multiply, add)
+   and shape it with `levels`. Everything else is derived from it.
+2. **Normal**: `height → normal` (strength 2–8, blur 0.5–1 removes pixel noise). Use `convention:'dx'` for Unreal.
+3. **Albedo**: masks → `ramp` (gradient map) for colour, variation via `tiler` output 1 or a large-scale
+   noise multiplied in (`blend` multiply, opacity 0.3–0.6). Keep albedo mid-range (sRGB ~30–240).
+4. **Roughness / AO / Metallic**: `levels`/`invert` of the height or masks → `combine` preset `orm` → `output`.
+5. Add one `output` per map with clear filenames (`name_albedo`, `name_normal`, `name_orm`), `setActiveOutput` on albedo.
+6. Check tiling with `PTL.setView({tile3:true, half:true})`, verify numbers with `PTL.stats(id)`, look at
+   `await PTL.renderDataURL(id)`. Keep everything tileable: integer scales, repeat wrap, no gradients.
+7. Scale: noise `scale` 2–4 = large forms, 8–16 = medium, 32–64 = fine detail. Use different seeds per layer.
+
+Built-in examples you can read as templates: `PTL.examples()`, `PTL.getExample(i)` (graph JSON) or
+`PTL.loadExample(i)`: 0 noise→levels→ramp, 1 noise→blur→normal, 2 masks→ORM, and full texture templates
+(albedo + normal + ORM outputs, exposed parameters): **3 brick wall, 4 asphalt with cracks, 5 cobblestone,
+6 wood planks, 7 painted metal with chips and scratches**. Fastest path for a request like «сделай асфальт»:
+`PTL.loadExample(4)`, then tune it with `PTL.exposed()` / `PTL.setExposed(label, value)` or `PTL.setParams`.
+
+## Recipes (node chains; params are good starting points)
+
+- **Asphalt**: `noise{type:'white',grain:1,octaves:2}` → `levels{outWhite:0.35}` = fine grain;
+  `splatter{pattern:'disc',count:4000,size:0.028,sizeRand:0.6,valRand:0.7,bevel:0.35,blend:'top'}` = aggregate;
+  `blend{mode:'max'}`(grain, stones) = height → `ramp` dark greys → `blend multiply` with
+  `noise{scale:3,warp:0.3}`→`levels{outBlack:0.75}` (stains); height → `normal{strength:2,blur:0.5}`.
+  Cracks: `voronoi{mode:'crackle'}`→`levels` threshold, multiply into albedo, subtract from height.
+- **Brick wall**: `tiler` preset «Кирпичи» → `warp{mode:'gradient',intensity:0.006}` with `noise{scale:16}` as map
+  → `blend multiply` with `levels(noise){outBlack:0.72}` = height → `normal{strength:4}`.
+  Colour: `ramp`(tiler output 1, reds/browns) mixed with mortar `constant` using `levels(height){inWhite:0.08}` as mask.
+- **Cobblestone / paving**: `tiler` preset «Булыжник» (or `voronoi{mode:'f1'}` inverted for round stones),
+  warp slightly, `normal{strength:6}`; gaps dark in albedo via the same mask.
+- **Tiles**: `tiler` preset «Плитка», `bevel` 0.03–0.06; grout mask = `levels(tiler){inWhite:0.05}` inverted.
+- **Wood**: `noise{stretch:8,scale:2,octaves:4}` → `waves{countX:0,countY:12,shape:'sine',distort:3}` (distort input = that noise)
+  → `ramp` browns; planks via `tiler{countX:1,countY:6,rowOffset:0,sizeX:1,sizeY:0.97}` multiplied in.
+- **Marble**: `noise{warp:0.7,warpScale:2,fractal:'ridged'}` → `levels` → `ramp` white/grey veins.
+- **Rock / cliff**: `noise{fractal:'ridged',scale:3,octaves:7}` + `voronoi{mode:'crackle',scale:6}` (blend multiply) →
+  `warp` by another noise → `normal{strength:8}`; albedo = ramp of height + `hsv` tweak.
+- **Ground / dirt**: `noise{fractal:'billow',scale:6}` + `splatter` pebbles (small discs, `blend:'max'`) → ramp browns.
+- **Scratched metal**: base `noise{type:'value',stretch:8,scale:2}` (brushed) + `splatter{pattern:'square',aspect:0.01,size:0.3,count:80,rotRand:15,bevel:0}`
+  (scratches) → roughness via `levels`; metallic = constant 1 → `combine{preset:'orm'}`.
+- **Rust**: `noise{warp:0.5}` → `levels` threshold → mask; `blend mix` metal colour vs rust `ramp` (oranges) with that mask.
+- **Concrete**: `noise{scale:4}` + `noise{type:'white'}` small pores via `splatter{pattern:'gauss',count:2000,size:0.01}` inverted.
+- **Fabric**: `waves{countX:64}` × `waves{countY:64}` (blend multiply), `warp` tiny noise.
+
+If a pattern is hard to express with nodes, write it in one `code` node (below) — e.g. a whole asphalt:
+
+```glsl
+// A = height from other nodes (optional). p1 = stone density, p2 = darkness.
+vec4 process(vec2 uv, ivec2 px) {
+  vec2 g = uv * 64.0;                       // 64 cells: integer => tileable
+  vec2 i = floor(g), f = fract(g);
+  float d = 9.0, id = 0.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec2 c = mod(i + vec2(x, y), 64.0);
+    uvec3 h = pcg3(uvec3(uvec2(c), 7u));
+    vec2 o = vec2(h.xy >> 8u) / 16777215.0;
+    float r = length(vec2(x, y) + o - f);
+    if (r < d) { d = r; id = float(h.z >> 8u) / 16777215.0; }
+  }
+  float stone = smoothstep(0.55, 0.2, d) * step(id, p1);
+  float v = mix(0.12, 0.45, stone * (0.5 + 0.5 * id)) * (1.0 - 0.3 * p2);
+  return vec4(vec3(v), 1.0);
+}
+```
+
+## More small recipes
 
 - Packed ORM: masks → `combine` (preset `orm`) → `output`.
 - HDRP mask: connect Roughness to port 3 of `combine` (preset `hdrp`) and set `aInv: true` (smoothness = 1 − roughness).

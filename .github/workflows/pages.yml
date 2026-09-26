@@ -1,9 +1,9 @@
 # Publishes texture-lab.html to GitHub Pages (as index.html and under its own
-# name). Enable once: Settings → Pages → Build and deployment → Source: "GitHub Actions".
+# name) on every push to the repository's DEFAULT branch (whatever it is named).
+# Enable once: Settings → Pages → Build and deployment → Source: "GitHub Actions".
 name: Deploy to GitHub Pages
 on:
   push:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -14,6 +14,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     environment:
       name: github-pages

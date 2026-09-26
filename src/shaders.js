@@ -89,72 +89,120 @@ void main() {
 }` };
 
   S.noise = { nin: 0, body: `
-uniform int u_type;     // 0 value, 1 gradient (Perlin)
+uniform int u_type;     // 0 value, 1 gradient (Perlin), 2 worley, 3 white
+uniform int u_fractal;  // 0 fbm, 1 ridged, 2 billow
 uniform int u_seed;
 uniform int u_oct;
+uniform int u_lac;
 uniform float u_scale;
+uniform float u_stretch;
+uniform float u_grainCells;
 uniform float u_pers;
 uniform float u_contrast;
+uniform float u_warp;
+uniform int u_warpScale;
 uniform bool u_tile;
-ivec2 wc(ivec2 c, int P) { return u_tile ? ((c % P) + P) % P : c; }
-float h1(ivec2 c, int o) {
-  uvec3 r = pcg3(uvec3(uvec2(c), uint(u_seed) * 747796405u + uint(o) * 2891336453u + 1u));
-  return float(r.x >> 8u) / 16777215.0;
+uniform bool u_inv;
+ivec2 wc(ivec2 c, ivec2 P) { return u_tile ? ((c % P) + P) % P : c + 65536; }
+uvec3 hh(ivec2 c, int o, uint salt) {
+  return pcg3(uvec3(uvec2(c), uint(u_seed) * 747796405u + uint(o) * 2891336453u + salt));
 }
+float h1(ivec2 c, int o, uint salt) { return float(hh(c, o, salt).x >> 8u) / 16777215.0; }
+vec2 h2(ivec2 c, int o) { uvec3 r = hh(c, o, 3u); return vec2(r.xy >> 8u) / 16777215.0; }
 vec2 fade(vec2 f) { return f * f * f * (f * (f * 6.0 - 15.0) + 10.0); }
-float valueN(vec2 p, int P, int o) {
+float valueN(vec2 p, ivec2 P, int o, uint salt) {
   ivec2 i = ivec2(floor(p)); vec2 f = fract(p), u = fade(f);
-  float a = h1(wc(i, P), o), b = h1(wc(i + ivec2(1, 0), P), o);
-  float c = h1(wc(i + ivec2(0, 1), P), o), d = h1(wc(i + ivec2(1, 1), P), o);
+  float a = h1(wc(i, P), o, salt), b = h1(wc(i + ivec2(1, 0), P), o, salt);
+  float c = h1(wc(i + ivec2(0, 1), P), o, salt), d = h1(wc(i + ivec2(1, 1), P), o, salt);
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
-float gr(ivec2 c, vec2 d, int o) { float a = h1(c, o) * 2.0 * PI; return dot(vec2(cos(a), sin(a)), d); }
-float gradN(vec2 p, int P, int o) {
+float gr(ivec2 c, vec2 d, int o) { float a = h1(c, o, 1u) * 2.0 * PI; return dot(vec2(cos(a), sin(a)), d); }
+float gradN(vec2 p, ivec2 P, int o) {
   ivec2 i = ivec2(floor(p)); vec2 f = fract(p), u = fade(f);
   float a = gr(wc(i, P), f, o), b = gr(wc(i + ivec2(1, 0), P), f - vec2(1, 0), o);
   float c = gr(wc(i + ivec2(0, 1), P), f - vec2(0, 1), o), d = gr(wc(i + ivec2(1, 1), P), f - vec2(1, 1), o);
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y) * 0.70710678 + 0.5;
 }
+float worleyN(vec2 p, ivec2 P, int o) {
+  ivec2 i = ivec2(floor(p)); vec2 f = fract(p);
+  float md = 8.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    ivec2 g = ivec2(x, y);
+    vec2 r = vec2(g) + h2(wc(i + g, P), o) - f;
+    md = min(md, dot(r, r));
+  }
+  return clamp(sqrt(md), 0.0, 1.0);
+}
+float octave(vec2 p, ivec2 P, int o) {
+  if (u_type == 0) return valueN(p, P, o, 1u);
+  if (u_type == 1) return gradN(p, P, o);
+  if (u_type == 2) return worleyN(p, P, o);
+  return h1(wc(ivec2(floor(p)), P), o, 7u);
+}
+float warpN(vec2 uv, int W, uint salt) {
+  float s = 0.0, a = 0.5;
+  for (int o = 0; o < 3; o++) { int Pw = W << o; s += a * valueN(uv * float(Pw), ivec2(Pw), 20 + o, salt); a *= 0.5; }
+  return s / 0.875;
+}
 void main() {
   vec2 uv = pixUV() + u_uvOff;
-  float base = u_tile ? max(1.0, floor(u_scale + 0.5)) : u_scale;
-  int P = int(base);
-  float sum = 0.0, amp = 1.0, norm = 0.0, freq = base;
+  float sc = u_type == 3 ? u_grainCells : u_scale;
+  vec2 base = vec2(sc, sc * u_stretch);
+  if (u_tile) base = max(vec2(1.0), floor(base + 0.5));
+  if (u_warp > 0.0) {
+    vec2 w = vec2(warpN(uv, u_warpScale, 101u), warpN(uv, u_warpScale, 202u));
+    uv += (w - 0.5) * u_warp * 0.5;
+  }
+  ivec2 P = ivec2(base);
+  vec2 freq = base;
+  float sum = 0.0, amp = 1.0, norm = 0.0;
   for (int o = 0; o < 8; o++) {
     if (o >= u_oct) break;
-    vec2 p = uv * freq;
-    int Po = P << o;
-    float n = u_type == 0 ? valueN(p, Po, o) : gradN(p, Po, o);
-    sum += n * amp; norm += amp; amp *= u_pers; freq *= 2.0;
+    float n = octave(uv * freq, P, o);
+    if (u_fractal == 1) { n = 1.0 - abs(2.0 * n - 1.0); n *= n; }
+    else if (u_fractal == 2) n = abs(2.0 * n - 1.0);
+    sum += n * amp; norm += amp; amp *= u_pers;
+    P *= u_lac; freq *= float(u_lac);
   }
   float v = clamp((sum / norm - 0.5) * u_contrast + 0.5, 0.0, 1.0);
+  if (u_inv) v = 1.0 - v;
   emit(vec4(v, v, v, 1.0));
 }` };
 
   S.voronoi = { nin: 0, body: `
 uniform int u_seed;
-uniform int u_mode;     // 0 F1 distance, 1 cell borders, 2 cell value
+uniform int u_mode;     // 0 F1, 1 borders, 2 cell value, 3 F2, 4 F2-F1
+uniform int u_metric;   // 0 euclid, 1 manhattan, 2 chebyshev
 uniform float u_scale;
 uniform float u_rand;
 uniform bool u_tile;
 ivec2 wc(ivec2 c, int P) { return u_tile ? ((c % P) + P) % P : c + 4096; }
 uvec3 hc(ivec2 c) { return pcg3(uvec3(uvec2(c), uint(u_seed) * 747796405u + 12345u)); }
 vec2 pt(ivec2 c) { uvec3 r = hc(c); return 0.5 + (vec2(r.xy >> 8u) / 16777215.0 - 0.5) * u_rand; }
+float dist(vec2 r) {
+  if (u_metric == 1) return abs(r.x) + abs(r.y);
+  if (u_metric == 2) return max(abs(r.x), abs(r.y));
+  return length(r);
+}
 void main() {
   vec2 uv = pixUV() + u_uvOff;
   float base = u_tile ? max(1.0, floor(u_scale + 0.5)) : u_scale;
   int P = int(base);
   vec2 p = uv * base;
   ivec2 ic = ivec2(floor(p)); vec2 f = fract(p);
-  float md = 8.0; vec2 mr = vec2(0); ivec2 mg = ivec2(0);
-  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+  float f1 = 8.0, f2 = 8.0, md = 8.0; vec2 mr = vec2(0); ivec2 mg = ivec2(0);
+  for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) {
     ivec2 g = ivec2(i, j);
     vec2 r = vec2(g) + pt(wc(ic + g, P)) - f;
-    float d = dot(r, r);
-    if (d < md) { md = d; mr = r; mg = g; }
+    float d = dist(r);
+    if (d < f1) { f2 = f1; f1 = d; } else if (d < f2) f2 = d;
+    float e = dot(r, r);
+    if (e < md) { md = e; mr = r; mg = g; }
   }
   float v;
-  if (u_mode == 0) v = clamp(sqrt(md), 0.0, 1.0);
+  if (u_mode == 0) v = clamp(f1, 0.0, 1.0);
+  else if (u_mode == 3) v = clamp(f2 * 0.75, 0.0, 1.0);
+  else if (u_mode == 4) v = clamp(f2 - f1, 0.0, 1.0);
   else if (u_mode == 2) v = float(hc(wc(ic + mg, P)).z >> 8u) / 16777215.0;
   else {
     float mb = 8.0;
@@ -167,6 +215,120 @@ void main() {
     v = clamp(mb * 2.0, 0.0, 1.0);
   }
   emit(vec4(v, v, v, 1.0));
+}` };
+
+  S.waves = { nin: 1, body: `
+uniform int u_shape;    // 0 sine, 1 triangle, 2 saw, 3 square
+uniform bool u_rings;
+uniform vec2 u_count;
+uniform float u_ringN;
+uniform vec2 u_center;
+uniform float u_phase;
+uniform float u_duty;
+uniform float u_distort;
+void main() {
+  vec2 uv = pixUV() + u_uvOff;
+  float d = u_has0 ? lumaEnc(in0(pix()), u_col0) - 0.5 : 0.0;
+  float t = u_rings ? length(uv - u_center) * u_ringN : dot(uv, u_count);
+  t += u_phase + d * u_distort;
+  float f = fract(t), v;
+  if (u_shape == 0) v = 0.5 - 0.5 * cos(2.0 * PI * t);
+  else if (u_shape == 1) v = 1.0 - abs(2.0 * f - 1.0);
+  else if (u_shape == 2) v = f;
+  else v = f < u_duty ? 1.0 : 0.0;
+  emit(vec4(v, v, v, 1.0));
+}` };
+
+  S.warp = { nin: 2, body: `
+uniform int u_mode;     // 0 directional, 1 along map gradient
+uniform vec2 u_dir;
+uniform float u_int;
+uniform bool u_rep;
+float mapAt(ivec2 p) { return lumaEnc(in1(wrapPx(p, true)), u_col1); }
+void main() {
+  ivec2 p = pix();
+  vec2 off;
+  if (u_mode == 0) off = (mapAt(p) - 0.5) * 2.0 * u_int * u_dir;
+  else {
+    vec2 g = vec2(mapAt(p + ivec2(1, 0)) - mapAt(p - ivec2(1, 0)), mapAt(p + ivec2(0, 1)) - mapAt(p - ivec2(0, 1))) * 0.5 * u_res;
+    off = g * u_int * 0.1;
+  }
+  emit(in0UV(pixUV() + off));
+}` };
+
+  // Tiler / Splatter: instances on a periodic grid of cells (hashes wrap
+  // modulo the grid, so the result tiles). p is in cell units.
+  S.scatter = { nin: 1, body: `
+uniform ivec2 u_cells;
+uniform float u_rowOff;
+uniform float u_jitter;
+uniform vec2 u_size;
+uniform float u_sizeRand;
+uniform float u_rot;
+uniform float u_rotRand;
+uniform bool u_rotSnap;
+uniform float u_valRand;
+uniform float u_density;
+uniform int u_perCell;
+uniform int u_blend;    // 0 max, 1 add, 2 top
+uniform int u_R;
+uniform int u_pattern;  // 0 input, 1 square, 2 disc, 3 gauss
+uniform float u_bevel;
+uniform int u_seed;
+uniform int u_out;      // 0 pattern, 1 random value per instance
+float r01(uint x) { return float(x >> 8u) / 16777215.0; }
+float edge(float e, float minSide) {
+  float bw = u_bevel * minSide;
+  return bw > 0.0 ? clamp(e / bw, 0.0, 1.0) : clamp(e * u_res.x + 0.5, 0.0, 1.0);
+}
+float pattern(vec2 q, vec2 szUV) {
+  if (u_pattern == 0) return u_has0 ? lumaEnc(in0UV(q + 0.5), false) : 1.0;
+  if (u_pattern == 3) return exp(-dot(q, q) * 18.0);
+  float m = min(szUV.x, szUV.y);
+  if (u_pattern == 1) return edge(min((0.5 - abs(q.x)) * szUV.x, (0.5 - abs(q.y)) * szUV.y), m);
+  return edge((0.5 - length(q)) * m, m);
+}
+void main() {
+  vec2 cells = vec2(u_cells);
+  vec2 p = (pixUV() + u_uvOff) * cells;
+  int rb = int(floor(p.y));
+  float acc = 0.0, best = -1.0, id = 0.0, topPri = -1.0, topV = 0.0, topId = 0.0;
+  for (int dy = -4; dy <= 4; dy++) {
+    if (dy < -u_R || dy > u_R) continue;
+    int row = rb + dy;
+    int wrow = ((row % u_cells.y) + u_cells.y) % u_cells.y;
+    float shift = (wrow & 1) == 1 ? u_rowOff : 0.0;
+    int cb = int(floor(p.x - shift));
+    for (int dx = -4; dx <= 4; dx++) {
+      if (dx < -u_R || dx > u_R) continue;
+      int col = cb + dx;
+      int wcol = ((col % u_cells.x) + u_cells.x) % u_cells.x;
+      for (int k = 0; k < 32; k++) {
+        if (k >= u_perCell) break;
+        uvec3 h1 = pcg3(uvec3(uint(wcol), uint(wrow), uint(u_seed) * 747796405u + uint(k) * 2654435761u + 99u));
+        uvec3 h2 = pcg3(h1 ^ uvec3(0x9e3779b9u, 0x85ebca6bu, 0xc2b2ae35u));
+        if (r01(h2.z) >= u_density) continue;
+        vec2 c = vec2(float(col) + shift + 0.5, float(row) + 0.5) + (vec2(r01(h1.x), r01(h1.y)) - 0.5) * u_jitter;
+        vec2 d = (p - c) / cells;                                   // UV units, y down
+        float s = 1.0 - u_sizeRand * r01(h1.z);
+        vec2 szUV = max(u_size / cells * s, vec2(1e-6));
+        float ang = u_rotSnap ? radians(u_rot) + floor(r01(h2.x) * 4.0) * 0.5 * PI * step(0.5, u_rotRand)
+                              : radians(u_rot + (r01(h2.x) * 2.0 - 1.0) * u_rotRand);
+        vec2 q = mat2(cos(ang), sin(ang), -sin(ang), cos(ang)) * d / szUV;
+        if (abs(q.x) > 0.5 || abs(q.y) > 0.5) continue;
+        float rv = r01(h2.y);
+        float v = pattern(q, szUV) * (1.0 - u_valRand * rv);
+        if (v <= 0.0) continue;
+        float rid = r01(h1.x ^ h2.z);
+        if (u_blend == 1) { acc += v; if (v > best) { best = v; id = rid; } }
+        else if (u_blend == 2) { float pri = r01(h1.y ^ h2.x); if (pri > topPri) { topPri = pri; topV = v; topId = rid; } }
+        else if (v > acc) { acc = v; id = rid; }
+      }
+    }
+  }
+  if (u_blend == 2) { acc = topV; id = topId; }
+  float o = u_out == 0 ? acc : (acc > 0.0 ? max(id, 1.0 / 255.0) : 0.0);
+  emit(vec4(o, o, o, 1.0));
 }` };
 
   S.shape = { nin: 0, body: `

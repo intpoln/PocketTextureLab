@@ -5,6 +5,7 @@
 // ---------------------------------------------------------------------------
 const ParamsPanel = (() => {
   const $ = (s) => document.querySelector(s);
+  let lastPreset = null;
   let el, current = null, rows = [], seamEl = null, errEl = null, portsEl = null;
 
   function init() { el = $('#params'); }
@@ -41,10 +42,7 @@ const ParamsPanel = (() => {
     el.textContent = '';
     rows = [];
     current = node || null;
-    if (!node) {
-      el.append(h('div', { class: 'hint', text: 'Выберите ноду, чтобы увидеть и изменить её параметры. Выбранная нода показывается в предпросмотре.' }));
-      return;
-    }
+    if (!node) { buildProject(); return; }
     const def = NODES[node.type];
     el.append(h('h3', { text: def.title }), h('div', { class: 'sub', text: `id: ${node.id} · ${def.cat}` }));
     const actions = h('div', { class: 'actions' },
@@ -58,10 +56,20 @@ const ParamsPanel = (() => {
       }));
     }
     el.append(actions);
-    if (def.presets) {
-      el.append(h('div', { class: 'actions' }, ...def.presets.map((pr) =>
-        h('button', { text: pr.label, onclick: () => { Object.assign(node.params, pr.apply); Graph.touch(node); App.changed({ commit: true, node: node.id }); build(); } }))));
+    const applyParams = (params) => {
+      Object.assign(node.params, JSON.parse(JSON.stringify(params)));
+      Graph.touch(node); GraphView.updateLabels(node.id); App.changed({ commit: true, node: node.id, structure: true }); build();
+    };
+    if (def.presets && def.presets.length > 6) {
+      const sel = h('select', { title: 'Встроенные пресеты' }, h('option', { value: '', text: 'Пресет…' }));
+      def.presets.forEach((pr, k) => sel.append(h('option', { value: k, text: pr.label })));
+      sel.addEventListener('change', () => { if (sel.value !== '') applyParams(def.presets[+sel.value].apply); });
+      el.append(h('div', { class: 'actions' }, sel));
+    } else if (def.presets) {
+      el.append(h('div', { class: 'actions' }, ...def.presets.map((pr) => h('button', { text: pr.label, onclick: () => applyParams(pr.apply) }))));
     }
+    el.append(userPresetsRow(node, applyParams));
+    if (def.desc) el.append(h('div', { class: 'sub', text: def.desc, style: 'color:var(--fg2);font-size:12px' }));
     if (def.help) el.append(h('div', { class: 'hint', text: def.help }));
     seamEl = h('div', { class: 'hint seam' });
     errEl = h('div', { class: 'hint err' });
@@ -80,10 +88,84 @@ const ParamsPanel = (() => {
     refreshDynamic();
   }
 
-  function labelEl(d) {
-    const l = h('label', { text: d.label });
+  function labelEl(d, node, text) {
+    const l = h('label', { text: text || d.label });
     if (d.help) l.append(h('span', { class: 'q', title: d.help, text: '?' }));
+    if (node && d.type !== 'image') {
+      const on = Graph.isExposed(node.id, d.key);
+      l.append(h('button', {
+        class: 'pin' + (on ? ' on' : ''), text: '📌',
+        title: on ? 'Убрать из параметров шаблона' : 'Вынести в параметры шаблона (видны, когда ни одна нода не выбрана)',
+        onclick: (e) => {
+          e.preventDefault();
+          if (Graph.isExposed(node.id, d.key)) Graph.unexpose(node.id, d.key); else Graph.expose(node.id, d.key);
+          App.commit(); build();
+        },
+      }));
+    }
     return l;
+  }
+
+  // Saved-in-browser presets for this node type.
+  function userPresetsRow(node, applyParams) {
+    const row = h('div', { class: 'actions' });
+    if (!Library.available()) return row;
+    const list = Library.nodePresets(node.type);
+    const sel = h('select', { title: 'Ваши пресеты (хранятся в этом браузере)' }, h('option', { value: '', text: list.length ? `Мои пресеты (${list.length})…` : 'Мои пресеты: нет' }));
+    list.forEach((pr, k) => sel.append(h('option', { value: k, text: pr.name })));
+    const keep = list.findIndex((x) => x.name === lastPreset);
+    if (keep >= 0) sel.value = keep;
+    sel.addEventListener('change', () => {
+      if (sel.value === '') return;
+      lastPreset = list[+sel.value].name;
+      applyParams(list[+sel.value].params);
+      App.toast('Применён пресет «' + lastPreset + '»');
+    });
+    const name = h('input', { type: 'text', placeholder: 'имя пресета', style: 'width:110px;display:none' });
+    const save = h('button', { text: '＋ Сохранить пресет', title: 'Сохранить текущие параметры ноды как пресет в браузере' });
+    const del = h('button', { text: '✕', title: 'Удалить выбранный в списке пресет' });
+    save.addEventListener('click', () => {
+      if (name.style.display === 'none') { name.style.display = ''; name.focus(); save.textContent = 'OK'; return; }
+      try { Library.saveNodePreset(node.type, name.value, node.params); App.toast('Пресет «' + name.value.trim() + '» сохранён в браузере.'); build(); }
+      catch (e) { App.toast(e.message, 'err'); }
+    });
+    name.addEventListener('keydown', (e) => { if (e.key === 'Enter') save.click(); if (e.key === 'Escape') build(); });
+    del.addEventListener('click', () => {
+      if (sel.value === '') { App.toast('Выберите пресет в списке, затем нажмите ✕.', 'warn'); return; }
+      Library.deleteNodePreset(node.type, list[+sel.value].name); build();
+    });
+    row.append(sel, name, save, list.length ? del : '');
+    return row;
+  }
+
+  // Nothing selected: template parameters (exposed) + outputs.
+  function buildProject() {
+    const ex = Graph.state.exposed;
+    el.append(h('h3', { text: 'Проект' }), h('div', { class: 'sub', text: `${Graph.nodes.size} нод · ${Graph.state.resolution}×${Graph.state.resolution}` }));
+    const outs = [...Graph.nodes.values()].filter((n) => n.type === 'output');
+    if (outs.length) {
+      el.append(h('div', { class: 'group', text: 'Выходы' }));
+      const box = h('div', { class: 'actions' });
+      for (const o of outs) box.append(h('button', { text: (o.id === Graph.state.activeOutput ? '★ ' : '') + o.params.filename, title: 'Показать', onclick: () => App.select(o.id) }));
+      box.append(h('button', { class: 'primary', text: 'Экспорт всех', onclick: () => App.exportAll() }));
+      el.append(box);
+    }
+    el.append(h('div', { class: 'group', text: 'Параметры шаблона' }));
+    if (!ex.length) {
+      el.append(h('div', { class: 'hint', text: 'Здесь появляются вынесенные параметры: нажмите 📌 рядом с любым параметром ноды. Так готовый шаблон (например, кирпичная стена) настраивается несколькими ползунками без поиска по графу. Выберите ноду, чтобы увидеть все её параметры.' }));
+      return;
+    }
+    for (const x of ex) {
+      const node = Graph.nodes.get(x.node);
+      const d = node && NODES[node.type].params.find((q) => q.key === x.key);
+      if (!d) continue;
+      const row = makeRow(node, { ...d, label: x.label, help: d.help });
+      const lab = row.el.querySelector('label');
+      lab.style.cursor = 'pointer';
+      lab.title = `${NODES[node.type].title} (${node.id}) → ${d.label}. Щелчок — выбрать ноду.`;
+      lab.addEventListener('click', (e) => { if (e.target === lab) App.select(node.id); });
+      el.append(row.el);
+    }
   }
 
   function resetBtn(onclick) { return h('button', { class: 'reset', title: 'Сбросить к значению по умолчанию', text: '↺', onclick }); }
@@ -108,19 +190,19 @@ const ParamsPanel = (() => {
       range.addEventListener('change', () => { const v = norm(range.value); set(node, d.key, v, true); row.sync(); });
       num.addEventListener('change', () => { const v = norm(num.value); set(node, d.key, v, true); row.sync(); });
       num.addEventListener('keydown', (e) => { if (e.key === 'Enter') num.dispatchEvent(new Event('change')); });
-      wrap.append(labelEl(d), h('div', { class: 'ctl' }, range, num, resetBtn(() => { set(node, d.key, d.def, true); row.sync(); })));
+      wrap.append(labelEl(d, node), h('div', { class: 'ctl' }, range, num, resetBtn(() => { set(node, d.key, d.def, true); row.sync(); })));
     } else if (d.type === 'enum') {
       const sel = h('select');
       for (const [v, t] of d.options) sel.append(h('option', { value: v, text: t }));
       row.sync = () => { sel.value = p[d.key]; };
       sel.addEventListener('change', () => set(node, d.key, sel.value, true));
-      wrap.append(labelEl(d), h('div', { class: 'ctl' }, sel, resetBtn(() => { set(node, d.key, d.def, true); row.sync(); })));
+      wrap.append(labelEl(d, node), h('div', { class: 'ctl' }, sel, resetBtn(() => { set(node, d.key, d.def, true); row.sync(); })));
     } else if (d.type === 'bool') {
       wrap.classList.add('inline');
       const cb = h('input', { type: 'checkbox' });
       row.sync = () => { cb.checked = !!p[d.key]; };
       cb.addEventListener('change', () => set(node, d.key, cb.checked, true));
-      const l = labelEl(d);
+      const l = labelEl(d, node);
       l.prepend(cb);
       wrap.append(l, resetBtn(() => { set(node, d.key, d.def, true); row.sync(); }));
     } else if (d.type === 'text') {
@@ -128,7 +210,7 @@ const ParamsPanel = (() => {
       t.style.flex = '1';
       row.sync = () => { t.value = p[d.key]; };
       t.addEventListener('change', () => set(node, d.key, t.value.replace(/[\\/:*?"<>|]/g, '_') || d.def, true));
-      wrap.append(labelEl(d), h('div', { class: 'ctl' }, t));
+      wrap.append(labelEl(d, node), h('div', { class: 'ctl' }, t));
     } else if (d.type === 'color') {
       const c = h('input', { type: 'color' });
       const a = h('input', { type: 'range', min: 0, max: 1, step: 0.001 });
@@ -140,7 +222,7 @@ const ParamsPanel = (() => {
       a.addEventListener('input', () => { an.value = a.value; set(node, d.key, val(), false); });
       a.addEventListener('change', () => set(node, d.key, val(), true));
       an.addEventListener('change', () => { a.value = Math.min(1, Math.max(0, +an.value || 0)); set(node, d.key, val(), true); row.sync(); });
-      wrap.append(labelEl(d), h('div', { class: 'ctl' }, c, h('span', { text: 'α' }), a, an,
+      wrap.append(labelEl(d, node), h('div', { class: 'ctl' }, c, h('span', { text: 'α' }), a, an,
         resetBtn(() => { set(node, d.key, d.def.slice(), true); row.sync(); })));
     } else if (d.type === 'ramp') {
       buildRamp(node, d, wrap, row);
@@ -159,7 +241,7 @@ const ParamsPanel = (() => {
         }
       });
       ta.addEventListener('blur', apply);
-      wrap.append(labelEl(d), ta, h('div', { class: 'ctl' },
+      wrap.append(labelEl(d, node), ta, h('div', { class: 'ctl' },
         h('button', { class: 'primary', text: 'Применить (Ctrl+Enter)', onclick: apply }),
         resetBtn(() => { set(node, d.key, d.def, true); row.sync(); })));
     }
@@ -278,7 +360,7 @@ const ParamsPanel = (() => {
     const box = h('div', { class: 'ramp' }, bar, marks,
       h('div', { class: 'edit' }, h('span', { text: 'Позиция' }), pos, col, h('span', { text: 'α' }), al, add, del,
         resetBtn(() => { set(node, d.key, JSON.parse(JSON.stringify(d.def)), true); selIdx = 0; row.sync(); })));
-    wrap.append(labelEl(d), box);
+    wrap.append(labelEl(d, node), box);
   }
 
   // ---- Image loader -------------------------------------------------------
@@ -304,7 +386,7 @@ const ParamsPanel = (() => {
       if (a.width !== proj || a.height !== proj) info.append(h('div', { text: `Отличается от проекта (${proj}×${proj}) — применяется режим приведения ниже.`, style: 'color:var(--warn)' }));
       for (const n of a.notes) info.append(h('div', { text: n, style: 'color:var(--warn)' }));
     };
-    wrap.append(labelEl(d), box);
+    wrap.append(labelEl(d, node), box);
   }
 
   // Visibility conditions, seam hints, input status, errors.
@@ -335,10 +417,13 @@ const ParamsPanel = (() => {
       def.inputs.forEach((pdef, k) => {
         const l = Graph.inputLink(node.id, k);
         const line = h('div');
+        const kind = portKind(node, 'in', k);
+        line.append(h('span', { class: 'port', style: 'display:inline-flex;height:auto;vertical-align:middle;margin-right:4px', title: 'Принимает: ' + KIND_TEXT[kind] },
+          h('span', { class: 'dot on k-' + kind, style: 'width:10px;height:10px;cursor:default' })));
         if (l) {
           const src = Graph.nodes.get(l.from);
-          line.append(h('span', { class: 'c', text: '● ' }), `${inputLabel(node, k)} ← ${NODES[src.type].title} (${src.id})`);
-        } else line.append(`○ ${inputLabel(node, k)}: не подключён → ${pdef.defText}`);
+          line.append(`${inputLabel(node, k)} ← ${NODES[src.type].title} (${src.id})`);
+        } else line.append(`${inputLabel(node, k)}: не подключён → ${pdef.defText}`);
         portsEl.append(line);
       });
     }

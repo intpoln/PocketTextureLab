@@ -5,14 +5,14 @@ const App = (() => {
   const $ = (s) => document.querySelector(s);
   const state = { selected: null, selectedLink: null, viewPort: 0, interactive: false, displayRes: 512, dirty: false, ready: false };
   let evalRaf = 0, idleTimer = 0, thumbQueue = [], thumbTimer = 0;
-  const CAT_ORDER = ['Источники', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
+  const CAT_ORDER = ['Источники', 'Узоры', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
   const KEYWORDS = {
-    image: 'png jpeg jpg файл картинка', constant: 'color цвет value', noise: 'perlin value fbm шум', voronoi: 'cells worley клетки',
+    image: 'png jpeg jpg файл картинка', constant: 'color цвет value', noise: 'perlin value fbm шум worley white ridged billow облака clouds', voronoi: 'cells worley клетки трещины crackle камни',
     shape: 'circle rect ring круг квадрат кольцо эллипс', gradient: 'ramp linear radial angular', levels: 'уровни контраст',
     invert: 'инверсия negative', grayscale: 'desaturate luminance канал channel', ramp: 'colorize градиент палитра gradient map',
     hsv: 'hue saturation value оттенок', blend: 'mix add multiply screen смешать', transform: 'move scale rotate offset сдвиг поворот',
     gaussian: 'blur размытие', dirblur: 'blur motion размытие', radialblur: 'blur zoom spin размытие', normal: 'normal map bump высота',
-    split: 'channels каналы', combine: 'pack orm hdrp mask упаковка', code: 'glsl shader шейдер custom скрипт', output: 'export экспорт',
+    split: 'channels каналы', waves: 'stripes sine полосы дерево мрамор wood marble', tiler: 'tile sampler bricks кирпичи плитка паркет сетка', splatter: 'scatter разброс камни гравий пятна листья царапины stones', warp: 'distort искажение деформация', combine: 'pack orm hdrp mask упаковка', code: 'glsl shader шейдер custom скрипт', output: 'export экспорт',
   };
 
   // ---------------------------------------------------------------- init
@@ -78,7 +78,7 @@ const App = (() => {
           first = false;
           it.textContent = NODES[t].title;
           it.dataset.type = t;
-          it.title = 'Щелчок — добавить в центр графа, или перетащите на граф';
+          it.title = (NODES[t].desc ? NODES[t].desc + '\n\n' : '') + 'Щелчок — добавить в центр графа, или перетащите на граф';
           it.draggable = true;
           it.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/ptl-node', t); e.dataTransfer.effectAllowed = 'copy'; });
           it.addEventListener('click', () => { const c = GraphView.center(); addNode(t, c.x - 88 + (Math.random() * 40 - 20), c.y - 50 + (Math.random() * 40 - 20)); });
@@ -96,8 +96,14 @@ const App = (() => {
 
   function bindToolbar() {
     const ex = $('#examples');
-    EXAMPLES.forEach((e, k) => { const o = document.createElement('option'); o.value = k; o.textContent = e.title; ex.append(o); });
-    ex.onchange = () => { if (ex.value !== '') loadExample(+ex.value); ex.value = ''; };
+    refreshExamplesMenu();
+    ex.onchange = () => {
+      const v = ex.value;
+      ex.value = '';
+      if (v.startsWith('ex:')) loadExample(+v.slice(3));
+      else if (v.startsWith('tpl:')) loadUserTemplate(v.slice(4));
+    };
+    $('#btn-lib').onclick = () => showLibrary();
     $('#btn-new').onclick = () => newProject();
     $('#btn-open').onclick = () => $('#file-project').click();
     $('#file-project').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) openProjectFile(f); };
@@ -225,6 +231,90 @@ const App = (() => {
       <p style="color:var(--fg3)">${GPU.precisionNote} PNG: UPNG.js (MIT, © Photopea) + pako (MIT/Zlib, © Vitaly Puzrin, Andrei Tuputcyn). Полные тексты лицензий — в исходнике страницы.</p>`);
   }
 
+  function refreshExamplesMenu() {
+    const ex = $('#examples');
+    ex.textContent = '';
+    const opt = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; return o; };
+    ex.append(opt('', 'Примеры и шаблоны…'));
+    const groups = [['Примеры', (e) => !e.template], ['Шаблоны текстур (Albedo + Normal + ORM)', (e) => e.template]];
+    for (const [label, test] of groups) {
+      const g = document.createElement('optgroup');
+      g.label = label;
+      EXAMPLES.forEach((e, k) => { if (test(e)) g.append(opt('ex:' + k, e.title)); });
+      if (g.children.length) ex.append(g);
+    }
+    const mine = Library.available() ? Library.templates() : [];
+    if (mine.length) {
+      const g = document.createElement('optgroup');
+      g.label = 'Мои шаблоны (в этом браузере)';
+      for (const t of mine) g.append(opt('tpl:' + t.name, t.name));
+      ex.append(g);
+    }
+  }
+
+  async function loadUserTemplate(name) {
+    const t = Library.templates().find((x) => x.name === name);
+    if (!t) return;
+    try { await loadProjectData(t.project); toast(`Открыт шаблон «${name}». Предыдущий граф можно вернуть через Отмену.`); }
+    catch (e) { toast('Не удалось открыть шаблон: ' + e.message, 'err'); }
+  }
+
+  function showLibrary() {
+    modal('Библиотека: мои пресеты и шаблоны', '');
+    const body = $('#modal-body');
+    const h = (tag, props = {}, ...kids) => { const e = document.createElement(tag); Object.assign(e, props); e.append(...kids); return e; };
+    const render = () => {
+      body.textContent = '';
+      if (!Library.available()) {
+        body.append(h('p', { textContent: 'Хранилище браузера недоступно (приватный режим или запрет сайта). Пресеты и шаблоны можно переносить только файлами проекта.' }));
+        return;
+      }
+      body.append(h('p', { style: 'color:var(--fg2)', textContent: 'Пресеты и шаблоны хранятся в этом браузере (localStorage для этого адреса: у file:// и у сайта на GitHub Pages — разные хранилища). Чтобы перенести их на другой компьютер или сделать резервную копию — «Экспорт библиотеки».' }));
+      const name = h('input', { type: 'text', placeholder: 'название шаблона', style: 'width:240px' });
+      const withImg = h('input', { type: 'checkbox', checked: true });
+      body.append(h('h3', { textContent: 'Сохранить текущий проект как шаблон' }),
+        h('div', { className: 'actions' }, name, h('label', {}, withImg, ' со встроенными изображениями'),
+          h('button', { className: 'primary', textContent: 'Сохранить шаблон', onclick: () => {
+            try {
+              const pr = projectData();
+              if (!withImg.checked) { pr.assets = {}; for (const n of pr.nodes) if (n.type === 'image') n.params.asset = null; }
+              Library.saveTemplate(name.value, pr);
+              toast('Шаблон «' + name.value.trim() + '» сохранён. Он в меню «Примеры и шаблоны…».');
+              refreshExamplesMenu(); render();
+            } catch (e) { toast(e.message, 'err'); }
+          } })));
+      body.append(h('h3', { textContent: 'Мои шаблоны' }));
+      const tl = h('div', { className: 'lib-list' });
+      const tpls = Library.templates();
+      if (!tpls.length) tl.append(h('div', {}, h('span', { style: 'color:var(--fg3)', textContent: 'пока нет' })));
+      for (const t of tpls) tl.append(h('div', {}, h('span', { textContent: `${t.name}  ·  ${new Date(t.saved).toLocaleString()}` }),
+        h('button', { textContent: 'Открыть', onclick: () => { $('#modal').classList.remove('show'); loadUserTemplate(t.name); } }),
+        h('button', { textContent: 'Удалить', onclick: () => { Library.deleteTemplate(t.name); refreshExamplesMenu(); render(); } })));
+      body.append(tl);
+      body.append(h('h3', { textContent: 'Мои пресеты нод' }));
+      const pl = h('div', { className: 'lib-list' });
+      let any = false;
+      for (const type of Object.keys(NODES)) for (const pr of Library.nodePresets(type)) {
+        any = true;
+        pl.append(h('div', {}, h('span', { textContent: `${NODES[type].title}: ${pr.name}` }),
+          h('button', { textContent: 'Удалить', onclick: () => { Library.deleteNodePreset(type, pr.name); render(); ParamsPanel.build(); } })));
+      }
+      if (!any) pl.append(h('div', {}, h('span', { style: 'color:var(--fg3)', textContent: 'пока нет — кнопка «＋ Сохранить пресет» в панели параметров любой ноды' })));
+      body.append(pl);
+      const imp = h('input', { type: 'file', accept: '.json,application/json', hidden: true });
+      imp.onchange = async () => {
+        const f = imp.files[0]; if (!f) return;
+        try { const n = Library.importAll(JSON.parse(await f.text())); toast(`Импортировано записей: ${n}`); refreshExamplesMenu(); render(); ParamsPanel.build(); }
+        catch (e) { toast('Импорт не удался: ' + e.message, 'err'); }
+      };
+      body.append(h('div', { className: 'actions' },
+        h('button', { textContent: 'Экспорт библиотеки в файл', onclick: () => download(JSON.stringify(Library.exportAll()), 'ptl-library.json', 'application/json') }),
+        h('button', { textContent: 'Импорт библиотеки…', onclick: () => imp.click() }), imp,
+        h('span', { style: 'color:var(--fg3)', textContent: `занято ≈ ${(Library.usedBytes() / 1024).toFixed(0)} КБ` })));
+    };
+    render();
+  }
+
   function showApi() {
     const g = document.getElementById('ptl-agent-guide');
     const pre = document.createElement('pre');
@@ -335,7 +425,8 @@ const App = (() => {
     if (!ex) return;
     loadGraph(JSON.parse(JSON.stringify(ex.graph)));
     commit();
-    status(`Загружен пример «${ex.title}». Предыдущий граф можно вернуть через Отмену.`);
+    status(`Загружен ${ex.template ? 'шаблон' : 'пример'} «${ex.title}». Предыдущий граф можно вернуть через Отмену.`);
+    if (ex.template) { state.selected = null; ParamsPanel.build(); GraphView.refreshMarks(); }
   }
 
   function newProject() {
@@ -467,6 +558,12 @@ const App = (() => {
     }
   }
 
+  async function exportAll() {
+    const outs = [...Graph.nodes.values()].filter((n) => n.type === 'output');
+    if (!outs.length) { toast('В графе нет нод Output.', 'warn'); return; }
+    for (const o of outs) { await exportNode(o.id, 0); await new Promise((r) => setTimeout(r, 250)); }
+  }
+
   async function exportActive() {
     const id = Graph.state.activeOutput;
     if (!id || !Graph.nodes.has(id)) { toast('В графе нет ноды Output. Добавьте «Выход (Output)» или используйте «PNG выбранной».', 'warn'); return; }
@@ -587,7 +684,7 @@ const App = (() => {
   return {
     init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId,
     undo, redo, flush, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
-    exportNode, exportActive, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
+    exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };
 })();

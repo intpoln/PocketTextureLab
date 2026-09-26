@@ -201,6 +201,7 @@ await test('Параметры: ползунок = один шаг отмены,
   await page.click(`.node[data-id="${noiseId}"] .head`);
   const row = page.locator('#params .prow[data-key="persistence"]');
   const range = row.locator('input[type=range]');
+  await range.scrollIntoViewIfNeeded();
   const h0 = await page.evaluate(() => PTL._test.historySize());
   const rb = await range.boundingBox();
   await page.mouse.move(rb.x + rb.width * 0.2, rb.y + rb.height / 2);
@@ -674,6 +675,112 @@ await test('API для агентов: справка, описание нод, 
   ok(r.types >= 20, 'PTL.nodeTypes() описывает все ноды', r.types);
   ok(/perlin, value|perlin/.test(r.e2) && /Есть:/.test(r.e1), 'понятные ошибки валидации', [r.e1.slice(0, 60), r.e2]);
   ok(r.pngSig.join() === '137,80,78,71,13,10,26,10', 'renderPNG возвращает PNG');
+  await page.context().close();
+});
+
+await test('Новые шумы и узоры: воспроизводимость и периодичность (Tiler, Splatter, Waves, Worley, Ridged, Warp)', async () => {
+  const page = await openPage();
+  const res = await page.evaluate(() => {
+    PTL.newProject(); PTL.setResolution(256);
+    const cmp = (a, b) => { let m = 0; for (let i = 0; i < a.length; i++) m = Math.max(m, Math.abs(a[i] - b[i])); return m; };
+    const cases = [
+      ['noise', { type: 'worley', scale: 5, octaves: 3 }], ['noise', { fractal: 'ridged', scale: 3, octaves: 6, lacunarity: 3 }],
+      ['noise', { fractal: 'billow', scale: 4, stretch: 4 }], ['noise', { scale: 3, warp: 0.8, warpScale: 3 }],
+      ['noise', { type: 'white', grain: 4, octaves: 2 }], ['voronoi', { mode: 'crackle', metric: 'manhattan', scale: 7 }],
+      ['voronoi', { mode: 'f2', scale: 5 }], ['waves', { countX: 3, countY: -2, shape: 'triangle' }],
+      ['tiler', { countX: 5, countY: 6, rowOffset: 0.5, posRand: 0.3, sizeRand: 0.3, rotRand: 30, sizeX: 1.3 }],
+      ['splatter', { count: 300, size: 0.1, sizeRand: 0.5, blend: 'top' }], ['splatter', { count: 3000, size: 0.3, aspect: 0.05, pattern: 'square' }],
+    ];
+    const out = [];
+    for (const [t, p] of cases) {
+      const id = PTL.addNode(t, { params: p });
+      const a = PTL._test.renderRaw(id, 256).bytes, a2 = PTL._test.renderRaw(id, 256).bytes;
+      const u1 = PTL._test.renderRaw(id, 256, [1, 0]).bytes, v1 = PTL._test.renderRaw(id, 256, [2, -1 + 2]).bytes;
+      let sum = 0; for (let i = 0; i < a.length; i += 4) sum += a[i];
+      out.push({ t, p, same: cmp(a, a2), du: cmp(a, u1), dv: cmp(a, v1), mean: sum / (a.length / 4) });
+    }
+    // tiler random output and presets
+    const tl = PTL.addNode('tiler'); PTL.applyPreset(tl, 'Кирпичи');
+    const rnd = PTL.stats(tl, { port: 1 }), pat = PTL.stats(tl);
+    return { out, rnd, pat, errors: PTL.errors() };
+  });
+  for (const r of res.out) {
+    ok(r.same === 0 && r.du <= 1 && r.dv <= 1 && r.mean > 3 && r.mean < 252,
+      `${r.t} ${JSON.stringify(r.p)}: детерминирован и периодичен по u+1, v+1`, { du: r.du, dv: r.dv, mean: Math.round(r.mean) });
+  }
+  ok(res.rnd.max[0] > res.rnd.min[0] + 100 && res.pat.max[0] > 200, 'Tiler: второй выход — случайное значение на копию', res.rnd);
+  ok(Object.keys(res.errors).length === 0, 'нет ошибок нод', res.errors);
+  await page.context().close();
+});
+
+await test('Типы пинов (серый / цвет / любой) и описания нод', async () => {
+  const page = await openPage();
+  const r = await page.evaluate(() => {
+    PTL.newProject();
+    const n = PTL.addNode('noise'), ramp = PTL.addNode('ramp'), bl = PTL.addNode('blend'), hsv = PTL.addNode('hsv');
+    PTL.connect(n, 0, ramp, 0);
+    const q = (id, dir, k) => document.querySelector(`.node[data-id="${id}"] .port.${dir}[data-port="${k}"] .dot`).className;
+    const types = PTL.nodeTypes();
+    return {
+      noiseOut: q(n, 'out', 0), rampIn: q(ramp, 'in', 0), rampOut: q(ramp, 'out', 0), blendA: q(bl, 'in', 0), blendMask: q(bl, 'in', 2), hsvIn: q(hsv, 'in', 0),
+      allDesc: types.every((t) => t.description && t.description.length > 20), kinds: types.find((t) => t.type === 'blend').inputs.map((i) => i.accepts),
+    };
+  });
+  ok(/k-gray/.test(r.noiseOut) && /k-gray/.test(r.rampIn) && /k-color/.test(r.rampOut) && /k-any/.test(r.blendA) && /k-gray/.test(r.blendMask) && /k-color/.test(r.hsvIn),
+    'пины размечены: шум→серый, Ramp: серый→цвет, Blend A любой, маска серая, HSV цвет', r);
+  ok(/\bon\b/.test(r.noiseOut) && !/\bon\b/.test(r.blendA), 'подключённый пин закрашен, свободный — кольцо');
+  ok(r.allDesc && r.kinds.join() === 'any,any,gray', 'у каждой ноды есть описание; PTL.nodeTypes() отдаёт типы входов', r.kinds);
+  await page.context().close();
+});
+
+await test('Шаблоны текстур, пресеты градиентов, вынесенные параметры, библиотека в браузере', async () => {
+  const page = await openPage();
+  const r = await page.evaluate(async () => {
+    const tpl = PTL.examples().filter((e) => /Кирпич|Асфальт|Булыж|Дерев|металл/.test(e.title));
+    const res = [];
+    for (const e of tpl) {
+      PTL.loadExample(e.index);
+      const g = PTL.getGraph();
+      const outs = g.nodes.filter((n) => n.type === 'output').map((n) => n.params.filename);
+      const st = PTL.stats(g.activeOutput);
+      res.push({ title: e.title, outs, exposed: PTL.exposed().length, errors: Object.keys(PTL.errors()).length, spread: st.max[0] - st.min[0] });
+    }
+    // exposed param drives the node
+    PTL.loadExample(tpl[0].index);
+    const lbl = PTL.exposed()[0].label, before = PTL.exposed()[0].value;
+    PTL.setExposed(lbl, before + 1);
+    const after = PTL.exposed()[0].value;
+    const projPanel = document.querySelectorAll('#params .prow').length;
+    // ramp presets
+    const ramp = PTL.addNode('ramp');
+    PTL.applyPreset(ramp, 'Magma');
+    const magma = PTL.getParams(ramp).stops.length;
+    PTL.applyPreset(ramp, 'Fire');
+    const fire = PTL.getParams(ramp).stops[7].c;
+    // library
+    localStorage.clear();
+    PTL.setParams(ramp, { interp: 'smooth' });
+    PTL.library.saveNodePreset(ramp, 'Мой огонь');
+    PTL.library.saveTemplate('Моя стена');
+    const saved = { presets: PTL.library.nodePresets('ramp').map((p) => p.name), templates: PTL.library.templates().map((t) => t.name) };
+    PTL.newProject();
+    await PTL.library.loadTemplate('Моя стена');
+    const reloaded = PTL.getGraph().nodes.length;
+    const menu = [...document.querySelectorAll('#examples option')].map((o) => o.textContent);
+    return { res, lbl, before, after, projPanel, magma, fire, saved, reloaded, menu };
+  });
+  for (const t of r.res) ok(t.outs.length === 3 && t.outs.some((f) => /albedo/.test(f)) && t.outs.some((f) => /normal/.test(f)) && t.outs.some((f) => /orm/.test(f)) && t.exposed >= 5 && t.errors === 0 && t.spread > 40,
+    `шаблон «${t.title}»: 3 выхода (albedo, normal, orm), вынесенные параметры, без ошибок`, t);
+  ok(r.after === r.before + 1 && r.projPanel >= 5, 'вынесенный параметр меняет ноду; панель «Проект» показывает ползунки', [r.lbl, r.before, r.after, r.projPanel]);
+  ok(r.magma === 8 && r.fire.slice(0, 3).join() === '1,1,1', 'пресеты градиентов (Magma, Fire)', r.fire);
+  ok(r.saved.presets.includes('Мой огонь') && r.saved.templates.includes('Моя стена') && r.reloaded > 10 && r.menu.includes('Моя стена'),
+    'библиотека: пресет ноды и шаблон проекта сохраняются в localStorage и открываются', r.saved);
+  // persistence across a page reload (same browser profile)
+  await page.reload();
+  await page.waitForFunction(() => window.PTL);
+  const kept = await page.evaluate(() => PTL.library.templates().map((t) => t.name));
+  ok(kept.includes('Моя стена'), 'после перезагрузки страницы шаблон на месте (file://)', kept);
+  await page.evaluate(() => localStorage.clear());
   await page.context().close();
 });
 

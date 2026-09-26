@@ -6,7 +6,7 @@ const r = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 const ORDER = [
   'vendor/pako.min.js', 'vendor/UPNG.js',
   'png.js', 'color.js', 'shaders.js', 'gpu.js', 'assets.js', 'nodes.js', 'graph.js', 'engine.js',
-  'ui-graph.js', 'ui-params.js', 'ui-preview.js', 'examples.js', 'app.js', 'api.js', 'main.js',
+  'library.js', 'ui-graph.js', 'ui-params.js', 'ui-preview.js', 'examples.js', 'app.js', 'api.js', 'main.js',
 ];
 
 const licenses = `/*!

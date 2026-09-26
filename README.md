@@ -19,12 +19,24 @@ normal maps, упаковка каналов в RGBA, экспорт PNG без 
   изменяемый по размеру предпросмотр. Добавление, перемещение, соединение, разветвление, удаление,
   дублирование, разрыв связи, pan/zoom, запрет циклов с сообщением, undo/redo
   (одно перетаскивание ползунка = один шаг), точный ввод чисел, сброс параметра.
-- Ноды: Image (PNG/JPEG, режимы sRGB/данные, Stretch/Cover/Tile), Constant, Noise (Perlin и Value
-  fBM, периодический), Voronoi (F1/границы/значение ячейки), Shape (эллипс/прямоугольник/кольцо),
-  Gradient (линейный/радиальный/угловой), Levels, Invert, Grayscale, Color Ramp (2–8 точек), HSV,
-  Blend (Mix/Add/Multiply/Screen/Min/Max + маска), Transform, Gaussian/Directional/Radial Blur,
-  Height to Normal (OpenGL/DirectX, пресеты Unity/Unreal), Split RGBA, Combine RGBA
-  (ORM, Unity HDRP Mask, Custom), **Код (GLSL)** — своя логика прямо в ноде, Output.
+- Ноды (25):
+  - источники — Image, Constant, **Noise** (Perlin / Value / Worley / белый шум; фракталы fBM / Ridged / Billow;
+    растяжение, лакунарность, доменное искажение), **Voronoi** (F1, F2, трещины F2−F1, границы, значение ячейки;
+    евклидова / манхэттен / Чебышёв), Shape, Gradient;
+  - узоры — **Waves** (полосы с искажением: дерево, мрамор), **Tile Sampler / Раскладка** (сетка со сдвигом рядов,
+    фаской, случайными позицией/поворотом/размером/яркостью; пресеты «Кирпичи», «Плитка», «Паркет», «Соты», «Булыжник»),
+    **Splatter / Разброс** (до 4000 копий фигуры или входа, бесшовно);
+  - обработка — Levels, Invert, Grayscale, Color Ramp (+26 пресетов градиентов: Magma, Inferno, Viridis, Огонь, Вода,
+    Земля, Ржавчина, Дерево…), HSV, Blend, Transform, **Warp** (искажение по карте);
+  - размытия, Height to Normal (Unity/Unreal), Split / Combine RGBA (ORM, HDRP), **Код (GLSL)**, Output.
+- **Цветные пины**: серый — вход/выход «оттенки серого», розовый — цвет, половинка — принимает и то и другое.
+  Провода окрашены по типу источника.
+- **Шаблоны текстур** (меню «Примеры и шаблоны…»): кирпичная стена, асфальт с трещинами, булыжная мостовая,
+  деревянные доски, окрашенный металл со сколами — у каждого 3 выхода (Albedo, Normal, ORM) и вынесенные
+  параметры: снимите выделение с нод — справа появятся ползунки шаблона. Любой параметр можно вынести кнопкой 📌.
+  «Экспорт всех» сохраняет все Output разом.
+- **Библиотека**: свои пресеты любой ноды и свои шаблоны проектов сохраняются в браузере (localStorage);
+  экспорт/импорт библиотеки файлом для резервной копии и переноса на другой компьютер.
 - Предпросмотр: RGB, RGBA на шахматке, отдельные каналы R/G/B/A, освещённая normal map,
   повтор 3×3, сдвиг на ½, значения пикселя под курсором, уменьшенное разрешение во время
   перетаскивания ползунка.
@@ -39,8 +51,9 @@ normal maps, упаковка каналов в RGBA, экспорт PNG без 
 
 На странице есть глобальный объект `window.PTL`, через который доступно всё, что умеет UI:
 `PTL.nodeTypes()`, `addNode`, `connect`, `setParams`, `render`, `renderPNG`, `saveProject`,
-`importImage`, `errors`, `undo` и т.д. Руководство встроено в сам HTML
-(`PTL.help()`, `<script type="text/markdown" id="ptl-agent-guide">`, комментарий в начале файла),
+`importImage`, `errors`, `undo` и т.д. Руководство (API, описание всех нод, методика и рецепты материалов) встроено в сам HTML
+(`PTL.help()`, `<script type="text/markdown" id="ptl-agent-guide">`, комментарий в начале файла) — агенту,
+открывшему страницу, больше ничего не нужно,
 а также лежит в [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md). Скилл для Claude Code —
 [`.claude/skills/pocket-texture-lab/SKILL.md`](.claude/skills/pocket-texture-lab/SKILL.md).
 
@@ -52,8 +65,9 @@ normal maps, упаковка каналов в RGBA, экспорт PNG без 
 Это один статический файл, подойдёт любой статический хостинг:
 
 - **GitHub Pages** — в репозитории есть workflow `.github/workflows/pages.yml`. Один раз включите
-  *Settings → Pages → Source: GitHub Actions*; после пуша в `main` сайт появится по адресу
-  `https://<user>.github.io/<repo>/`. (Для приватного репозитория Pages требует платный план —
+  *Settings → Pages → Source: GitHub Actions*; после каждого пуша в ветку по умолчанию сайт обновляется по адресу
+  `https://<user>.github.io/<repo>/` (для этого репозитория — https://intpoln.github.io/PocketTextureLab/).
+  Статус и ссылка — во вкладке *Actions* и в *Settings → Pages*. (Для приватного репозитория Pages требует платный план —
   тогда сделайте репозиторий публичным или используйте варианты ниже.)
 - **Cloudflare Pages / Netlify** — перетащите папку с файлом, переименованным в `index.html`,
   в веб-интерфейс (Netlify Drop, Cloudflare «Direct Upload»), без аккаунта на GitHub.
@@ -66,8 +80,9 @@ normal maps, упаковка каналов в RGBA, экспорт PNG без 
 ```sh
 npm install        # только для разработки: playwright, pngjs, pako, upng-js
 npm run build      # src/ -> texture-lab.html
-npm test           # сборка + 108 проверок в настоящем Chromium через file://
+npm test           # сборка + 133 проверки в настоящем Chromium через file://
 node tests/perf.mjs
+node tools/ptl-run.mjs script.js out/   # выполнить сценарий PTL без UI и сохранить PNG
 ```
 
 Структура: `png.js` (PNG), `gpu.js` (WebGL2, пул текстур, проходы), `shaders.js` (GLSL),

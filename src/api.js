@@ -71,9 +71,9 @@ const PTL = (() => {
     // ---- discovery
     nodeTypes() {
       return Object.entries(NODES).map(([type, d]) => ({
-        type, title: d.title, category: d.cat,
-        inputs: d.inputs.map((p, k) => ({ index: k, label: p.label, whenUnconnected: p.defText })),
-        outputs: d.outputs.map((o, k) => ({ index: k, label: o })),
+        type, title: d.title, category: d.cat, description: d.desc || '',
+        inputs: d.inputs.map((p, k) => ({ index: k, label: p.label, accepts: portKind({ type, params: defaultParams(type) }, 'in', k), whenUnconnected: p.defText })),
+        outputs: d.outputs.map((o, k) => ({ index: k, label: o, produces: portKind({ type, params: defaultParams(type) }, 'out', k) })),
         params: d.params.map(paramInfo), presets: (d.presets || []).map((p) => p.label), help: d.help || '',
       }));
     },
@@ -113,7 +113,8 @@ const PTL = (() => {
       return api.getParams(id);
     },
     applyPreset(id, label) {
-      const n = need(id), pr = (NODES[n.type].presets || []).find((p) => p.label === label);
+      const n = need(id), list = NODES[n.type].presets || [], q = String(label).toLowerCase();
+      const pr = list.find((p) => p.label === label) || list.find((p) => p.label.toLowerCase().includes(q));
       if (!pr) throw new Error(`PTL: пресет "${label}" не найден. Есть: ${(NODES[n.type].presets || []).map((p) => p.label).join(' | ')}`);
       Object.assign(n.params, pr.apply); Graph.touch(n); after();
     },
@@ -125,6 +126,24 @@ const PTL = (() => {
       after();
     },
     disconnect(toId, toPort) { need(toId); const ok = Graph.disconnect(toId, toPort | 0); after(); return ok; },
+    // template parameters shown when no node is selected
+    expose(id, key, label) { need(id); Graph.expose(id, key, label); after(); },
+    unexpose(id, key) { Graph.unexpose(id, key); after(); },
+    exposed() { return Graph.state.exposed.map((x) => ({ ...x, value: Graph.nodes.get(x.node).params[x.key] })); },
+    setExposed(label, value) {
+      const x = Graph.state.exposed.find((e) => e.label === label);
+      if (!x) throw new Error(`PTL: нет вынесенного параметра "${label}". Есть: ${Graph.state.exposed.map((e) => e.label).join(' | ')}`);
+      return api.setParams(x.node, { [x.key]: value });
+    },
+    rampPresets() { return Object.keys(RAMP_PRESETS); },
+    rampPreset(name) { const r = rampFromPreset(name); if (!r) throw new Error(`PTL: нет градиента "${name}". Есть: ${Object.keys(RAMP_PRESETS).join(', ')}`); return r; },
+    library: {
+      nodePresets: (type) => Library.nodePresets(type),
+      saveNodePreset: (id, name) => { const n = need(id); Library.saveNodePreset(n.type, name, n.params); },
+      templates: () => Library.templates().map((t) => ({ name: t.name, saved: t.saved })),
+      saveTemplate: (name) => { Library.saveTemplate(name, App.projectData()); App.refreshExamplesMenu(); },
+      loadTemplate: async (name) => { const t = Library.templates().find((x) => x.name === name); if (!t) throw new Error('PTL: нет шаблона ' + name); await App.loadProjectData(t.project); },
+    },
     select(id) { if (id != null) need(id); App.select(id || null); },
     setActiveOutput(id) { const n = need(id); if (n.type !== 'output') throw new Error('PTL: активным может быть только узел output'); Graph.state.activeOutput = id; after(); },
     setResolution(r) { App.setResolution(+r); },
@@ -141,6 +160,7 @@ const PTL = (() => {
     newProject() { App.newProject(); },
     loadExample(i) { App.loadExample(i | 0); },
     examples() { return EXAMPLES.map((e, i) => ({ index: i, title: e.title })); },
+    getExample(i) { const e = EXAMPLES[i | 0]; if (!e) throw new Error('PTL: нет примера ' + i); return JSON.parse(JSON.stringify(e.graph)); },
 
     // ---- images & projects
     async importImage(src, opts = {}) {
@@ -183,6 +203,7 @@ const PTL = (() => {
       const n = r.rgba.length / 4;
       return { size: r.width, space: r.space, min, max, mean: sum.map((s) => +(s / n).toFixed(2)) };
     },
+    exportAll() { return App.exportAll(); },
     async exportPNG(id, opts = {}) {
       id = id || Graph.state.activeOutput;
       need(id);

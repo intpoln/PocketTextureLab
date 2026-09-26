@@ -23,12 +23,12 @@
 </style>
 </head>
 <body>
+<div id="agent-note" class="sr-only">Note for AI agents and screen readers: this is Pocket Texture Lab, a procedural texture editor. It is fully scriptable through the JavaScript object window.PTL. Run PTL.help() in the page for the complete manual (also embedded in this document as script#ptl-agent-guide), PTL.examples() for ready texture templates (brick, asphalt, cobblestone, wood, painted metal) and PTL.exportAll() to download the PNG maps.</div>
 <div id="app">
   <header id="toolbar">
     <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab</span>
-    <select id="examples" title="Встроенные примеры">
-      <option value="">Примеры…</option>
-    </select>
+    <select id="examples" title="Встроенные примеры, шаблоны текстур и ваши шаблоны"></select>
+    <button id="btn-lib" title="Мои пресеты и шаблоны (хранятся в браузере), экспорт/импорт">Библиотека</button>
     <button id="btn-new" title="Пустой проект (можно отменить)">Новый</button>
     <button id="btn-open" title="Открыть проект .json">Открыть…</button>
     <button id="btn-save" title="Сохранить проект .json со встроенными изображениями">Сохранить</button>
