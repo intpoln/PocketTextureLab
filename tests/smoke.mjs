@@ -1,0 +1,14 @@
+import { chromium } from 'playwright';
+import path from 'node:path';
+const url = 'file://' + path.resolve('texture-lab.html');
+const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+page.on('console', (m) => console.log('[console]', m.type(), m.text()));
+page.on('pageerror', (e) => console.log('[pageerror]', e.message));
+page.on('request', (r) => { if (!r.url().startsWith('file:') && !r.url().startsWith('blob:') && !r.url().startsWith('data:')) console.log('[NET]', r.url()); });
+await page.goto(url);
+await page.waitForTimeout(1500);
+console.log(await page.evaluate(() => JSON.stringify(PTL.info())));
+console.log(await page.evaluate(() => JSON.stringify(PTL.errors())));
+await page.screenshot({ path: 'test-output/smoke.png' });
+await browser.close();
