@@ -932,7 +932,7 @@ await test('Окно «Шумы/Эффекты» с превью, статист
   await page.click('#noise-drawer [data-tab="fx"]');
   await page.waitForTimeout(500);
   const fxCards = await page.evaluate(() => document.querySelectorAll('#nd-body .nd-card').length);
-  ok(fxCards === 19, 'вкладка «Эффекты» с превью всех 19 эффектов', fxCards);
+  ok(fxCards === 19 + 12, 'вкладка «Эффекты» с превью всех 19 эффектов и 12 бликов', fxCards);
   const tlBefore = await page.evaluate(() => { PTL.newProject(); return document.getElementById('timeline').classList.contains('show'); });
   await page.click('#nd-body .nd-card:has-text("Портал")');
   const tlAfter = await page.evaluate(() => document.getElementById('timeline').classList.contains('show'));
@@ -1111,6 +1111,48 @@ await test('Кнопка «Скачать HTML»: программа сохра�
   ok(info.n >= 3 && info.err === 0 && info.v === await p2.evaluate(() => document.querySelector('meta[name=version]').content), 'скачанный файл открывается и считает пример без ошибок', info);
   ok(Math.abs(again - src.length) < 64, 'из скачанного файла можно снова скачать такую же копию', [again, src.length]);
   await p2.context().close();
+});
+
+await test('Оптический блик (Optical Flare): элементы, пресеты, ось отражений, анимация', async () => {
+  const page = await openPage();
+  const r = await page.evaluate(() => {
+    const S = 128, lum = (px) => { let s = 0; for (let i = 0; i < px.length; i += 4) s += px[i] + px[i + 1] + px[i + 2]; return s / (px.length / 4) / 765; };
+    GPU.gl.getError();
+    const presets = FLARE_PRESETS.map(([name, , set]) => { Anim.t = 0.3; return [name, lum(Engine.renderStandalone('flare', flarePreset(set), S))]; });
+    const glErr = GPU.gl.getError();
+    // ghosts only: light on the left-top -> ghosts' centre of mass right-bottom of the frame centre
+    const ghostsOnly = (x, y) => {
+      const px = Engine.renderStandalone('flare', { ...flarePreset({ ghostI: 1, ghostCount: 8, posX: x, posY: y, edgeFade: false }) }, S);
+      let sx = 0, sy = 0, w = 0;
+      for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) { const k = (j * S + i) * 4, v = px[k] + px[k + 1] + px[k + 2]; sx += v * i; sy += v * j; w += v; }
+      return [sx / w / S, sy / w / S];
+    };
+    const gL = ghostsOnly(-0.6, 0.4), gR = ghostsOnly(0.6, -0.4);
+    const weld = FLARE_PRESETS.find((x) => /Welding/.test(x[0]))[2];
+    Anim.t = 0.1; const a = Engine.renderStandalone('flare', flarePreset(weld), 64);
+    Anim.t = 0.6; const b = Engine.renderStandalone('flare', flarePreset(weld), 64);
+    let diff = 0; for (let i = 0; i < a.length; i++) diff += Math.abs(a[i] - b[i]);
+    const tr = Engine.renderStandalone('flare', { ...flarePreset(FLARE_PRESETS[0][2]), background: 'transparent' }, 64);
+    const off = Engine.renderStandalone('flare', flarePreset({}), 32);
+    const n = PTL.addNode('flare'); PTL.select(n);
+    const heads = [...document.querySelectorAll('#params .psec')].map((x) => x.textContent);
+    const sec = document.querySelector('#params .psec'), body = sec.nextElementSibling;
+    sec.click(); const hidden = body.hidden; sec.click();
+    return { presets, glErr, gL, gR, diff, cornerA: tr[3], centerA: tr[(32 * 64 + 20) * 4 + 3], offMax: Math.max(...off.filter((_, i) => i % 4 !== 3)), heads, hidden, reopened: !body.hidden, errs: PTL.errors() };
+  });
+  ok(r.glErr === 0 && r.presets.every(([, l]) => l > 0.004), `все ${r.presets.length} пресетов бликов рендерятся без ошибок WebGL и не пустые`, r.presets.map(([n, l]) => n.split(' (')[0] + ' ' + l.toFixed(3)));
+  ok(r.presets.length >= 10, 'не меньше 10 пресетов', r.presets.length);
+  ok(r.gL[0] > 0.5 && r.gL[1] > 0.5 && r.gR[0] < 0.5 && r.gR[1] < 0.5, 'отражения идут от источника через центр объектива в противоположную сторону', { gL: r.gL, gR: r.gR });
+  ok(r.diff > 1000, 'мерцание и искры меняются по кадрам (анимация)', r.diff);
+  ok(r.cornerA === 0 && r.centerA > 0, 'прозрачный фон: альфа 0 в углу кадра, свет непрозрачен', [r.cornerA, r.centerA]);
+  ok(r.offMax === 0, 'все элементы выключены — кадр полностью чёрный', r.offMax);
+  ok(r.heads.length === 8 && /Свечение/.test(r.heads[0]) && r.hidden && r.reopened, 'параметры разбиты на 8 сворачиваемых разделов', r.heads);
+  ok(Object.keys(r.errs).length === 0, 'нода без ошибок в графе', r.errs);
+  await page.click('#btn-effects');
+  await page.waitForTimeout(300);
+  const cards = await page.evaluate(() => [...document.querySelectorAll('#nd-body h4')].map((h) => [h.textContent, h.nextElementSibling.children.length]));
+  ok(cards[0][0].includes('Optical Flares') && cards[0][1] === r.presets.length, 'окно «Эффекты» начинается с раздела оптических бликов', cards[0]);
+  await page.context().close();
 });
 
 await browser.close();

@@ -6,6 +6,7 @@
 const ParamsPanel = (() => {
   const $ = (s) => document.querySelector(s);
   let lastPreset = null;
+  const closedSections = new Set(['flare/Искры (Sparkles)', 'flare/Грязь на линзе (Lens dirt)']);
   let el, current = null, rows = [], seamEl = null, errEl = null, portsEl = null;
 
   function init() { el = $('#params'); }
@@ -89,14 +90,23 @@ const ParamsPanel = (() => {
       portsEl = h('div', { class: 'ports-list' });
       el.append(h('div', { class: 'group', text: 'Входы' }), portsEl);
     } else portsEl = null;
-    let group = null;
+    let group = null, section = null, box = el;
     for (const d of def.params) {
       if (topKeys.includes(d.key)) continue;
       if (d.group && d.group !== group) { group = d.group; el.append(h('div', { class: 'group', text: 'Канал ' + group })); }
-      if (def.colorPresets === d.key) el.append(colorPresetRow(node, def, applyParams));
+      if (d.section && d.section !== section) {   // collapsible section; open/closed state is remembered per node type
+        section = d.section;
+        const id = node.type + '/' + section, body = h('div', { class: 'psec-body' });
+        const head = h('div', { class: 'group psec' + (closedSections.has(id) ? ' closed' : ''), text: section, title: 'Свернуть / развернуть' });
+        body.hidden = closedSections.has(id);
+        head.addEventListener('click', () => { body.hidden = !body.hidden; head.classList.toggle('closed', body.hidden); body.hidden ? closedSections.add(id) : closedSections.delete(id); });
+        el.append(head, body);
+        box = body;
+      }
+      if (def.colorPresets === d.key) box.append(colorPresetRow(node, def, applyParams));
       const row = makeRow(node, d);
       rows.push({ d, row });
-      el.append(row.el);
+      box.append(row.el);
     }
     refreshDynamic();
   }

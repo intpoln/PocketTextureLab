@@ -13,10 +13,13 @@ const PresetBrowser = (() => {
     if (tab === 'noise') {
       return NOISE_PRESETS.map(([title, type, params, desc, group], k) => ({ key: 'n' + k, title, type, params, desc, group }));
     }
-    return FX_LIST.map((fx) => ({
-      key: 'fx:' + fx.id, title: fx.title, type: 'fx', desc: fx.note, group: fx.oneShot ? 'Однократные' : 'Зацикленные',
-      params: { effect: fx.id, stops: fxStops(fx.palette), ...fx.defaults },
-    }));
+    return [
+      ...FLARE_PRESETS.map(([title, desc, set], k) => ({ key: 'fl' + k, title, type: 'flare', desc, group: 'Оптические блики (Optical Flares)', params: flarePreset(set) })),
+      ...FX_LIST.map((fx) => ({
+        key: 'fx:' + fx.id, title: fx.title, type: 'fx', desc: fx.note, group: fx.oneShot ? 'Однократные' : 'Зацикленные',
+        params: { effect: fx.id, stops: fxStops(fx.palette), ...fx.defaults },
+      })),
+    ];
   }
 
   function init() {
@@ -65,7 +68,7 @@ const PresetBrowser = (() => {
         const lbl = document.createElement('div'); lbl.textContent = it.title;
         card.append(cv, lbl);
         card.addEventListener('click', () => add(it));
-        if (it.type === 'fx') {   // animate the preview while hovered
+        if (it.type === 'fx' || it.type === 'flare') {   // animate the preview while hovered
           card.addEventListener('mouseenter', () => startHover(it, cv));
           card.addEventListener('mouseleave', stopHover);
         }
@@ -114,14 +117,14 @@ const PresetBrowser = (() => {
       let img;
       try {
         const saved = Anim.t;
-        if (it.type === 'fx') Anim.t = 0.3;
+        if (it.type === 'fx' || it.type === 'flare') Anim.t = 0.3;
         GPU.gl.getError();
-        const px = Engine.renderStandalone(it.type, { ...it.params, ...(it.type === 'fx' ? { background: 'black' } : {}) }, TH);
+        const px = Engine.renderStandalone(it.type, { ...it.params, ...(it.type === 'fx' || it.type === 'flare' ? { background: 'black' } : {}) }, TH);
         const glErr = GPU.gl.getError();
         if (glErr) { Anim.t = saved; cv.title = 'Видеодрайвер не смог выполнить этот шейдер (WebGL 0x' + glErr.toString(16) + ')'; continue; }
         Anim.t = saved;
         img = new ImageData(new Uint8ClampedArray(px.buffer, px.byteOffset, TH * TH * 4), TH, TH);
-        if (it.type !== 'fx') for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255;
+        if (it.type !== 'fx' && it.type !== 'flare') for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255;
       } catch (e) { console.warn(e); continue; }
       thumbs.set(it.key, img);
       cv.getContext('2d').putImageData(img, 0, 0);
