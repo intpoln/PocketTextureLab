@@ -243,6 +243,7 @@ const App = (() => {
     $('#btn-open').onclick = () => $('#file-project').click();
     $('#file-project').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) openProjectFile(f); };
     $('#btn-save').onclick = () => saveProject();
+    $('#btn-offline').onclick = () => downloadApp();
     $('#btn-undo').onclick = undo;
     $('#btn-redo').onclick = redo;
     $('#res').onchange = () => setResolution(+$('#res').value);
@@ -279,7 +280,7 @@ const App = (() => {
   // (Russian ЙЦУКЕН included): Ctrl+Z is the same key as Ctrl+Я.
   const HOTKEYS = [
     ['Ctrl+Z', 'Отменить'], ['Ctrl+Shift+Z / Ctrl+Y', 'Повторить'], ['Ctrl+D', 'Дублировать выбранные ноды (со связями между ними)'], ['Ctrl+A', 'Выделить все ноды'],
-    ['Delete / Backspace', 'Удалить выбранные ноды или связь'], ['Ctrl+S', 'Сохранить проект'], ['Ctrl+O', 'Открыть проект'],
+    ['Delete / Backspace', 'Удалить выбранные ноды или связь'], ['Ctrl+S', 'Сохранить проект'], ['Ctrl+Shift+S', 'Скачать программу (HTML) для офлайн-работы'], ['Ctrl+O', 'Открыть проект'],
     ['Ctrl+E', 'Экспорт PNG основного выхода'], ['F', 'Показать весь граф'], ['Пробел', 'Анимация: воспроизвести / пауза'],
     ['← / →', 'Анимация: предыдущий / следующий кадр'], ['N', 'Окно «Шумы»'], ['E', 'Окно «Эффекты»'],
     ['Ctrl+Enter', 'Применить код в ноде «Код (GLSL)»'], ['Esc', 'Закрыть окно / справку'], ['? (Shift+/)', 'Эта справка по клавишам'],
@@ -297,6 +298,7 @@ const App = (() => {
       if (e.key === 'Escape' && $('#modal').classList.contains('show')) { $('#modal').classList.remove('show'); return; }
       if (e.key === 'Escape' && !isTyping(e.target) && state.multi.size) { select(null); return; }
       const mod = e.ctrlKey || e.metaKey, code = e.code;
+      if (mod && e.shiftKey && code === 'KeyS') { e.preventDefault(); downloadApp(); return; }
       if (mod && code === 'KeyS') { e.preventDefault(); saveProject(); return; }
       if (mod && code === 'KeyO') { e.preventDefault(); $('#file-project').click(); return; }
       if (mod && code === 'KeyE') { e.preventDefault(); exportActive(); return; }
@@ -853,6 +855,21 @@ const App = (() => {
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
 
+  // The whole program as one HTML file for offline use. On a web server the original bytes are fetched;
+  // under file:// (or if fetch fails) the snapshot taken at page load is used — same markup, same scripts.
+  async function downloadApp() {
+    const name = 'pocket-texture-lab-' + PTL_VERSION + '.html';
+    let text = null;
+    if (/^https?:$/.test(location.protocol)) {
+      try { const r = await fetch(location.href.split('#')[0], { cache: 'no-cache' }); if (r.ok) text = await r.text(); } catch (e) { /* offline: use snapshot */ }
+      if (text && !text.includes('id="ptl-agent-guide"')) text = null;
+    }
+    text = text || window.__PTL_SOURCE;
+    if (!text) { toast('Не удалось получить исходный файл страницы', 'err'); return; }
+    download(new Blob([text], { type: 'text/html' }), name);
+    toast('Сохранено: ' + name + ' — откройте его двойным щелчком, интернет не нужен');
+  }
+
   function exportRes() {
     const v = $('#exres').value;
     return v === 'project' ? Graph.state.resolution : +v;
@@ -1010,7 +1027,7 @@ const App = (() => {
 
   return {
     init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId,
-    undo, redo, flush, mtab, isMobile, removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    undo, redo, flush, mtab, isMobile, downloadApp, removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };

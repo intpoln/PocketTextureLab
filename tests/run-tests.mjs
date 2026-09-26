@@ -60,7 +60,7 @@ async function openPage(opts = {}) {
   page.on('request', (r) => { const u = r.url(); if (!/^(file|blob|data):/.test(u)) netRequests.push(u); });
   page.on('pageerror', (e) => pageErrors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') pageErrors.push('console: ' + m.text()); });
-  await page.goto(URL_ + (opts.query || ''));
+  await page.goto(opts.url || URL_ + (opts.query || ''));
   if (!opts.noWait) await page.waitForFunction(() => window.PTL && document.querySelectorAll('.node').length > 0);
   await page.waitForTimeout(300);
   return page;
@@ -1096,6 +1096,21 @@ await test('Телефон: одна панель за раз, нижняя на
   const r2 = await page.evaluate(() => ({ menu: document.body.classList.contains('mmenu'), modal: document.getElementById('modal').classList.contains('show') }));
   ok(hidden && shown && !r2.menu && r2.modal, 'кнопка ☰ раскрывает панель инструментов и сворачивает её после действия', { hidden, shown, ...r2 });
   await page.context().close();
+});
+
+await test('Кнопка «Скачать HTML»: программа сохраняется одним файлом и работает из него', async () => {
+  const page = await openPage();
+  const dl = await downloadExport(page, '#btn-offline');
+  const src = dl.bytes.toString('utf8'), orig = fs.readFileSync(FILE, 'utf8');
+  ok(/^pocket-texture-lab-0\.\d+\.\d+\.html$/.test(dl.name), 'имя файла с версией', dl.name);
+  ok(Math.abs(src.length - orig.length) < orig.length * 0.01 && src.includes('id="ptl-agent-guide"') && src.startsWith('<!doctype html>\n<!--'), 'файл — полная копия программы (с комментарием для агентов и руководством)', [src.length, orig.length]);
+  await page.context().close();
+  const p2 = await openPage({ query: '' , url: 'file://' + dl.path });
+  const info = await p2.evaluate(() => ({ n: PTL.getGraph().nodes.length, v: PTL.version, err: Object.keys(PTL.errors()).length }));
+  const again = await p2.evaluate(() => window.__PTL_SOURCE.length);
+  ok(info.n >= 3 && info.err === 0 && info.v === await p2.evaluate(() => document.querySelector('meta[name=version]').content), 'скачанный файл открывается и считает пример без ошибок', info);
+  ok(Math.abs(again - src.length) < 64, 'из скачанного файла можно снова скачать такую же копию', [again, src.length]);
+  await p2.context().close();
 });
 
 await browser.close();

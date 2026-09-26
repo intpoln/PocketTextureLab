@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Pocket Texture Lab v0.1.8 — offline procedural texture editor in one HTML file.
+  Pocket Texture Lab v0.1.9 — offline procedural texture editor in one HTML file.
   Author: intpoln — https://github.com/intpoln/PocketTextureLab
   FOR AI AGENTS / AUTOMATION: this page exposes a full JavaScript API as
   `window.PTL`. Call `PTL.help()` for the manual (it is also embedded below in
@@ -17,11 +17,14 @@
 <meta name="author" content="intpoln — https://github.com/intpoln/PocketTextureLab">
 <title>Pocket Texture Lab</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232d6fb8'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%2358c27d'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%23e0b04d'/%3E%3C/svg%3E">
-<meta name="version" content="0.1.8">
+<meta name="version" content="0.1.9">
 <script type="text/markdown" id="ptl-changelog">
 # История версий
 
 Пока версия начинается с 0 — программа в активной разработке и может содержать ошибки.
+
+## 0.1.9
+- Кнопка «⬇ Скачать HTML» (и Ctrl+Shift+S): сохраняет всю программу одним файлом для работы без интернета. С сайта скачивается точная копия файла; из уже скачанной копии — снова рабочая копия. Ctrl+S по-прежнему сохраняет проект (.json).
 
 ## 0.1.8
 - Отдельный интерфейс для телефона: на узком экране одна панель на весь экран и нижняя навигация «Граф / Ноды / Превью / Параметры».
@@ -587,7 +590,7 @@ main { position: relative; }
 <div id="agent-note" class="sr-only">Note for AI agents and screen readers: this is Pocket Texture Lab, a procedural texture editor. It is fully scriptable through the JavaScript object window.PTL. Run PTL.help() in the page for the complete manual (also embedded in this document as script#ptl-agent-guide), PTL.examples() for ready texture templates (brick, asphalt, cobblestone, wood, painted metal) and PTL.exportAll() to download the PNG maps.</div>
 <div id="app">
   <header id="toolbar">
-    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.1.8</button></span>
+    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.1.9</button></span>
     <button id="btn-mmenu" title="Меню">☰</button>
     <select id="examples" title="Встроенные примеры, шаблоны текстур и ваши шаблоны"></select>
     <button id="btn-lib" title="Мои пресеты и шаблоны (хранятся в браузере), экспорт/импорт">Библиотека</button>
@@ -605,6 +608,7 @@ main { position: relative; }
     <button id="btn-export" class="primary" title="Экспорт основного Output в PNG">Экспорт PNG</button>
     <button id="btn-export-sel" title="Экспорт результата выбранной ноды в PNG">PNG выбранной</button>
     <span class="sep"></span>
+    <button id="btn-offline" title="Скачать программу одним HTML-файлом для работы без интернета (открывается двойным щелчком)">⬇ Скачать HTML</button>
     <button id="btn-help" title="Справка">Справка</button>
     <button id="btn-keys" title="Горячие клавиши (?)">⌨</button>
     <button id="btn-api" title="Программный интерфейс для скриптов и AI-агентов">API</button>
@@ -696,6 +700,9 @@ main { position: relative; }
 <input type="file" id="file-project" accept=".json,application/json" hidden>
 <input type="file" id="file-image" accept="image/png,image/jpeg,.png,.jpg,.jpeg" hidden>
 <script>
+// Snapshot of this very file, taken before any script touches the DOM: the «Скачать HTML» button saves it,
+// so the app can be downloaded for offline use from the website and from a local copy alike.
+window.__PTL_SOURCE = Array.from(document.childNodes, (n) => n.nodeType === 10 ? '<!doctype html>' : n.nodeType === 8 ? '<!--' + n.data + '-->' : n.outerHTML || '').join('\n') + '\n';
 /*!
  * Pocket Texture Lab — single-file build.
  * Third-party code embedded below:
@@ -6855,6 +6862,7 @@ const App = (() => {
     $('#btn-open').onclick = () => $('#file-project').click();
     $('#file-project').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) openProjectFile(f); };
     $('#btn-save').onclick = () => saveProject();
+    $('#btn-offline').onclick = () => downloadApp();
     $('#btn-undo').onclick = undo;
     $('#btn-redo').onclick = redo;
     $('#res').onchange = () => setResolution(+$('#res').value);
@@ -6891,7 +6899,7 @@ const App = (() => {
   // (Russian ЙЦУКЕН included): Ctrl+Z is the same key as Ctrl+Я.
   const HOTKEYS = [
     ['Ctrl+Z', 'Отменить'], ['Ctrl+Shift+Z / Ctrl+Y', 'Повторить'], ['Ctrl+D', 'Дублировать выбранные ноды (со связями между ними)'], ['Ctrl+A', 'Выделить все ноды'],
-    ['Delete / Backspace', 'Удалить выбранные ноды или связь'], ['Ctrl+S', 'Сохранить проект'], ['Ctrl+O', 'Открыть проект'],
+    ['Delete / Backspace', 'Удалить выбранные ноды или связь'], ['Ctrl+S', 'Сохранить проект'], ['Ctrl+Shift+S', 'Скачать программу (HTML) для офлайн-работы'], ['Ctrl+O', 'Открыть проект'],
     ['Ctrl+E', 'Экспорт PNG основного выхода'], ['F', 'Показать весь граф'], ['Пробел', 'Анимация: воспроизвести / пауза'],
     ['← / →', 'Анимация: предыдущий / следующий кадр'], ['N', 'Окно «Шумы»'], ['E', 'Окно «Эффекты»'],
     ['Ctrl+Enter', 'Применить код в ноде «Код (GLSL)»'], ['Esc', 'Закрыть окно / справку'], ['? (Shift+/)', 'Эта справка по клавишам'],
@@ -6909,6 +6917,7 @@ const App = (() => {
       if (e.key === 'Escape' && $('#modal').classList.contains('show')) { $('#modal').classList.remove('show'); return; }
       if (e.key === 'Escape' && !isTyping(e.target) && state.multi.size) { select(null); return; }
       const mod = e.ctrlKey || e.metaKey, code = e.code;
+      if (mod && e.shiftKey && code === 'KeyS') { e.preventDefault(); downloadApp(); return; }
       if (mod && code === 'KeyS') { e.preventDefault(); saveProject(); return; }
       if (mod && code === 'KeyO') { e.preventDefault(); $('#file-project').click(); return; }
       if (mod && code === 'KeyE') { e.preventDefault(); exportActive(); return; }
@@ -7465,6 +7474,21 @@ const App = (() => {
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
 
+  // The whole program as one HTML file for offline use. On a web server the original bytes are fetched;
+  // under file:// (or if fetch fails) the snapshot taken at page load is used — same markup, same scripts.
+  async function downloadApp() {
+    const name = 'pocket-texture-lab-' + PTL_VERSION + '.html';
+    let text = null;
+    if (/^https?:$/.test(location.protocol)) {
+      try { const r = await fetch(location.href.split('#')[0], { cache: 'no-cache' }); if (r.ok) text = await r.text(); } catch (e) { /* offline: use snapshot */ }
+      if (text && !text.includes('id="ptl-agent-guide"')) text = null;
+    }
+    text = text || window.__PTL_SOURCE;
+    if (!text) { toast('Не удалось получить исходный файл страницы', 'err'); return; }
+    download(new Blob([text], { type: 'text/html' }), name);
+    toast('Сохранено: ' + name + ' — откройте его двойным щелчком, интернет не нужен');
+  }
+
   function exportRes() {
     const v = $('#exres').value;
     return v === 'project' ? Graph.state.resolution : +v;
@@ -7622,7 +7646,7 @@ const App = (() => {
 
   return {
     init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId,
-    undo, redo, flush, mtab, isMobile, removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    undo, redo, flush, mtab, isMobile, downloadApp, removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };
@@ -7903,7 +7927,7 @@ window.PTL = PTL;
 
 // ===== main.js =====
 // Entry point.
-const PTL_VERSION = '0.1.8';
+const PTL_VERSION = '0.1.9';
 (() => {
   const start = () => {
     try {

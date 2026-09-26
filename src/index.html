@@ -50,6 +50,7 @@
     <button id="btn-export" class="primary" title="Экспорт основного Output в PNG">Экспорт PNG</button>
     <button id="btn-export-sel" title="Экспорт результата выбранной ноды в PNG">PNG выбранной</button>
     <span class="sep"></span>
+    <button id="btn-offline" title="Скачать программу одним HTML-файлом для работы без интернета (открывается двойным щелчком)">⬇ Скачать HTML</button>
     <button id="btn-help" title="Справка">Справка</button>
     <button id="btn-keys" title="Горячие клавиши (?)">⌨</button>
     <button id="btn-api" title="Программный интерфейс для скриптов и AI-агентов">API</button>
@@ -141,6 +142,9 @@
 <input type="file" id="file-project" accept=".json,application/json" hidden>
 <input type="file" id="file-image" accept="image/png,image/jpeg,.png,.jpg,.jpeg" hidden>
 <script>
+// Snapshot of this very file, taken before any script touches the DOM: the «Скачать HTML» button saves it,
+// so the app can be downloaded for offline use from the website and from a local copy alike.
+window.__PTL_SOURCE = Array.from(document.childNodes, (n) => n.nodeType === 10 ? '<!doctype html>' : n.nodeType === 8 ? '<!--' + n.data + '-->' : n.outerHTML || '').join('\n') + '\n';
 /*SCRIPTS*/
 </script>
 </body>
