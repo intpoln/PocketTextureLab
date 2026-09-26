@@ -1,5 +1,7 @@
 # Pocket Texture Lab — guide for AI agents and scripts
 
+Author: intpoln — https://github.com/intpoln/PocketTextureLab
+
 Pocket Texture Lab is an offline, single-file, node-based procedural texture
 editor (WebGL2). Everything the UI can do is also available from JavaScript
 through the global object `window.PTL`. If you are an agent driving this page
@@ -144,6 +146,9 @@ Pin kinds (also coloured in the UI): **gray** = one value per pixel (mask/height
 | `gaussian`, `dirblur`, `radialblur` | any → any | Blurs (radii in project pixels). |
 | `normal` | height gray → color | Height → normal map; `strength` (% of width), `convention` gl/dx, `blur`. |
 | `split` / `combine` | any → 4 gray / 4 gray → color | Channel (un)packing; combine presets `orm`, `hdrp`, `custom`. |
+| `fx` | — → color (RGBA, alpha from palette), intensity (gray) | Animated particle/VFX sprites, always looping over the frame cycle: `effect` = flame · fire · explosion · smoke · smokeloop · sparks · sparkloop · lightning · electric · flare · star · shockwave · magic · orb · vortex · laser · slash · cloud · caustics; `stops` palette (gradient with alpha; presets incl. Magma, Fire, Energy, Magic, Electric, Smoke, Sun), `intensity`, `scale`, `loops`, `detail`, `count`, `thick`, `distort`, `twist`, `seed`, `background` transparent/black. One-shot effects (explosion, smoke, sparks, shockwave, slash) play once per cycle. |
+| `glow` | any → any (image+glow), any (glow only) | Bloom: `threshold`, `knee`, `radius` (σ, 3 scales σ/2σ/4σ), `intensity`, `tint`, `alpha` (glow extends sprite alpha). Use after fx/emissive masks. |
+| `polar` | any → any | Strip → circle (`toPolar`, `turns` integer) or circle → strip; e.g. waves → rings for magic circles/portals. |
 | `code` | 4 any → any | Your GLSL per-pixel function (see below). |
 | `output` | any → file | Export target (`filename`). Several outputs allowed; `setActiveOutput`. |
 
@@ -191,7 +196,7 @@ Built-in examples you can read as templates: `PTL.examples()`, `PTL.getExample(i
 `PTL.loadExample(i)`: 0 noise→levels→ramp, 1 noise→blur→normal, 2 masks→ORM, and full texture templates
 (basecolor + normal + ORM outputs, exposed parameters): **3 brick wall, 4 asphalt with cracks, 5 cobblestone,
 6 wood planks, 7 painted metal with chips and scratches**; example 2 = metal panels showing how masks are packed
-into ORM; animated FX flipbooks: **8 fire, 9 smoke puff, 10 energy ring**. Fastest path for a request like «сделай асфальт»:
+into ORM; animated VFX flipbooks: **8 candle flame, 9 explosion with sparks, 10 magic circle, 11 lightning, 12 portal, 13 energy orb**. Fastest path for a request like «сделай асфальт»:
 `PTL.loadExample(4)`, then tune it with `PTL.exposed()` / `PTL.setExposed(label, value)` or `PTL.setParams`.
 
 ## Recipes (node chains; params are good starting points)
@@ -212,9 +217,12 @@ into ORM; animated FX flipbooks: **8 fire, 9 smoke puff, 10 energy ring**. Faste
   (`splatter{pattern:'gauss',count:5,size:0.13,aspect:0.5}` added into the distortion) → `levels` to thin dark lines,
   × fine fibers `noise{type:'value',scale:4,stretch:32}`; planks `tiler{countX:2,countY:6,rowOffset:0.5}`; give each plank
   its own grain with `warp{mode:'directional',angle:90,intensity:0.5}` using tiler output 1 (random per plank) as map.
-- **Fire / smoke / magic flipbooks** (templates 8–10): noise with animated `evolution` 0→1 (+ transform scroll 0→−1)
-  × soft shape/gradient mask → `levels` → `ramp` with alpha → output; `PTL.animation({frames:16,frameSize:256})`,
-  `await PTL.exportSpriteSheet(outId)`.
+- **VFX flipbooks** (examples 8–13: candle flame, explosion + sparks, magic circle, lightning, portal, energy orb):
+  use the `fx` node — `const f = PTL.addNode('fx', {params:{effect:'explosion'}})` (setting `effect` also loads its
+  palette and defaults), combine several with `blend{mode:'screen'}` (e.g. explosion + sparks, orb + electric),
+  tint with `PTL.applyPreset(f, 'Magma')`, then `PTL.animation({frames:64, frameSize:128})` and
+  `await PTL.exportSpriteSheet(outId)`. Custom VFX: animate any params (noise `evolution`, transform offsets) or
+  write a `code` node — the loop phase is not passed to code nodes, so drive them through animated `p1..p4`.
 - **Marble**: `noise{warp:0.7,warpScale:2,fractal:'ridged'}` → `levels` → `ramp` white/grey veins.
 - **Rock / cliff**: `noise{fractal:'ridged',scale:3,octaves:7}` + `voronoi{mode:'crackle',scale:6}` (blend multiply) →
   `warp` by another noise → `normal{strength:8}`; albedo = ramp of height + `hsv` tweak.

@@ -5,14 +5,14 @@ const App = (() => {
   const $ = (s) => document.querySelector(s);
   const state = { selected: null, selectedLink: null, viewPort: 0, interactive: false, playing: false, displayRes: 512, dirty: false, ready: false };
   let evalRaf = 0, idleTimer = 0, thumbQueue = [], thumbTimer = 0;
-  const CAT_ORDER = ['Источники', 'Узоры', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
+  const CAT_ORDER = ['Источники', 'Узоры', 'Эффекты', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
   const KEYWORDS = {
     image: 'png jpeg jpg файл картинка', constant: 'color цвет value', noise: 'perlin value fbm шум worley white ridged billow облака clouds', voronoi: 'cells worley клетки трещины crackle камни',
     shape: 'circle rect ring круг квадрат кольцо эллипс', gradient: 'ramp linear radial angular', levels: 'уровни контраст',
     invert: 'инверсия negative', grayscale: 'desaturate luminance канал channel', ramp: 'colorize градиент палитра gradient map',
     hsv: 'hue saturation value оттенок', blend: 'mix add multiply screen смешать', transform: 'move scale rotate offset сдвиг поворот',
     gaussian: 'blur размытие', dirblur: 'blur motion размытие', radialblur: 'blur zoom spin размытие', normal: 'normal map bump высота',
-    split: 'channels каналы', waves: 'stripes sine полосы дерево мрамор wood marble', tiler: 'tile sampler bricks кирпичи плитка паркет сетка', splatter: 'scatter разброс камни гравий пятна листья царапины stones', warp: 'distort искажение деформация', combine: 'pack orm hdrp mask упаковка', code: 'glsl shader шейдер custom скрипт', output: 'export экспорт',
+    split: 'channels каналы', fx: 'effect vfx particle flipbook sprite огонь пламя взрыв искры молния дым магия портал лазер вспышка каустика эффект частицы', polar: 'polar круг кольцо радиальный', glow: 'glow bloom свечение ореол неон сияние', waves: 'stripes sine полосы дерево мрамор wood marble', tiler: 'tile sampler bricks кирпичи плитка паркет сетка', splatter: 'scatter разброс камни гравий пятна листья царапины stones', warp: 'distort искажение деформация', combine: 'pack orm hdrp mask упаковка', code: 'glsl shader шейдер custom скрипт', output: 'export экспорт',
   };
 
   // ---------------------------------------------------------------- init
@@ -335,6 +335,7 @@ const App = (() => {
       <p>Карты-данные (маски, высота, нормали, упакованные каналы) никогда не проходят гамма-коррекцию. Цветные изображения внутри хранятся в линейном свете (размытие и смешивание физически корректны) и кодируются в sRGB при показе и экспорте. Levels, Invert, HSV, Grayscale и Color Ramp работают со значениями как в файле (sRGB).</p>
       <h3>Бесшовность</h3>
       <p>Шумы и Voronoi в режиме Tileable математически периодичны (целый масштаб). Размытия и Height to Normal в режиме Repeat берут соседей с противоположного края. Поворот, градиенты, Clamp, радиальное размытие и произвольные картинки могут давать шов — у таких нод есть подсказка.</p>
+      <p>Автор: <a href="https://github.com/intpoln/PocketTextureLab" target="_blank" rel="noopener" style="color:var(--acc)">intpoln — github.com/intpoln/PocketTextureLab</a> (исходный код, новые версии, обратная связь).</p>
       <p style="color:var(--fg3)">${GPU.precisionNote} PNG: UPNG.js (MIT, © Photopea) + pako (MIT/Zlib, © Vitaly Puzrin, Andrei Tuputcyn). Полные тексты лицензий — в исходнике страницы.</p>`);
   }
 

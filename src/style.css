@@ -52,6 +52,7 @@ main { flex: 1; display: flex; min-height: 0; }
 .node .head .badge.out { color: var(--warn); }
 .node[data-cat="Источники"] .head { border-top: 2px solid #5fb37a; }
 .node[data-cat="Узоры"] .head { border-top: 2px solid #3fc1b0; }
+.node[data-cat="Эффекты"] .head { border-top: 2px solid #ff7a3d; }
 .node[data-cat="Обработка"] .head { border-top: 2px solid #4ea1ff; }
 .node[data-cat="Размытие"] .head { border-top: 2px solid #b48cf2; }
 .node[data-cat="Нормали"] .head { border-top: 2px solid #8c8cf2; }
@@ -156,3 +157,5 @@ main { flex: 1; display: flex; min-height: 0; }
 #timeline input[type=range] { flex: 1; min-width: 60px; }
 #timeline select { padding: 1px 3px; }
 #preview .bar .sep2 { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
+#author-link { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; color: var(--fg2); text-decoration: none; padding: 3px 8px; border: 1px solid var(--line); border-radius: 4px; }
+#author-link:hover { color: var(--fg); border-color: var(--acc); }

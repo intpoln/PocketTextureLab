@@ -536,6 +536,39 @@ const NODES = {
     },
   },
 
+  glow: {
+    title: 'Свечение (Glow)', cat: 'Размытие', outputs: ['Выход', 'Только свечение'],
+    inputs: [{ label: 'Вход', def: BLACK, defText: 'чёрный (0,0,0,1)' }],
+    desc: 'Ореол вокруг ярких областей (bloom): порог яркости, мягкое многоуровневое размытие, сила и оттенок. Для эффектов, неона, магии, огня; у спрайтов с прозрачностью свечение расширяет альфу.',
+    params: [
+      f('threshold', 'Порог яркости', 0, 1, 0.5, { help: 'Светятся пиксели ярче порога (по максимальному из R, G, B). 0 — светится всё.' }),
+      f('knee', 'Мягкость порога', 0, 0.5, 0.15),
+      f('radius', 'Радиус (σ, px проекта)', 0.5, 64, 10, { step: 0.5, help: 'Складываются три размытия: σ, 2σ и 4σ — плотное ядро и широкий ореол.' }),
+      f('intensity', 'Сила', 0, 8, 1.5),
+      { key: 'tint', label: 'Оттенок свечения', type: 'color', def: [1, 1, 1, 1] },
+      b('alpha', 'Свечение расширяет альфу (спрайты)', true),
+      e('wrap', 'Края', WRAP_OPTS, 'clamp'),
+    ],
+    seamFn: (p) => (p.wrap === 'clamp' ? 'Края в режиме Clamp: для бесшовных текстур выберите Repeat.' : ''),
+    eval(ctx) {
+      const p = ctx.params, sp = ctx.space(0) || 'data';
+      const bright = ctx.temp();
+      const u = { u_thr: p.threshold, u_knee: p.knee };
+      ctx.bindIn(u, 0, 0, 'native');
+      ctx.pass('brightpass', bright, u);
+      const src = { tex: bright, space: sp }, rep = p.wrap === 'repeat';
+      const blurs = [1, 2, 4].map((m) => { const t = ctx.temp(); gaussianInto(ctx, src, 0, t, Math.min(128, ctx.px(p.radius * m)), rep, false); return t; });
+      const tint = sp === 'color' ? p.tint.slice(0, 3).map(ColorUtil.toLin) : p.tint.slice(0, 3);
+      return [0, 1].map((mode) => {
+        const out = ctx.alloc(), w = { u_int: p.intensity, u_tint: tint, u_out: mode, u_alpha: p.alpha };
+        ctx.bindIn(w, 0, 0, 'native');
+        blurs.forEach((t, k) => ctx.bindTex(w, k + 1, { tex: t, space: sp }, 'native'));
+        ctx.pass('glowmix', out, w);
+        return { tex: out, space: sp };
+      });
+    },
+  },
+
   // ---------------------------------------------------------------- normal
   normal: {
     title: 'Высота → Нормаль (Height to Normal)', cat: 'Нормали', outputs: ['Normal'],
@@ -651,6 +684,65 @@ const NODES = {
     },
   },
 
+  // ---------------------------------------------------------------- effects
+  fx: {
+    title: 'Эффект (FX)', cat: 'Эффекты', outputs: ['Цвет', 'Интенсивность'], inputs: [], timeDependent: true,
+    desc: 'Готовые анимированные эффекты для частиц и спрайт-шитов: пламя, огонь, взрыв, дым, искры, молния, электричество, вспышка, блик, ударная волна, магический круг, энергосфера, портал, лазер, слэш, облако, каустика. Всегда бесшовная петля по кадрам.',
+    params: [
+      e('effect', 'Эффект', FX_LIST.map((x) => [x.id, x.title]), 'flame'),
+      { key: 'stops', label: 'Палитра (интенсивность → цвет и альфа)', type: 'ramp', def: fxStops('Огонь (Fire)') },
+      f('intensity', 'Яркость', 0, 4, 1),
+      f('scale', 'Размер', 0.2, 2.5, 1),
+      i('loops', 'Циклов за анимацию', 1, 8, 1, { help: 'Сколько раз эффект повторяется за весь цикл кадров (целое — для бесшовной петли).' }),
+      i('detail', 'Детализация (октавы)', 1, 8, 5),
+      i('count', 'Количество (искры, лучи, рукава, смены формы)', 1, 64, 8, { visible: (p) => fxUses(p.effect, 'count') }),
+      f('thick', 'Толщина', 0, 1, 0.5, { visible: (p) => fxUses(p.effect, 'thick') }),
+      f('distort', 'Искажение', 0, 2, 1, { visible: (p) => fxUses(p.effect, 'distort') }),
+      f('twist', 'Закрутка / поворот', 0, 3, 1, { visible: (p) => fxUses(p.effect, 'twist') }),
+      i('seed', 'Seed', 0, 99999, 1),
+      e('background', 'Фон', [['transparent', 'Прозрачный (альфа из палитры)'], ['black', 'Чёрный (для аддитивного смешивания)']], 'transparent'),
+    ],
+    presetParam: 'effect',
+    presetValues: Object.fromEntries(FX_LIST.map((x) => [x.id, { get stops() { return fxStops(x.palette); }, ...x.defaults }])),
+    presets: [...Object.keys(FX_PALETTES), ...Object.keys(RAMP_PRESETS)].map((name) => ({ label: name, get apply() { return { stops: fxStops(name) }; } })),
+    help: 'Эффект зависит от кадра анимации (таймлайн под предпросмотром появляется сам). Однократные эффекты (взрыв, волна, разлёт искр, слэш) проигрываются от начала до конца за цикл, остальные — бесконечная петля. Выход «Интенсивность» — серая маска для своих Color Ramp, Blend и т.п. Экспорт: кнопка «Спрайт-шит PNG».',
+    seamFn: (p) => (FX_LIST.find((x) => x.id === p.effect) || {}).tile ? '' : 'Эффект центрирован в кадре и не предназначен для повторения как тайл.',
+    eval(ctx) {
+      const p = ctx.params;
+      const fx = FX_LIST.find((x) => x.id === p.effect) || FX_LIST[0];
+      const st = sortStops(p.stops);
+      const pos = [], cols = [];
+      for (let k = 0; k < 8; k++) { const s = st[Math.min(k, st.length - 1)]; pos.push(s.p); cols.push(s.c.slice(0, 4)); }
+      const u = {
+        u_t: Anim.t, u_loops: p.loops, u_seed: p.seed, u_oct: p.detail, u_count: p.count, u_int: p.intensity, u_scale: p.scale,
+        u_thick: p.thick, u_distort: p.distort, u_twist: p.twist, u_edge: fx.edge || 0, u_blackBg: p.background === 'black', u_n: st.length, u_pos: pos, u_cols: cols,
+      };
+      const col = ctx.alloc(), gray = ctx.alloc();
+      ctx.pass('fx_' + fx.id, col, { ...u, u_outMode: 0 }, null, 2);
+      ctx.pass('fx_' + fx.id, gray, { ...u, u_outMode: 1 });
+      return [{ tex: col, space: 'color' }, { tex: gray, space: 'data' }];
+    },
+  },
+
+  polar: {
+    title: 'Полярные координаты (Polar)', cat: 'Обработка', outputs: ['Выход'],
+    inputs: [{ label: 'Вход', def: BLACK, defText: 'чёрный (0,0,0,1)' }],
+    desc: 'Сворачивает полосу в кольцо/круг (для магических кругов, порталов, радиальных узоров) или разворачивает круг обратно в полосу.',
+    params: [
+      e('mode', 'Режим', [['toPolar', 'Полоса → круг'], ['fromPolar', 'Круг → полоса']], 'toPolar'),
+      f('turns', 'Повторов по кругу', 1, 16, 1, { step: 1 }),
+      f('radius', 'Радиус', 0.1, 1, 1),
+    ],
+    help: 'Полоса → круг: ось X входа идёт по кругу (целое число повторов — без шва), ось Y — от внешнего края (верх) к центру (низ).',
+    eval(ctx) {
+      const p = ctx.params, out = ctx.alloc();
+      const u = { u_mode: p.mode === 'toPolar' ? 0 : 1, u_turns: Math.round(p.turns), u_radius: p.radius };
+      ctx.bindIn(u, 0, 0, 'native');
+      ctx.pass('polar', out, u, { u_in0: 'repeat' });
+      return [{ tex: out, space: ctx.space(0) || 'data' }];
+    },
+  },
+
   // ---------------------------------------------------------------- output
   output: {
     title: 'Выход (Output)', cat: 'Выход', outputs: [],
@@ -732,6 +824,8 @@ function gaussianInto(ctx, src, _slot, out, sigma, repeat, alphaAware) {
 }
 
 // Stable sort by position: coincident stops keep list order.
+function fxUses(id, key) { const x = FX_LIST.find((q) => q.id === id); return !!(x && x.uses.includes(key)); }
+
 function sortStops(stops) {
   return stops.map((s, k) => ({ ...s, k })).sort((a, b) => a.p - b.p || a.k - b.k);
 }
@@ -769,6 +863,7 @@ const PORT_KINDS = {
   normal: { in: ['gray'], out: ['color'] }, split: { in: ['any'], out: ['gray', 'gray', 'gray', 'gray'] },
   combine: { in: ['gray', 'gray', 'gray', 'gray'], out: ['color'] }, code: { in: ['any', 'any', 'any', 'any'], out: ['any'] },
   output: { in: ['any'], out: [] },
+  fx: { in: [], out: ['color', 'gray'] }, glow: { in: ['any'], out: ['any', 'any'] }, polar: { in: ['any'], out: ['any'] },
 };
 const KIND_TEXT = { gray: 'оттенки серого', color: 'цвет', any: 'серое или цвет' };
 function portKind(node, dir, k) {

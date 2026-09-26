@@ -862,6 +862,51 @@ await test('Выходы Base Color / Normal / ORM и 3D-превью матер
   await page.context().close();
 });
 
+await test('Нода «Эффект (FX)»: все эффекты, бесшовная петля, альфа; Glow; Polar; ссылка на автора', async () => {
+  const page = await openPage();
+  const r = await page.evaluate(async () => {
+    PTL.newProject(); PTL.setResolution(256);
+    const id = PTL.addNode('fx');
+    const cmp = (a, b) => { let m = 0; for (let i = 0; i < a.length; i++) m = Math.max(m, Math.abs(a[i] - b[i])); return m; };
+    const res = [];
+    for (const fx of FX_LIST) {
+      PTL.setParams(id, { effect: fx.id });
+      const err = PTL.errors()[id];
+      PTL.animation({ frames: 16 });
+      PTL.setFrame(0); const f0 = PTL.render(id, { size: 128 }).rgba;
+      PTL.setFrame(16); const f16 = PTL.render(id, { size: 128 }).rgba;
+      PTL.setFrame(6); const f6 = PTL.render(id, { size: 128 }).rgba;
+      let aMax = 0, border = 0;
+      for (let y = 0; y < 128; y++) for (let x = 0; x < 128; x++) {
+        const a = f6[(y * 128 + x) * 4 + 3]; aMax = Math.max(aMax, a);
+        const edge = fx.edge === 2 ? false : fx.edge === 1 ? (y < 2 || y > 125) : (x < 2 || y < 2 || x > 125 || y > 125);
+        if (edge) border = Math.max(border, a);
+      }
+      res.push({ id: fx.id, err: err || null, loop: cmp(f0, f16), moves: cmp(f0, f6), border, aMax });
+    }
+    PTL.setFrame(0);
+    const w = PTL.addNode('waves', { params: { countX: 8 } }), pol = PTL.addNode('polar');
+    PTL.connect(w, 0, pol, 0);
+    const ps = PTL.stats(pol);
+    const src = PTL.addNode('shape', { params: { sizeX: 0.2, sizeY: 0.2, softness: 0, repeat: false } });
+    const gl = PTL.addNode('glow', { params: { threshold: 0.5, radius: 8, intensity: 2 } });
+    PTL.connect(src, 0, gl, 0);
+    const base = PTL.render(src).rgba, glowed = PTL.render(gl).rgba;
+    const at = (a, x, y) => a[(y * 256 + x) * 4];
+    const glowInfo = { center: [at(base, 128, 128), at(glowed, 128, 128)], near: [at(base, 128 + 40, 128), at(glowed, 128 + 40, 128)], far: at(glowed, 5, 5) };
+    const link = document.getElementById('author-link');
+    return { res, ps, glowInfo, link: link && link.href, anyAnim: document.getElementById('timeline').classList.contains('show') };
+  });
+  const bad = r.res.filter((x) => x.err || x.loop > 1 || x.moves < 10 || x.aMax < 200);
+  ok(bad.length === 0, `все ${r.res.length} эффектов компилируются, анимируются и бесшовно зациклены (кадр 16 = кадр 0)`, bad.length ? bad : r.res.map((x) => x.id).join(','));
+  ok(r.res.every((x) => x.border === 0), 'по краю кадра альфа ровно 0 (нет бледного квадрата вокруг частицы)', r.res.map((x) => [x.id, x.border]));
+  ok(r.anyAnim, 'таймлайн появляется автоматически для эффектов');
+  ok(r.ps.max[0] > 200 && r.ps.min[0] < 30, 'Polar: полосы сворачиваются в кольца', r.ps);
+  ok(r.glowInfo.center[1] === 255 && r.glowInfo.near[0] === 0 && r.glowInfo.near[1] > 20 && r.glowInfo.far < r.glowInfo.near[1], 'Glow: яркая фигура получает ореол, спадающий с расстоянием', r.glowInfo);
+  ok(r.link === 'https://github.com/intpoln/PocketTextureLab', 'ссылка на автора (GitHub) в интерфейсе', r.link);
+  await page.context().close();
+});
+
 await browser.close();
 
 console.log('\n# Внешние запросы: ' + (netRequests.length ? netRequests.join(', ') : 'нет'));

@@ -513,6 +513,53 @@ void main() {
   emit(in0UV(vec2(q.x, -q.y) + 0.5));
 }` };
 
+  S.polar = { nin: 1, body: `
+uniform int u_mode;     // 0 strip -> circle, 1 circle -> strip
+uniform int u_turns;
+uniform float u_radius;
+void main() {
+  vec2 uv = pixUV();
+  if (u_mode == 0) {
+    vec2 d = vec2(uv.x - 0.5, 0.5 - uv.y);
+    float r = length(d) * 2.0 / u_radius;
+    float a = atan(d.y, d.x) / (2.0 * PI) + 0.5;
+    if (r > 1.0) { emit(vec4(0.0, 0.0, 0.0, 0.0)); return; }
+    emit(in0UV(vec2(fract(a * float(u_turns)), 1.0 - r)));
+  } else {
+    float a = (uv.x / float(u_turns) - 0.5) * 2.0 * PI, r = (1.0 - uv.y) * 0.5 * u_radius;
+    emit(in0UV(vec2(0.5 + r * cos(a), 0.5 - r * sin(a))));
+  }
+}` };
+
+  // Glow: bright pass (alpha-weighted so invisible pixels do not glow) ...
+  S.brightpass = { nin: 1, body: `
+uniform float u_thr;
+uniform float u_knee;
+void main() {
+  vec4 c = in0(pix());
+  float l = max(max(c.r, c.g), c.b);
+  float k = smoothstep(u_thr - u_knee, u_thr + u_knee, l);
+  emit(vec4(c.rgb * c.a * k, c.a * k));
+}` };
+  // ... and combine: base (straight alpha) + premultiplied glow of 3 blur radii.
+  S.glowmix = { nin: 4, body: `
+uniform float u_int;
+uniform vec3 u_tint;
+uniform int u_out;      // 0 image + glow, 1 glow only
+uniform bool u_alpha;   // glow extends alpha (sprites)
+void main() {
+  ivec2 p = pix();
+  vec4 b = in0(p);
+  vec4 g = (in1(p) + in2(p) * 0.7 + in3(p) * 0.45) / 2.15 * u_int;
+  g.rgb *= u_tint;
+  if (u_out == 1) { float a = clamp(g.a, 0.0, 1.0); emit(vec4(a > 1e-5 ? g.rgb / a : vec3(0.0), a)); return; }
+  vec3 prem = b.rgb * b.a + g.rgb;
+  float a = u_alpha ? clamp(b.a + g.a * (1.0 - b.a), 0.0, 1.0) : b.a;
+  vec3 rgb = a > 1e-5 ? prem / max(a, 1e-5) : vec3(0.0);
+  if (!u_alpha) rgb = b.rgb + g.rgb;
+  emit(vec4(rgb, a));
+}` };
+
   S.copy = { nin: 1, body: `
 void main() { emit(in0(pix())); }` };
 
@@ -716,5 +763,7 @@ void main() {
     return src + s.body;
   }
 
-  return { build, registerCustom, names: Object.keys(S), nin: (n) => S[n].nin };
+  function define(name, def) { S[name] = def; }
+
+  return { build, registerCustom, define, names: Object.keys(S), nin: (n) => S[n].nin };
 })();

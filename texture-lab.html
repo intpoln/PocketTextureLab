@@ -1,6 +1,7 @@
 <!doctype html>
 <!--
   Pocket Texture Lab — offline procedural texture editor in one HTML file.
+  Author: intpoln — https://github.com/intpoln/PocketTextureLab
   FOR AI AGENTS / AUTOMATION: this page exposes a full JavaScript API as
   `window.PTL`. Call `PTL.help()` for the manual (it is also embedded below in
   <script type="text/markdown" id="ptl-agent-guide">). Typical flow:
@@ -13,10 +14,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Pocket Texture Lab: offline node-based procedural texture editor (WebGL2). Agents: use window.PTL (PTL.help()).">
 <meta name="ai-agent-api" content="window.PTL; manual: PTL.help() or #ptl-agent-guide">
+<meta name="author" content="intpoln — https://github.com/intpoln/PocketTextureLab">
 <title>Pocket Texture Lab</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232d6fb8'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%2358c27d'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%23e0b04d'/%3E%3C/svg%3E">
 <script type="text/markdown" id="ptl-agent-guide">
 # Pocket Texture Lab — guide for AI agents and scripts
+
+Author: intpoln — https://github.com/intpoln/PocketTextureLab
 
 Pocket Texture Lab is an offline, single-file, node-based procedural texture
 editor (WebGL2). Everything the UI can do is also available from JavaScript
@@ -162,6 +166,9 @@ Pin kinds (also coloured in the UI): **gray** = one value per pixel (mask/height
 | `gaussian`, `dirblur`, `radialblur` | any → any | Blurs (radii in project pixels). |
 | `normal` | height gray → color | Height → normal map; `strength` (% of width), `convention` gl/dx, `blur`. |
 | `split` / `combine` | any → 4 gray / 4 gray → color | Channel (un)packing; combine presets `orm`, `hdrp`, `custom`. |
+| `fx` | — → color (RGBA, alpha from palette), intensity (gray) | Animated particle/VFX sprites, always looping over the frame cycle: `effect` = flame · fire · explosion · smoke · smokeloop · sparks · sparkloop · lightning · electric · flare · star · shockwave · magic · orb · vortex · laser · slash · cloud · caustics; `stops` palette (gradient with alpha; presets incl. Magma, Fire, Energy, Magic, Electric, Smoke, Sun), `intensity`, `scale`, `loops`, `detail`, `count`, `thick`, `distort`, `twist`, `seed`, `background` transparent/black. One-shot effects (explosion, smoke, sparks, shockwave, slash) play once per cycle. |
+| `glow` | any → any (image+glow), any (glow only) | Bloom: `threshold`, `knee`, `radius` (σ, 3 scales σ/2σ/4σ), `intensity`, `tint`, `alpha` (glow extends sprite alpha). Use after fx/emissive masks. |
+| `polar` | any → any | Strip → circle (`toPolar`, `turns` integer) or circle → strip; e.g. waves → rings for magic circles/portals. |
 | `code` | 4 any → any | Your GLSL per-pixel function (see below). |
 | `output` | any → file | Export target (`filename`). Several outputs allowed; `setActiveOutput`. |
 
@@ -209,7 +216,7 @@ Built-in examples you can read as templates: `PTL.examples()`, `PTL.getExample(i
 `PTL.loadExample(i)`: 0 noise→levels→ramp, 1 noise→blur→normal, 2 masks→ORM, and full texture templates
 (basecolor + normal + ORM outputs, exposed parameters): **3 brick wall, 4 asphalt with cracks, 5 cobblestone,
 6 wood planks, 7 painted metal with chips and scratches**; example 2 = metal panels showing how masks are packed
-into ORM; animated FX flipbooks: **8 fire, 9 smoke puff, 10 energy ring**. Fastest path for a request like «сделай асфальт»:
+into ORM; animated VFX flipbooks: **8 candle flame, 9 explosion with sparks, 10 magic circle, 11 lightning, 12 portal, 13 energy orb**. Fastest path for a request like «сделай асфальт»:
 `PTL.loadExample(4)`, then tune it with `PTL.exposed()` / `PTL.setExposed(label, value)` or `PTL.setParams`.
 
 ## Recipes (node chains; params are good starting points)
@@ -230,9 +237,12 @@ into ORM; animated FX flipbooks: **8 fire, 9 smoke puff, 10 energy ring**. Faste
   (`splatter{pattern:'gauss',count:5,size:0.13,aspect:0.5}` added into the distortion) → `levels` to thin dark lines,
   × fine fibers `noise{type:'value',scale:4,stretch:32}`; planks `tiler{countX:2,countY:6,rowOffset:0.5}`; give each plank
   its own grain with `warp{mode:'directional',angle:90,intensity:0.5}` using tiler output 1 (random per plank) as map.
-- **Fire / smoke / magic flipbooks** (templates 8–10): noise with animated `evolution` 0→1 (+ transform scroll 0→−1)
-  × soft shape/gradient mask → `levels` → `ramp` with alpha → output; `PTL.animation({frames:16,frameSize:256})`,
-  `await PTL.exportSpriteSheet(outId)`.
+- **VFX flipbooks** (examples 8–13: candle flame, explosion + sparks, magic circle, lightning, portal, energy orb):
+  use the `fx` node — `const f = PTL.addNode('fx', {params:{effect:'explosion'}})` (setting `effect` also loads its
+  palette and defaults), combine several with `blend{mode:'screen'}` (e.g. explosion + sparks, orb + electric),
+  tint with `PTL.applyPreset(f, 'Magma')`, then `PTL.animation({frames:64, frameSize:128})` and
+  `await PTL.exportSpriteSheet(outId)`. Custom VFX: animate any params (noise `evolution`, transform offsets) or
+  write a `code` node — the loop phase is not passed to code nodes, so drive them through animated `p1..p4`.
 - **Marble**: `noise{warp:0.7,warpScale:2,fractal:'ridged'}` → `levels` → `ramp` white/grey veins.
 - **Rock / cliff**: `noise{fractal:'ridged',scale:3,octaves:7}` + `voronoi{mode:'crackle',scale:6}` (blend multiply) →
   `warp` by another noise → `normal{strength:8}`; albedo = ramp of height + `hsv` tweak.
@@ -327,6 +337,7 @@ main { flex: 1; display: flex; min-height: 0; }
 .node .head .badge.out { color: var(--warn); }
 .node[data-cat="Источники"] .head { border-top: 2px solid #5fb37a; }
 .node[data-cat="Узоры"] .head { border-top: 2px solid #3fc1b0; }
+.node[data-cat="Эффекты"] .head { border-top: 2px solid #ff7a3d; }
 .node[data-cat="Обработка"] .head { border-top: 2px solid #4ea1ff; }
 .node[data-cat="Размытие"] .head { border-top: 2px solid #b48cf2; }
 .node[data-cat="Нормали"] .head { border-top: 2px solid #8c8cf2; }
@@ -431,6 +442,8 @@ main { flex: 1; display: flex; min-height: 0; }
 #timeline input[type=range] { flex: 1; min-width: 60px; }
 #timeline select { padding: 1px 3px; }
 #preview .bar .sep2 { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
+#author-link { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; color: var(--fg2); text-decoration: none; padding: 3px 8px; border: 1px solid var(--line); border-radius: 4px; }
+#author-link:hover { color: var(--fg); border-color: var(--acc); }
 
 </style>
 </head>
@@ -457,6 +470,7 @@ main { flex: 1; display: flex; min-height: 0; }
     <span class="sep"></span>
     <button id="btn-help" title="Справка">Справка</button>
     <button id="btn-api" title="Программный интерфейс для скриптов и AI-агентов">API</button>
+    <a id="author-link" href="https://github.com/intpoln/PocketTextureLab" target="_blank" rel="noopener" title="Автор: intpoln — исходный код, новые версии и обратная связь на GitHub"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>intpoln</a>
   </header>
   <main>
     <aside id="catalog">
@@ -2144,6 +2158,53 @@ void main() {
   emit(in0UV(vec2(q.x, -q.y) + 0.5));
 }` };
 
+  S.polar = { nin: 1, body: `
+uniform int u_mode;     // 0 strip -> circle, 1 circle -> strip
+uniform int u_turns;
+uniform float u_radius;
+void main() {
+  vec2 uv = pixUV();
+  if (u_mode == 0) {
+    vec2 d = vec2(uv.x - 0.5, 0.5 - uv.y);
+    float r = length(d) * 2.0 / u_radius;
+    float a = atan(d.y, d.x) / (2.0 * PI) + 0.5;
+    if (r > 1.0) { emit(vec4(0.0, 0.0, 0.0, 0.0)); return; }
+    emit(in0UV(vec2(fract(a * float(u_turns)), 1.0 - r)));
+  } else {
+    float a = (uv.x / float(u_turns) - 0.5) * 2.0 * PI, r = (1.0 - uv.y) * 0.5 * u_radius;
+    emit(in0UV(vec2(0.5 + r * cos(a), 0.5 - r * sin(a))));
+  }
+}` };
+
+  // Glow: bright pass (alpha-weighted so invisible pixels do not glow) ...
+  S.brightpass = { nin: 1, body: `
+uniform float u_thr;
+uniform float u_knee;
+void main() {
+  vec4 c = in0(pix());
+  float l = max(max(c.r, c.g), c.b);
+  float k = smoothstep(u_thr - u_knee, u_thr + u_knee, l);
+  emit(vec4(c.rgb * c.a * k, c.a * k));
+}` };
+  // ... and combine: base (straight alpha) + premultiplied glow of 3 blur radii.
+  S.glowmix = { nin: 4, body: `
+uniform float u_int;
+uniform vec3 u_tint;
+uniform int u_out;      // 0 image + glow, 1 glow only
+uniform bool u_alpha;   // glow extends alpha (sprites)
+void main() {
+  ivec2 p = pix();
+  vec4 b = in0(p);
+  vec4 g = (in1(p) + in2(p) * 0.7 + in3(p) * 0.45) / 2.15 * u_int;
+  g.rgb *= u_tint;
+  if (u_out == 1) { float a = clamp(g.a, 0.0, 1.0); emit(vec4(a > 1e-5 ? g.rgb / a : vec3(0.0), a)); return; }
+  vec3 prem = b.rgb * b.a + g.rgb;
+  float a = u_alpha ? clamp(b.a + g.a * (1.0 - b.a), 0.0, 1.0) : b.a;
+  vec3 rgb = a > 1e-5 ? prem / max(a, 1e-5) : vec3(0.0);
+  if (!u_alpha) rgb = b.rgb + g.rgb;
+  emit(vec4(rgb, a));
+}` };
+
   S.copy = { nin: 1, body: `
 void main() { emit(in0(pix())); }` };
 
@@ -2347,7 +2408,9 @@ void main() {
     return src + s.body;
   }
 
-  return { build, registerCustom, names: Object.keys(S), nin: (n) => S[n].nin };
+  function define(name, def) { S[name] = def; }
+
+  return { build, registerCustom, define, names: Object.keys(S), nin: (n) => S[n].nin };
 })();
 
 
@@ -2756,6 +2819,410 @@ const Assets = (() => {
 
   return { add, get, texture, dropGpu, serialize, loadSerialized, toBase64, fromBase64, all: store };
 })();
+
+
+// ===== fx.js =====
+// ---------------------------------------------------------------------------
+// Effect generators for particle sprites / flipbooks ("Эффект (FX)" node).
+// Each effect is a GLSL function float fx(vec2 p, float T) returning an
+// intensity (can exceed 1), p = centred coordinates (-1..1, y up), T = loop
+// phase 0..1. Everything that moves is periodic in T (time is a periodic axis
+// of the noise, scrolling/rotation goes by whole periods), so T = 1 equals
+// T = 0 and sprite-sheet loops are seamless. "One-shot" effects (explosion,
+// shockwave, burst, slash) play from start to end over the loop.
+// ---------------------------------------------------------------------------
+const FX_HELPERS = `
+uniform float u_t;
+uniform int u_loops;
+uniform int u_seed;
+uniform int u_oct;
+uniform int u_count;
+uniform float u_int;
+uniform float u_scale;
+uniform float u_thick;
+uniform float u_distort;
+uniform float u_twist;
+uniform int u_outMode;
+uniform bool u_blackBg;
+uniform int u_edge;      // 0 fade to all frame edges, 1 only top/bottom, 2 none (tileable)
+uniform int u_n;
+uniform float u_pos[8];
+uniform vec4 u_cols[8];
+const float TAU = 6.28318530718;
+float hsh(ivec3 c) {
+  uvec3 r = pcg3(uvec3(c) + uvec3(0u, 0u, uint(u_seed) * 7919u));
+  return float(r.x >> 8u) / 16777215.0;
+}
+float hsh1(int i, int k) { return hsh(ivec3(i, k, 977)); }
+ivec3 wr(ivec3 c, ivec3 P) {
+  return ivec3(P.x > 0 ? ((c.x % P.x) + P.x) % P.x : c.x + 65536,
+               P.y > 0 ? ((c.y % P.y) + P.y) % P.y : c.y + 65536,
+               P.z > 0 ? ((c.z % P.z) + P.z) % P.z : c.z + 65536);
+}
+// value noise, periodic along axes with P > 0 (P = 0: not periodic)
+float vn3(vec3 p, ivec3 P) {
+  ivec3 i = ivec3(floor(p)); vec3 f = fract(p);
+  vec3 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  float a = hsh(wr(i, P)), b = hsh(wr(i + ivec3(1, 0, 0), P));
+  float c = hsh(wr(i + ivec3(0, 1, 0), P)), d = hsh(wr(i + ivec3(1, 1, 0), P));
+  float e = hsh(wr(i + ivec3(0, 0, 1), P)), f2 = hsh(wr(i + ivec3(1, 0, 1), P));
+  float g = hsh(wr(i + ivec3(0, 1, 1), P)), h = hsh(wr(i + ivec3(1, 1, 1), P));
+  return mix(mix(mix(a, b, u.x), mix(c, d, u.x), u.y), mix(mix(e, f2, u.x), mix(g, h, u.x), u.y), u.z);
+}
+float fbm3(vec3 p, ivec3 P, int oct) {
+  float s = 0.0, a = 0.5, n = 0.0;
+  for (int o = 0; o < 8; o++) {
+    if (o >= oct) break;
+    s += a * vn3(p, P); n += a; a *= 0.5; p = p * 2.0 + vec3(13.0, 7.0, 0.0); P *= 2;
+  }
+  return s / n;
+}
+vec2 rot(vec2 p, float a) { float c = cos(a), s = sin(a); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }
+float sdSeg(vec2 p, vec2 a, vec2 b) { vec2 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-8), 0.0, 1.0); return length(pa - ba * h); }
+float glowL(float d, float w) { return w / (d + w); }
+float bandMask(float d, float r, float w) { return exp(-pow((d - r) / max(w, 1e-4), 2.0)); }
+float easeOut(float t) { return 1.0 - pow(1.0 - t, 3.0); }
+`;
+
+const FX_LIST = [
+  { id: 'flame', title: 'Пламя (свеча)', palette: 'Огонь (Fire)', uses: ['distort'], defaults: { distort: 1 },
+    note: 'Язык пламени, дрожит и поднимается вверх. Петля.', glsl: `
+float fx(vec2 p, float T) {
+  vec2 q = p / u_scale;
+  float y = (q.y + 0.8) / 1.65;
+  float n = fbm3(vec3(q.x * 2.2, q.y * 2.0 - T * 6.0, T * 3.0), ivec3(0, 6, 3), u_oct);
+  float m = fbm3(vec3(q.x * 5.0, q.y * 4.0 - T * 12.0, T * 3.0 + 5.0), ivec3(0, 12, 3), 3);
+  float w = 0.3 * pow(max(1.0 - y, 0.0), 0.75) * smoothstep(-0.02, 0.2, y);
+  float dx = q.x + (n - 0.5) * 0.55 * u_distort * y;
+  float body = 1.0 - smoothstep(w * 0.25, w + 0.03, abs(dx));
+  float fade = 1.0 - smoothstep(0.45, 1.05, y + (m - 0.5) * 0.5 * u_distort);
+  float core = exp(-pow(dx * 6.0, 2.0)) * (1.0 - smoothstep(0.05, 0.55, y));
+  float base = smoothstep(0.0, 0.12, y);
+  return (body * fade * (0.45 + 0.55 * n) + core * body * 0.45) * base;
+}` },
+  { id: 'fire', edge: 1, title: 'Огонь (стена)', palette: 'Огонь (Fire)', uses: ['distort'], defaults: { distort: 1 },
+    note: 'Широкий бушующий огонь снизу вверх. Петля, по горизонтали бесшовен.', glsl: `
+float fx(vec2 p, float T) {
+  vec2 q = p / u_scale;
+  float y01 = (q.y + 1.0) * 0.5;
+  float n = fbm3(vec3((p.x + 1.0) * 4.0, q.y * 1.5 - T * 6.0, T * 3.0), ivec3(8, 6, 3), u_oct);
+  float m = fbm3(vec3((p.x + 1.0) * 8.0, q.y * 3.0 - T * 12.0, T * 3.0 + 3.0), ivec3(16, 12, 3), 4);
+  float tongues = n * 0.75 + m * 0.25;
+  float h = (1.0 - y01) * 1.25;
+  float v = h * h * (0.35 + 1.3 * tongues * u_distort) - (1.0 - tongues) * 0.35;
+  return clamp(v, 0.0, 1.6) * smoothstep(-0.02, 0.1, y01 + 0.02);
+}` },
+  { id: 'explosion', title: 'Взрыв (однократно)', palette: 'Огонь (Fire)', oneShot: true, uses: ['distort'], defaults: { distort: 1 },
+    note: 'Огненный шар: вспышка, рост, остывание и исчезновение за один цикл.', glsl: `
+float fx(vec2 p, float T) {
+  vec2 q = p / u_scale;
+  float d = length(q);
+  float r = 0.12 + 0.72 * sqrt(T);
+  float n = fbm3(vec3(q * 2.6, T * 3.0), ivec3(0, 0, 3), u_oct);
+  float n2 = fbm3(vec3(q * 6.0 + 4.0, T * 3.0 + 7.0), ivec3(0, 0, 3), 4);
+  float edge = r * (0.7 + 0.6 * n * u_distort);
+  float ball = 1.0 - smoothstep(edge * 0.55, edge, d);
+  float heat = mix(1.3, 0.25, smoothstep(0.0, 0.85, T));
+  float body = ball * heat * (0.45 + 0.9 * n2) * (1.0 - smoothstep(0.7, 1.0, T));
+  float flash = exp(-d * 5.0) * (1.0 - smoothstep(0.0, 0.18, T)) * 1.6;
+  return body + flash;
+}` },
+  { id: 'smoke', title: 'Дым (клуб, однократно)', palette: 'Дым (Smoke)', oneShot: true, uses: ['distort'], defaults: { distort: 1 },
+    note: 'Клуб дыма расширяется, поднимается и рассеивается.', glsl: `
+float fx(vec2 p, float T) {
+  vec2 q = p / u_scale - vec2(0.0, T * 0.35);
+  float d = length(q);
+  float r = 0.25 + 0.55 * easeOut(T);
+  float n = fbm3(vec3(q * 2.2, T * 3.0), ivec3(0, 0, 3), u_oct);
+  float b = abs(2.0 * n - 1.0);
+  float puff = 1.0 - smoothstep(r * 0.4, r * (0.9 + 0.5 * n * u_distort), d);
+  return puff * (0.35 + 0.9 * (1.0 - b)) * (1.0 - smoothstep(0.35, 1.0, T)) * smoothstep(0.0, 0.08, T);
+}` },
+  { id: 'smokeloop', title: 'Дым (столб, петля)', palette: 'Дым (Smoke)', uses: ['distort'], defaults: { distort: 1 },
+    note: 'Поднимающийся столб дыма. Петля.', glsl: `
+float fx(vec2 p, float T) {
+  vec2 q = p / u_scale;
+  float y01 = (q.y + 1.0) * 0.5;
+  float n = fbm3(vec3(q.x * 2.0, q.y * 2.0 - T * 4.0, T * 3.0), ivec3(0, 4, 3), u_oct);
+  float w = 0.18 + 0.35 * y01;
+  float dx = q.x + (n - 0.5) * 0.8 * u_distort * y01;
+  float col = 1.0 - smoothstep(w * 0.3, w, abs(dx));
+  return col * (0.3 + n) * (1.0 - smoothstep(0.6, 1.0, y01)) * smoothstep(0.0, 0.15, y01);
+}` },
+  { id: 'sparks', title: 'Искры (разлёт)', palette: 'Огонь (Fire)', oneShot: true, uses: ['count', 'thick'], defaults: { count: 28, thick: 0.5 },
+    note: 'Искры разлетаются от центра и гаснут.', glsl: `
+float fx(vec2 p, float T) {
+  vec2 q = p / u_scale;
+  float v = 0.0;
+  for (int i = 0; i < 64; i++) {
+    if (i >= u_count) break;
+    float a = hsh1(i, 1) * TAU, sp = 0.35 + 0.65 * hsh1(i, 2);
+    vec2 dir = vec2(cos(a), sin(a));
+    float tt = easeOut(T) * sp;
+    vec2 head = dir * tt * 0.95 - vec2(0.0, T * T * 0.25 * hsh1(i, 3));
+    vec2 tail = head - dir * (0.05 + 0.25 * sp) * (1.0 - T);
+    float d = sdSeg(q, tail, head);
+    v += glowL(d, 0.004 + 0.01 * u_thick) * 0.35 * pow(1.0 - T, 1.3);
+  }
+  v += exp(-length(q) * 8.0) * (1.0 - smoothstep(0.0, 0.2, T)) * 1.5;
+  return v;
+}` },
+  { id: 'sparkloop', title: 'Искры (фонтан, петля)', palette: 'Огонь (Fire)', uses: ['count', 'thick'], defaults: { count: 40, thick: 0.5 },
+    note: 'Непрерывный поток искр вверх. Петля.', glsl: `
+float fx(vec2 p, float T) {
+  vec2 q = p / u_scale;
+  float v = 0.0;
+  for (int i = 0; i < 64; i++) {
+    if (i >= u_count) break;
+    float ph = fract(T + hsh1(i, 4));
+    float a = 1.5708 + (hsh1(i, 1) - 0.5) * 1.2, sp = 0.8 + 0.8 * hsh1(i, 2);
+    vec2 vel = vec2(cos(a), sin(a)) * sp;
+    vec2 head = vec2(0.0, -0.9) + vel * ph * 1.3 - vec2(0.0, ph * ph * 1.1);
+    vec2 tail = head - normalize(vel - vec2(0.0, ph * 2.2)) * 0.08;
+    v += glowL(sdSeg(q, tail, head), 0.004 + 0.01 * u_thick) * 0.4 * (1.0 - ph);
+  }
+  return v;
+}` },
+  { id: 'lightning', title: 'Молния', palette: 'Электричество (Electric)', uses: ['count', 'distort', 'thick'], defaults: { count: 4, distort: 1, thick: 0.5 },
+    note: 'Ломаный разряд сверху вниз с ветвлением; меняет форму «Количество» раз за цикл.', glsl: `
+float bolt(vec2 q, int k, float off, float amp, float y0, float y1) {
+  if (q.y > y0 || q.y < y1) return 0.0;
+  float x = (fbm3(vec3(q.y * 3.0, float(k) * 7.3 + off, 0.0), ivec3(0), 6) - 0.5) * 1.1 * amp;
+  return glowL(abs(q.x - x), 0.004 + 0.012 * u_thick) * smoothstep(y1, y1 + 0.1, q.y) * (1.0 - smoothstep(y0 - 0.1, y0, q.y));
+}
+float fx(vec2 p, float T) {
+  vec2 q = p / u_scale;
+  int k = int(floor(T * float(u_count)));
+  float f = fract(T * float(u_count));
+  float flick = (0.6 + 0.4 * hsh1(k, 9)) * (1.0 - 0.75 * f);
+  float v = bolt(q, k, 0.0, u_distort, 0.95, -0.95);
+  float by = mix(0.4, -0.2, hsh1(k, 3));
+  float bx = (fbm3(vec3(by * 3.0, float(k) * 7.3, 0.0), ivec3(0), 6) - 0.5) * 1.1 * u_distort;
+  v += 0.6 * bolt(vec2(q.x - bx - (by - q.y) * (hsh1(k, 5) - 0.5) * 1.2, q.y), k, 3.1, u_distort * 0.6, by, by - 0.6);
+  v += exp(-abs(q.x) * 3.0) * 0.15;
+  return v * flick;
+}` },
+  { id: 'electric', title: 'Электрические дуги', palette: 'Электричество (Electric)', uses: ['count', 'distort', 'thick'], defaults: { count: 6, distort: 1, thick: 0.4 },
+    note: 'Разряды от центра во все стороны. Петля.', glsl: `
+float fx(vec2 p, float T) {
+  vec2 q = p / u_scale;
+  float r = length(q), a = atan(q.y, q.x);
+  float v = exp(-r * 7.0) * 1.2;
+  int k = int(floor(T * 8.0));
+  for (int i = 0; i < 16; i++) {
+    if (i >= u_count) break;
+    float a0 = (float(i) + hsh1(i, k)) / float(u_count) * TAU;
+    float off = (fbm3(vec3(r * 4.0, float(i) * 5.1, T * 8.0), ivec3(0, 0, 8), 5) - 0.5) * 0.9 * u_distort;
+    float da = abs(mod(a - a0 - off + 3.14159265, TAU) - 3.14159265);
+    float len = 0.45 + 0.45 * hsh1(i, k + 31);
+    v += glowL(da * r, 0.003 + 0.01 * u_thick) * 0.6 * (1.0 - smoothstep(len * 0.6, len, r));
+  }
+  return v;
+}` },
+  { id: 'flare', title: 'Вспышка / солнце', palette: 'Солнце (Sun)', uses: ['count', 'twist'], defaults: { count: 24, twist: 1 },
+    note: 'Яркое ядро, ореол и лучи, медленно вращающиеся. Петля.', glsl: `
+float fx(vec2 p, float T) {
+  vec2 q = p / u_scale;
+  float d = length(q), a = atan(q.y, q.x) / TAU + 0.5;
+  float N = float(u_count);
+  float turns = floor(u_twist + 0.5);
+  float rays = fbm3(vec3(a * N + T * N * turns, d * 1.5, T * 3.0), ivec3(u_count, 0, 3), 3);
+  float rr = fbm3(vec3(a * N * 2.0, 0.0, T * 3.0 + 9.0), ivec3(u_count * 2, 0, 3), 2);
+  float r = pow(rays, 3.0) * 1.6 + pow(rr, 6.0);
+  float core = exp(-d * d * 30.0) * 1.6;
+  float halo = 0.06 / (d + 0.06);
+  return core + halo * 0.8 + r * halo * 1.8 * (1.0 - smoothstep(0.4, 1.0, d));
+}` },
+  { id: 'star', title: 'Блик-звезда (мерцание)', palette: 'Солнце (Sun)', uses: ['count', 'thick'], defaults: { count: 4, thick: 0.5 },
+    note: 'Острые лучи-блики, пульсирующие. Петля.', glsl: `
+float fx(vec2 p, float T) {
+  float pulse = 0.55 + 0.45 * sin(T * TAU);
+  vec2 q = p / (u_scale * (0.6 + 0.4 * pulse));
+  float d = length(q), a = atan(q.y, q.x);
+  float N = float(u_count);
+  float spikes = pow(abs(cos(a * N * 0.5)), 60.0 / (0.3 + u_thick)) * exp(-d * 2.2);
+  float spikes2 = pow(abs(cos(a * N * 0.5 + 3.14159 / N)), 120.0) * exp(-d * 5.0) * 0.5;
+  return (spikes + spikes2) * 1.4 + exp(-d * d * 60.0) * 1.5 + 0.02 / (d + 0.02) * 0.4 * pulse;
+}` },
+  { id: 'shockwave', title: 'Ударная волна (однократно)', palette: 'Энергия (Energy)', oneShot: true, uses: ['thick', 'distort'], defaults: { thick: 0.5, distort: 0.5 },
+    note: 'Расширяющееся кольцо, истончается и гаснет.', glsl: `
+float fx(vec2 p, float T) {
+  vec2 q = p / u_scale;
+  float d = length(q);
+  float r = 0.08 + 0.85 * easeOut(T);
+  float n = fbm3(vec3(q * 4.0, T * 3.0), ivec3(0, 0, 3), u_oct);
+  float w = mix(0.14, 0.02, T) * (0.4 + u_thick);
+  float ring = bandMask(d + (n - 0.5) * 0.08 * u_distort, r, w);
+  float inner = (1.0 - smoothstep(0.0, r, d)) * 0.25 * (1.0 - T);
+  return (ring * 1.4 + inner) * pow(1.0 - T, 1.2);
+}` },
+  { id: 'magic', title: 'Магический круг', palette: 'Магия (Magic)', uses: ['count', 'thick'], defaults: { count: 5, thick: 0.5 },
+    note: 'Кольца, руны и звезда, вращающиеся в разные стороны. Петля.', glsl: `
+float star(vec2 q, float R, int n) {
+  float best = 1e9;
+  for (int i = 0; i < 12; i++) {
+    if (i >= n) break;
+    int stp = n % 2 == 1 ? (n - 1) / 2 : max(1, n / 2 - 1);
+    float a0 = float(i) / float(n) * TAU + 1.5708, a1 = float(i + stp) / float(n) * TAU + 1.5708;
+    best = min(best, sdSeg(q, R * vec2(cos(a0), sin(a0)), R * vec2(cos(a1), sin(a1))));
+  }
+  return best;
+}
+float fx(vec2 p, float T) {
+  vec2 q = p / u_scale;
+  float d = length(q);
+  float w = 0.004 + 0.008 * u_thick;
+  float v = 0.0;
+  v += glowL(abs(d - 0.92), w) + glowL(abs(d - 0.8), w) + glowL(abs(d - 0.56), w) + glowL(abs(d - 0.5), w) * 0.7;
+  vec2 q1 = rot(q, T * TAU);
+  float a1 = atan(q1.y, q1.x) / TAU + 0.5;
+  float cells = 48.0;
+  float cid = floor(a1 * cells);
+  float glyph = step(0.35, hsh1(int(cid), 11)) * step(0.15, fract(a1 * cells)) * step(fract(a1 * cells), 0.8);
+  float band = step(0.82, d) * step(d, 0.9);
+  float gy = fract((d - 0.82) / 0.08 * 2.0);
+  v += band * glyph * step(0.2, gy) * step(gy, 0.8) * 0.9;
+  vec2 q2 = rot(q, -T * TAU / float(max(u_count, 1)));
+  v += glowL(star(q2, 0.5, u_count), w) * 0.9;
+  vec2 q3 = rot(q, T * TAU);
+  float a3 = atan(q3.y, q3.x) / TAU + 0.5;
+  v += step(0.62, d) * step(d, 0.74) * step(0.5, fract(a3 * float(u_count) * 2.0)) * step(abs(d - 0.68), 0.01) * 1.2;
+  v += glowL(abs(d - 0.68), w * 0.6) * 0.4;
+  return v * 0.8 * (0.85 + 0.15 * sin(T * TAU * 2.0));
+}` },
+  { id: 'orb', title: 'Энергетическая сфера', palette: 'Энергия (Energy)', uses: ['distort', 'thick'], defaults: { distort: 1, thick: 0.5 },
+    note: 'Шар с бегущими по поверхности разрядами и свечением. Петля.', glsl: `
+float fx(vec2 p, float T) {
+  vec2 q = p / u_scale;
+  float d = length(q);
+  float R = 0.6;
+  float inside = 1.0 - smoothstep(R - 0.02, R, d);
+  float z = sqrt(max(R * R - d * d, 0.0));
+  vec3 s = vec3(rot(q, T * TAU), z) * 2.5;
+  float n = fbm3(s, ivec3(0, 0, 0), u_oct);
+  float n2 = fbm3(vec3(rot(q, -T * TAU) * 3.0, T * 3.0), ivec3(0, 0, 3), u_oct);
+  float arcs = pow(1.0 - abs(2.0 * n2 - 1.0), 8.0 / (0.3 + u_thick)) * u_distort;
+  float body = inside * (0.25 + 0.35 * n + arcs * 1.2);
+  float rim = glowL(abs(d - R), 0.02) * 0.6;
+  float glow = 0.04 / (max(d - R, 0.0) + 0.04) * (1.0 - inside) * 0.5;
+  return body + rim + glow * step(R, d);
+}` },
+  { id: 'vortex', title: 'Портал / вихрь', palette: 'Магия (Magic)', uses: ['count', 'twist', 'distort'], defaults: { count: 4, twist: 1, distort: 0.6 },
+    note: 'Спиральные рукава, закручивающиеся к центру. Петля.', glsl: `
+float fx(vec2 p, float T) {
+  vec2 q = p / u_scale;
+  float r = length(q), a = atan(q.y, q.x) / TAU;
+  float N = float(u_count);
+  float n = fbm3(vec3(a * 8.0 + T * 8.0, r * 3.0, T * 3.0), ivec3(8, 0, 3), u_oct);
+  float s = fract(a * N + log(r + 0.05) * u_twist * 2.0 - T + (n - 0.5) * u_distort);
+  float arms = pow(1.0 - abs(2.0 * s - 1.0), 3.0);
+  float ring = smoothstep(0.08, 0.3, r) * (1.0 - smoothstep(0.7, 0.95, r));
+  float hole = 1.0 - smoothstep(0.0, 0.25, r);
+  return arms * ring * (0.6 + 0.8 * n) + glowL(abs(r - 0.25), 0.03) * 0.6 - hole * 0.3 + 0.05;
+}` },
+  { id: 'laser', edge: 1, title: 'Лазерный луч', palette: 'Энергия (Energy)', uses: ['thick', 'distort'], defaults: { thick: 0.5, distort: 0.7 },
+    note: 'Горизонтальный луч с ядром и мерцающим ореолом; бесшовен по X. Петля.', glsl: `
+float fx(vec2 p, float T) {
+  float y = p.y / u_scale;
+  float n = fbm3(vec3((p.x + 1.0) * 4.0 - T * 16.0, y * 6.0, T * 3.0), ivec3(8, 0, 3), u_oct);
+  float w = 0.03 + 0.08 * u_thick;
+  float wob = y + (n - 0.5) * 0.12 * u_distort;
+  float core = exp(-pow(wob / (w * 0.35), 2.0)) * 1.5;
+  float halo = exp(-pow(wob / (w * 2.5), 2.0)) * (0.35 + 0.6 * n);
+  return core + halo;
+}` },
+  { id: 'slash', title: 'Удар / слэш (однократно)', palette: 'Энергия (Energy)', oneShot: true, uses: ['thick', 'twist'], defaults: { thick: 0.5, twist: 0.5 },
+    note: 'Дуга удара оружием: быстро прочерчивается и тает.', glsl: `
+float fx(vec2 p, float T) {
+  vec2 q = rot(p / u_scale, -0.5 + u_twist);
+  float r = length(q), a = atan(q.y, q.x);
+  float sweep = mix(-1.6, 2.0, easeOut(min(T * 1.6, 1.0)));
+  float tailLen = 1.6;
+  float along = clamp((sweep - a) / tailLen, 0.0, 1.0) * step(a, sweep) * step(-1.7, a);
+  float w = (0.02 + 0.08 * u_thick) * (1.0 - along) * (1.0 - T * 0.5);
+  float band = exp(-pow((r - 0.7) / max(w, 1e-3), 2.0));
+  float fade = 1.0 - smoothstep(0.45, 1.0, T);
+  return band * (1.0 - along) * 1.6 * fade * step(0.0001, 1.0 - along);
+}` },
+  { id: 'cloud', title: 'Облако', palette: 'Дым (Smoke)', uses: ['distort'], defaults: { distort: 1 },
+    note: 'Мягкое клубящееся облако, медленно меняется. Петля.', glsl: `
+float fx(vec2 p, float T) {
+  vec2 q = p / u_scale;
+  float n = fbm3(vec3(q * 1.8, T * 3.0), ivec3(0, 0, 3), u_oct);
+  float b = 1.0 - abs(2.0 * fbm3(vec3(q * 3.5 + 11.0, T * 3.0 + 2.0), ivec3(0, 0, 3), u_oct) - 1.0);
+  float mask = 1.0 - smoothstep(0.35, 0.95 + (n - 0.5) * 0.6 * u_distort, length(q * vec2(0.8, 1.2)));
+  return mask * (0.3 + n * 0.8 + b * 0.4);
+}` },
+  { id: 'caustics', edge: 2, title: 'Каустика (вода)', palette: 'Вода (Water)', tile: true, uses: ['count', 'thick'], defaults: { count: 5, thick: 0.5 },
+    note: 'Световая сетка на дне воды. Бесшовна по UV и по времени. Петля.', glsl: `
+float cellF(vec2 uv, int N, float T, int layer) {
+  vec2 g = uv * float(N);
+  ivec2 ic = ivec2(floor(g)); vec2 f = fract(g);
+  float f1 = 9.0, f2 = 9.0;
+  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+    ivec2 c = ((ic + ivec2(i, j)) % N + N) % N;
+    float h1 = hsh(ivec3(c, layer)), h2 = hsh(ivec3(c, layer + 50)), h3 = hsh(ivec3(c, layer + 99));
+    float ang = h3 * TAU + T * TAU * (h1 > 0.5 ? 1.0 : -1.0);
+    vec2 o = vec2(0.5) + 0.3 * vec2(cos(ang), sin(ang)) + (vec2(h1, h2) - 0.5) * 0.3;
+    float d = length(vec2(i, j) + o - f);
+    if (d < f1) { f2 = f1; f1 = d; } else if (d < f2) f2 = d;
+  }
+  return f2 - f1;
+}
+float fx(vec2 p, float T) {
+  vec2 uv = pixUV();
+  int N = max(1, u_count);
+  float w = 0.05 + 0.15 * u_thick;
+  float a = 1.0 - smoothstep(0.0, w, cellF(uv, N, T, 1));
+  float b = 1.0 - smoothstep(0.0, w * 0.6, cellF(uv, N * 2, T, 7));
+  return pow(a, 1.5) * 0.9 + pow(b, 3.0) * 0.2 + 0.1;
+}` },
+];
+
+const FX_PALETTES = {
+  'Дым (Smoke)': ['#1c1c1c', '#4a4a4a', '#8a8a8a', '#c8c8c8', '#f0f0f0'],
+  'Электричество (Electric)': ['#000010', '#1a1a80', '#3b6cff', '#9fd4ff', '#ffffff'],
+  'Солнце (Sun)': ['#200500', '#8a2200', '#ff7a00', '#ffd060', '#fff8e0', '#ffffff'],
+  'Энергия (Energy)': ['#000814', '#063a70', '#1f8fff', '#6ff3ff', '#ffffff'],
+  'Магия (Magic)': ['#0a0014', '#3a0a6e', '#9a2dff', '#ff6af0', '#ffe6ff'],
+};
+
+for (const fx of FX_LIST) {
+  SHADERS.define('fx_' + fx.id, {
+    nin: 0,
+    body: FX_HELPERS + fx.glsl + `
+void main() {
+  vec2 uv = pixUV();
+  vec2 p = vec2(uv.x - 0.5, 0.5 - uv.y) * 2.0;
+  float T = fract(u_t * float(u_loops));
+  float v = max(fx(p, T), 0.0) * u_int;
+  // sprites must end exactly transparent at the frame border (no faint square in engines)
+  float e = u_edge == 0 ? max(abs(p.x), abs(p.y)) : u_edge == 1 ? abs(p.y) : 0.0;
+  v *= 1.0 - smoothstep(0.82, 0.98, e);
+  v = max(v - 0.004, 0.0) / 0.996;
+  if (u_outMode == 1) { float g = clamp(v, 0.0, 1.0); emit(vec4(g, g, g, 1.0)); return; }
+  float t = clamp(v, 0.0, 1.0);
+  vec4 c = u_cols[0];
+  if (t >= u_pos[u_n - 1]) c = u_cols[u_n - 1];
+  else for (int i = 0; i < 7; i++) {
+    if (i + 1 >= u_n) break;
+    if (t >= u_pos[i] && t < u_pos[i + 1]) { c = mix(u_cols[i], u_cols[i + 1], (t - u_pos[i]) / (u_pos[i + 1] - u_pos[i])); break; }
+  }
+  if (u_blackBg) c = vec4(c.rgb * c.a, 1.0);
+  emit(c);
+}`,
+  });
+}
+
+// Palette stops for an effect: colours from a gradient preset, alpha ramps up
+// from transparent (straight, not premultiplied alpha).
+function fxStops(name) {
+  const hex = FX_PALETTES[name] || RAMP_PRESETS[name] || RAMP_PRESETS['Огонь (Fire)'];
+  return hex.map((h, k) => {
+    const p = hex.length > 1 ? k / (hex.length - 1) : 0;
+    return { p: +p.toFixed(4), c: [...ColorUtil.fromHex(h), Math.min(1, +(p * 2.2).toFixed(3))] };
+  });
+}
 
 
 // ===== nodes.js =====
@@ -3297,6 +3764,39 @@ const NODES = {
     },
   },
 
+  glow: {
+    title: 'Свечение (Glow)', cat: 'Размытие', outputs: ['Выход', 'Только свечение'],
+    inputs: [{ label: 'Вход', def: BLACK, defText: 'чёрный (0,0,0,1)' }],
+    desc: 'Ореол вокруг ярких областей (bloom): порог яркости, мягкое многоуровневое размытие, сила и оттенок. Для эффектов, неона, магии, огня; у спрайтов с прозрачностью свечение расширяет альфу.',
+    params: [
+      f('threshold', 'Порог яркости', 0, 1, 0.5, { help: 'Светятся пиксели ярче порога (по максимальному из R, G, B). 0 — светится всё.' }),
+      f('knee', 'Мягкость порога', 0, 0.5, 0.15),
+      f('radius', 'Радиус (σ, px проекта)', 0.5, 64, 10, { step: 0.5, help: 'Складываются три размытия: σ, 2σ и 4σ — плотное ядро и широкий ореол.' }),
+      f('intensity', 'Сила', 0, 8, 1.5),
+      { key: 'tint', label: 'Оттенок свечения', type: 'color', def: [1, 1, 1, 1] },
+      b('alpha', 'Свечение расширяет альфу (спрайты)', true),
+      e('wrap', 'Края', WRAP_OPTS, 'clamp'),
+    ],
+    seamFn: (p) => (p.wrap === 'clamp' ? 'Края в режиме Clamp: для бесшовных текстур выберите Repeat.' : ''),
+    eval(ctx) {
+      const p = ctx.params, sp = ctx.space(0) || 'data';
+      const bright = ctx.temp();
+      const u = { u_thr: p.threshold, u_knee: p.knee };
+      ctx.bindIn(u, 0, 0, 'native');
+      ctx.pass('brightpass', bright, u);
+      const src = { tex: bright, space: sp }, rep = p.wrap === 'repeat';
+      const blurs = [1, 2, 4].map((m) => { const t = ctx.temp(); gaussianInto(ctx, src, 0, t, Math.min(128, ctx.px(p.radius * m)), rep, false); return t; });
+      const tint = sp === 'color' ? p.tint.slice(0, 3).map(ColorUtil.toLin) : p.tint.slice(0, 3);
+      return [0, 1].map((mode) => {
+        const out = ctx.alloc(), w = { u_int: p.intensity, u_tint: tint, u_out: mode, u_alpha: p.alpha };
+        ctx.bindIn(w, 0, 0, 'native');
+        blurs.forEach((t, k) => ctx.bindTex(w, k + 1, { tex: t, space: sp }, 'native'));
+        ctx.pass('glowmix', out, w);
+        return { tex: out, space: sp };
+      });
+    },
+  },
+
   // ---------------------------------------------------------------- normal
   normal: {
     title: 'Высота → Нормаль (Height to Normal)', cat: 'Нормали', outputs: ['Normal'],
@@ -3412,6 +3912,65 @@ const NODES = {
     },
   },
 
+  // ---------------------------------------------------------------- effects
+  fx: {
+    title: 'Эффект (FX)', cat: 'Эффекты', outputs: ['Цвет', 'Интенсивность'], inputs: [], timeDependent: true,
+    desc: 'Готовые анимированные эффекты для частиц и спрайт-шитов: пламя, огонь, взрыв, дым, искры, молния, электричество, вспышка, блик, ударная волна, магический круг, энергосфера, портал, лазер, слэш, облако, каустика. Всегда бесшовная петля по кадрам.',
+    params: [
+      e('effect', 'Эффект', FX_LIST.map((x) => [x.id, x.title]), 'flame'),
+      { key: 'stops', label: 'Палитра (интенсивность → цвет и альфа)', type: 'ramp', def: fxStops('Огонь (Fire)') },
+      f('intensity', 'Яркость', 0, 4, 1),
+      f('scale', 'Размер', 0.2, 2.5, 1),
+      i('loops', 'Циклов за анимацию', 1, 8, 1, { help: 'Сколько раз эффект повторяется за весь цикл кадров (целое — для бесшовной петли).' }),
+      i('detail', 'Детализация (октавы)', 1, 8, 5),
+      i('count', 'Количество (искры, лучи, рукава, смены формы)', 1, 64, 8, { visible: (p) => fxUses(p.effect, 'count') }),
+      f('thick', 'Толщина', 0, 1, 0.5, { visible: (p) => fxUses(p.effect, 'thick') }),
+      f('distort', 'Искажение', 0, 2, 1, { visible: (p) => fxUses(p.effect, 'distort') }),
+      f('twist', 'Закрутка / поворот', 0, 3, 1, { visible: (p) => fxUses(p.effect, 'twist') }),
+      i('seed', 'Seed', 0, 99999, 1),
+      e('background', 'Фон', [['transparent', 'Прозрачный (альфа из палитры)'], ['black', 'Чёрный (для аддитивного смешивания)']], 'transparent'),
+    ],
+    presetParam: 'effect',
+    presetValues: Object.fromEntries(FX_LIST.map((x) => [x.id, { get stops() { return fxStops(x.palette); }, ...x.defaults }])),
+    presets: [...Object.keys(FX_PALETTES), ...Object.keys(RAMP_PRESETS)].map((name) => ({ label: name, get apply() { return { stops: fxStops(name) }; } })),
+    help: 'Эффект зависит от кадра анимации (таймлайн под предпросмотром появляется сам). Однократные эффекты (взрыв, волна, разлёт искр, слэш) проигрываются от начала до конца за цикл, остальные — бесконечная петля. Выход «Интенсивность» — серая маска для своих Color Ramp, Blend и т.п. Экспорт: кнопка «Спрайт-шит PNG».',
+    seamFn: (p) => (FX_LIST.find((x) => x.id === p.effect) || {}).tile ? '' : 'Эффект центрирован в кадре и не предназначен для повторения как тайл.',
+    eval(ctx) {
+      const p = ctx.params;
+      const fx = FX_LIST.find((x) => x.id === p.effect) || FX_LIST[0];
+      const st = sortStops(p.stops);
+      const pos = [], cols = [];
+      for (let k = 0; k < 8; k++) { const s = st[Math.min(k, st.length - 1)]; pos.push(s.p); cols.push(s.c.slice(0, 4)); }
+      const u = {
+        u_t: Anim.t, u_loops: p.loops, u_seed: p.seed, u_oct: p.detail, u_count: p.count, u_int: p.intensity, u_scale: p.scale,
+        u_thick: p.thick, u_distort: p.distort, u_twist: p.twist, u_edge: fx.edge || 0, u_blackBg: p.background === 'black', u_n: st.length, u_pos: pos, u_cols: cols,
+      };
+      const col = ctx.alloc(), gray = ctx.alloc();
+      ctx.pass('fx_' + fx.id, col, { ...u, u_outMode: 0 }, null, 2);
+      ctx.pass('fx_' + fx.id, gray, { ...u, u_outMode: 1 });
+      return [{ tex: col, space: 'color' }, { tex: gray, space: 'data' }];
+    },
+  },
+
+  polar: {
+    title: 'Полярные координаты (Polar)', cat: 'Обработка', outputs: ['Выход'],
+    inputs: [{ label: 'Вход', def: BLACK, defText: 'чёрный (0,0,0,1)' }],
+    desc: 'Сворачивает полосу в кольцо/круг (для магических кругов, порталов, радиальных узоров) или разворачивает круг обратно в полосу.',
+    params: [
+      e('mode', 'Режим', [['toPolar', 'Полоса → круг'], ['fromPolar', 'Круг → полоса']], 'toPolar'),
+      f('turns', 'Повторов по кругу', 1, 16, 1, { step: 1 }),
+      f('radius', 'Радиус', 0.1, 1, 1),
+    ],
+    help: 'Полоса → круг: ось X входа идёт по кругу (целое число повторов — без шва), ось Y — от внешнего края (верх) к центру (низ).',
+    eval(ctx) {
+      const p = ctx.params, out = ctx.alloc();
+      const u = { u_mode: p.mode === 'toPolar' ? 0 : 1, u_turns: Math.round(p.turns), u_radius: p.radius };
+      ctx.bindIn(u, 0, 0, 'native');
+      ctx.pass('polar', out, u, { u_in0: 'repeat' });
+      return [{ tex: out, space: ctx.space(0) || 'data' }];
+    },
+  },
+
   // ---------------------------------------------------------------- output
   output: {
     title: 'Выход (Output)', cat: 'Выход', outputs: [],
@@ -3493,6 +4052,8 @@ function gaussianInto(ctx, src, _slot, out, sigma, repeat, alphaAware) {
 }
 
 // Stable sort by position: coincident stops keep list order.
+function fxUses(id, key) { const x = FX_LIST.find((q) => q.id === id); return !!(x && x.uses.includes(key)); }
+
 function sortStops(stops) {
   return stops.map((s, k) => ({ ...s, k })).sort((a, b) => a.p - b.p || a.k - b.k);
 }
@@ -3530,6 +4091,7 @@ const PORT_KINDS = {
   normal: { in: ['gray'], out: ['color'] }, split: { in: ['any'], out: ['gray', 'gray', 'gray', 'gray'] },
   combine: { in: ['gray', 'gray', 'gray', 'gray'], out: ['color'] }, code: { in: ['any', 'any', 'any', 'any'], out: ['any'] },
   output: { in: ['any'], out: [] },
+  fx: { in: [], out: ['color', 'gray'] }, glow: { in: ['any'], out: ['any', 'any'] }, polar: { in: ['any'], out: ['any'] },
 };
 const KIND_TEXT = { gray: 'оттенки серого', color: 'цвет', any: 'серое или цвет' };
 function portKind(node, dir, k) {
@@ -3786,7 +4348,7 @@ const Anim = (() => {
     const a = Graph.state.animation;
     return { frames: a.frames, frameSize: a.frameSize, fps: a.fps, layout: LAYOUTS[a.frames] };
   }
-  function isAnimated(node) { return !!(node.anim && Object.keys(node.anim).length); }
+  function isAnimated(node) { return !!((node.anim && Object.keys(node.anim).length) || (NODES[node.type] && NODES[node.type].timeDependent)); }
   function any() { for (const n of Graph.nodes.values()) if (isAnimated(n)) return true; return false; }
 
   // Parameters of `node` at time t (the node's own params are the start values).
@@ -3794,7 +4356,7 @@ const Anim = (() => {
     if (!isAnimated(node)) return node.params;
     const p = { ...node.params };
     const defs = NODES[node.type].params;
-    for (const key of Object.keys(node.anim)) {
+    for (const key of Object.keys(node.anim || {})) {
       const a = node.anim[key], d = defs.find((q) => q.key === key);
       if (!d) continue;
       const f = (CURVES[a.curve] || CURVES.linear)(t);
@@ -5497,16 +6059,28 @@ const EXAMPLES = [
     graph: {"resolution":1024,"activeOutput":"n20","selected":null,"nodes":[{"id":"n1","type":"noise","x":0,"y":0,"params":{"type":"value","fractal":"fbm","tile":true,"scale":32,"grain":1,"stretch":0.125,"seed":2,"octaves":4,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n2","type":"ramp","x":230,"y":0,"params":{"stops":[{"p":0,"c":[0.42,0.43,0.45,1]},{"p":1,"c":[0.7,0.71,0.73,1]}],"interp":"linear","source":"L","space":"color"}},{"id":"n3","type":"noise","x":0,"y":174,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":4,"grain":1,"stretch":1,"seed":17,"octaves":7,"persistence":0.5,"lacunarity":2,"warp":0.4,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n4","type":"levels","x":230,"y":174,"params":{"inBlack":0.3,"inWhite":0.36,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n5","type":"splatter","x":0,"y":348,"params":{"pattern":"square","count":60,"size":0.18,"aspect":0.02,"sizeRand":0.5,"bevel":0,"rotation":25,"rotRand":25,"valRand":0.6,"blend":"max","seed":8}},{"id":"n6","type":"invert","x":230,"y":348,"params":{"r":true,"g":true,"b":true,"a":false}},{"id":"n7","type":"blend","x":460,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n8","type":"constant","x":0,"y":522,"params":{"mode":"color","value":0.5,"color":[0.16,0.36,0.55,1]}},{"id":"n9","type":"blend","x":690,"y":0,"params":{"mode":"mix","opacity":1,"alpha":"same"}},{"id":"n10","type":"noise","x":0,"y":696,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":6,"grain":1,"stretch":1,"seed":40,"octaves":6,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false}},{"id":"n11","type":"levels","x":230,"y":522,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.75,"outWhite":1,"alpha":false}},{"id":"n12","type":"blend","x":920,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n13","type":"levels","x":690,"y":174,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.5,"outWhite":0.6,"alpha":false}},{"id":"n14","type":"blend","x":920,"y":174,"params":{"mode":"multiply","opacity":0.1,"alpha":"same"}},{"id":"n15","type":"levels","x":230,"y":696,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.8,"outWhite":1,"alpha":false}},{"id":"n16","type":"levels","x":690,"y":348,"params":{"inBlack":0,"inWhite":1,"gamma":1,"outBlack":0.35,"outWhite":0.7,"alpha":false}},{"id":"n17","type":"invert","x":690,"y":522,"params":{"r":true,"g":true,"b":true,"a":false}},{"id":"n18","type":"normal","x":1150,"y":0,"params":{"source":"L","strength":3,"blur":0.6,"invert":false,"convention":"gl","invertX":false,"wrap":"repeat"}},{"id":"n19","type":"combine","x":920,"y":348,"params":{"preset":"orm","rSrc":"R","rVal":1,"rInv":false,"gSrc":"R","gVal":0.5,"gInv":false,"bSrc":"R","bVal":0,"bInv":false,"aSrc":"C","aVal":1,"aInv":false}},{"id":"n20","type":"output","x":1150,"y":174,"params":{"usage":"basecolor","normalY":"auto","filename":"painted_metal_basecolor"}},{"id":"n21","type":"output","x":1380,"y":0,"params":{"usage":"normal","normalY":"auto","filename":"painted_metal_normal"}},{"id":"n22","type":"output","x":1150,"y":348,"params":{"usage":"orm","normalY":"auto","filename":"painted_metal_orm"}}],"links":[{"from":"n1","fromPort":0,"to":"n2","toPort":0},{"from":"n3","fromPort":0,"to":"n4","toPort":0},{"from":"n5","fromPort":0,"to":"n6","toPort":0},{"from":"n4","fromPort":0,"to":"n7","toPort":0},{"from":"n6","fromPort":0,"to":"n7","toPort":1},{"from":"n2","fromPort":0,"to":"n9","toPort":0},{"from":"n8","fromPort":0,"to":"n9","toPort":1},{"from":"n7","fromPort":0,"to":"n9","toPort":2},{"from":"n10","fromPort":0,"to":"n11","toPort":0},{"from":"n9","fromPort":0,"to":"n12","toPort":0},{"from":"n11","fromPort":0,"to":"n12","toPort":1},{"from":"n7","fromPort":0,"to":"n13","toPort":0},{"from":"n13","fromPort":0,"to":"n14","toPort":0},{"from":"n1","fromPort":0,"to":"n14","toPort":1},{"from":"n10","fromPort":0,"to":"n15","toPort":0},{"from":"n7","fromPort":0,"to":"n16","toPort":0},{"from":"n7","fromPort":0,"to":"n17","toPort":0},{"from":"n14","fromPort":0,"to":"n18","toPort":0},{"from":"n15","fromPort":0,"to":"n19","toPort":0},{"from":"n16","fromPort":0,"to":"n19","toPort":1},{"from":"n17","fromPort":0,"to":"n19","toPort":2},{"from":"n12","fromPort":0,"to":"n20","toPort":0},{"from":"n18","fromPort":0,"to":"n21","toPort":0},{"from":"n19","fromPort":0,"to":"n22","toPort":0}],"exposed":[{"node":"n8","key":"color","label":"Цвет краски"},{"node":"n4","key":"inBlack","label":"Облезлость краски"},{"node":"n3","key":"seed","label":"Seed сколов"},{"node":"n5","key":"count","label":"Царапины: количество"},{"node":"n5","key":"rotation","label":"Царапины: угол"},{"node":"n11","key":"outBlack","label":"Чистота (1 = без грязи)"},{"node":"n18","key":"strength","label":"Сила нормали"}],"animation":{"frames":16,"frameSize":256,"fps":24}},
   },
   {
-    title: "Огонь (флипбук)", fx: true,
-    graph: {"resolution":512,"activeOutput":"n10","selected":null,"nodes":[{"id":"n1","type":"noise","x":0,"y":0,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":3,"grain":1,"stretch":2,"seed":6,"octaves":5,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false},"anim":{"evolution":{"to":1,"curve":"linear"}}},{"id":"n2","type":"transform","x":230,"y":0,"params":{"offsetX":0,"offsetY":0,"scaleX":1,"scaleY":1,"rotation":0,"wrap":"repeat"},"anim":{"offsetY":{"to":-1,"curve":"linear"}}},{"id":"n3","type":"shape","x":0,"y":174,"params":{"shape":"ellipse","sizeX":0.55,"sizeY":0.74,"posX":0.5,"posY":0.55,"rotation":0,"softness":0.28,"thickness":0.08,"repeat":false}},{"id":"n4","type":"gradient","x":0,"y":348,"params":{"type":"linear","centerX":0.5,"centerY":0.5,"rotation":90,"scale":1,"repeat":"clamp","invert":true}},{"id":"n5","type":"levels","x":230,"y":174,"params":{"inBlack":0,"inWhite":1,"gamma":0.6,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n6","type":"blend","x":460,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n7","type":"blend","x":690,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n8","type":"levels","x":920,"y":0,"params":{"inBlack":0.06,"inWhite":0.34,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n9","type":"ramp","x":1150,"y":0,"params":{"stops":[{"p":0,"c":[0,0,0,0]},{"p":0.18,"c":[0.22745098039215686,0.0196078431372549,0,0.5]},{"p":0.4,"c":[0.7686274509803922,0.16470588235294117,0,1]},{"p":0.65,"c":[1,0.5411764705882353,0.06274509803921569,1]},{"p":0.85,"c":[1,0.8235294117647058,0.2901960784313726,1]},{"p":1,"c":[1,0.984313725490196,0.8784313725490196,1]}],"interp":"smooth","source":"L","space":"color"}},{"id":"n10","type":"output","x":1380,"y":0,"params":{"usage":"generic","normalY":"auto","filename":"fire_flipbook"}}],"links":[{"from":"n1","fromPort":0,"to":"n2","toPort":0},{"from":"n4","fromPort":0,"to":"n5","toPort":0},{"from":"n2","fromPort":0,"to":"n6","toPort":0},{"from":"n3","fromPort":0,"to":"n6","toPort":1},{"from":"n6","fromPort":0,"to":"n7","toPort":0},{"from":"n5","fromPort":0,"to":"n7","toPort":1},{"from":"n7","fromPort":0,"to":"n8","toPort":0},{"from":"n8","fromPort":0,"to":"n9","toPort":0},{"from":"n9","fromPort":0,"to":"n10","toPort":0}],"exposed":[{"node":"n1","key":"scale","label":"Размер языков"},{"node":"n3","key":"sizeX","label":"Ширина пламени"},{"node":"n8","key":"inWhite","label":"Яркость"},{"node":"n9","key":"stops","label":"Цвета огня"},{"node":"n1","key":"seed","label":"Seed"}],"animation":{"frames":16,"frameSize":256,"fps":24}},
+    title: "Пламя свечи (флипбук)", fx: true,
+    graph: {"resolution":512,"activeOutput":"n2","selected":null,"nodes":[{"id":"n1","type":"fx","x":0,"y":0,"params":{"effect":"flame","stops":[{"p":0,"c":[0,0,0,0]},{"p":0.1429,"c":[0.23137254901960785,0,0,0.314]},{"p":0.2857,"c":[0.5411764705882353,0.0392156862745098,0,0.629]},{"p":0.4286,"c":[0.8313725490196079,0.16470588235294117,0,0.943]},{"p":0.5714,"c":[1,0.41568627450980394,0,1]},{"p":0.7143,"c":[1,0.6901960784313725,0,1]},{"p":0.8571,"c":[1,0.8941176470588236,0.3607843137254902,1]},{"p":1,"c":[1,1,1,1]}],"intensity":1,"scale":1,"loops":1,"detail":5,"count":8,"thick":0.5,"distort":1,"twist":1,"seed":1,"background":"transparent"}},{"id":"n2","type":"output","x":230,"y":0,"params":{"usage":"generic","normalY":"auto","filename":"candle_flame"}}],"links":[{"from":"n1","fromPort":0,"to":"n2","toPort":0}],"exposed":[{"node":"n1","key":"scale","label":"Размер"},{"node":"n1","key":"distort","label":"Колыхание"},{"node":"n1","key":"intensity","label":"Яркость"},{"node":"n1","key":"stops","label":"Палитра"}],"animation":{"frames":32,"frameSize":128,"fps":24}},
   },
   {
-    title: "Дым (флипбук)", fx: true,
-    graph: {"resolution":512,"activeOutput":"n9","selected":null,"nodes":[{"id":"n1","type":"noise","x":0,"y":0,"params":{"type":"perlin","fractal":"billow","tile":true,"scale":4,"grain":1,"stretch":1,"seed":14,"octaves":6,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false},"anim":{"evolution":{"to":1,"curve":"linear"}}},{"id":"n2","type":"noise","x":0,"y":174,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":2,"grain":1,"stretch":1,"seed":3,"octaves":3,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false},"anim":{"evolution":{"to":1,"curve":"linear"}}},{"id":"n3","type":"warp","x":230,"y":0,"params":{"mode":"gradient","intensity":0.02,"angle":0,"wrap":"repeat"}},{"id":"n4","type":"gradient","x":0,"y":348,"params":{"type":"radial","centerX":0.5,"centerY":0.5,"rotation":0,"scale":1.05,"repeat":"clamp","invert":true}},{"id":"n5","type":"levels","x":230,"y":174,"params":{"inBlack":0,"inWhite":1,"gamma":0.7,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n6","type":"blend","x":460,"y":0,"params":{"mode":"multiply","opacity":1,"alpha":"same"}},{"id":"n7","type":"levels","x":690,"y":0,"params":{"inBlack":0.04,"inWhite":0.4,"gamma":1,"outBlack":0,"outWhite":1,"alpha":false}},{"id":"n8","type":"ramp","x":920,"y":0,"params":{"stops":[{"p":0,"c":[0.16470588235294117,0.16470588235294117,0.16470588235294117,0]},{"p":0.25,"c":[0.41568627450980394,0.41568627450980394,0.41568627450980394,0.6]},{"p":0.6,"c":[0.7058823529411765,0.7058823529411765,0.7058823529411765,0.92]},{"p":1,"c":[0.9490196078431372,0.9490196078431372,0.9490196078431372,1]}],"interp":"smooth","source":"L","space":"color"}},{"id":"n9","type":"output","x":1150,"y":0,"params":{"usage":"generic","normalY":"auto","filename":"smoke_flipbook"}}],"links":[{"from":"n1","fromPort":0,"to":"n3","toPort":0},{"from":"n2","fromPort":0,"to":"n3","toPort":1},{"from":"n4","fromPort":0,"to":"n5","toPort":0},{"from":"n3","fromPort":0,"to":"n6","toPort":0},{"from":"n5","fromPort":0,"to":"n6","toPort":1},{"from":"n6","fromPort":0,"to":"n7","toPort":0},{"from":"n7","fromPort":0,"to":"n8","toPort":0},{"from":"n8","fromPort":0,"to":"n9","toPort":0}],"exposed":[{"node":"n1","key":"scale","label":"Размер клубов"},{"node":"n7","key":"inWhite","label":"Плотность"},{"node":"n8","key":"stops","label":"Цвет дыма"},{"node":"n1","key":"seed","label":"Seed"}],"animation":{"frames":16,"frameSize":256,"fps":24}},
+    title: "Взрыв с искрами (флипбук, однократно)", fx: true,
+    graph: {"resolution":512,"activeOutput":"n4","selected":null,"nodes":[{"id":"n1","type":"fx","x":0,"y":0,"params":{"effect":"explosion","stops":[{"p":0,"c":[0,0,0,0]},{"p":0.1429,"c":[0.23137254901960785,0,0,0.314]},{"p":0.2857,"c":[0.5411764705882353,0.0392156862745098,0,0.629]},{"p":0.4286,"c":[0.8313725490196079,0.16470588235294117,0,0.943]},{"p":0.5714,"c":[1,0.41568627450980394,0,1]},{"p":0.7143,"c":[1,0.6901960784313725,0,1]},{"p":0.8571,"c":[1,0.8941176470588236,0.3607843137254902,1]},{"p":1,"c":[1,1,1,1]}],"intensity":1,"scale":1,"loops":1,"detail":5,"count":8,"thick":0.5,"distort":1,"twist":1,"seed":1,"background":"transparent"}},{"id":"n2","type":"fx","x":0,"y":174,"params":{"effect":"sparks","stops":[{"p":0,"c":[0,0,0,0]},{"p":0.1429,"c":[0.23137254901960785,0,0,0.314]},{"p":0.2857,"c":[0.5411764705882353,0.0392156862745098,0,0.629]},{"p":0.4286,"c":[0.8313725490196079,0.16470588235294117,0,0.943]},{"p":0.5714,"c":[1,0.41568627450980394,0,1]},{"p":0.7143,"c":[1,0.6901960784313725,0,1]},{"p":0.8571,"c":[1,0.8941176470588236,0.3607843137254902,1]},{"p":1,"c":[1,1,1,1]}],"intensity":1,"scale":1,"loops":1,"detail":5,"count":36,"thick":0.5,"distort":1,"twist":1,"seed":4,"background":"transparent"}},{"id":"n3","type":"blend","x":230,"y":0,"params":{"mode":"screen","opacity":1,"alpha":"same"}},{"id":"n4","type":"output","x":460,"y":0,"params":{"usage":"generic","normalY":"auto","filename":"explosion"}}],"links":[{"from":"n1","fromPort":0,"to":"n3","toPort":0},{"from":"n2","fromPort":0,"to":"n3","toPort":1},{"from":"n3","fromPort":0,"to":"n4","toPort":0}],"exposed":[{"node":"n1","key":"scale","label":"Размер взрыва"},{"node":"n2","key":"count","label":"Искры"},{"node":"n1","key":"distort","label":"Рваность"},{"node":"n1","key":"stops","label":"Палитра взрыва"}],"animation":{"frames":64,"frameSize":128,"fps":24}},
   },
   {
-    title: "Энергетическое кольцо (флипбук)", fx: true,
-    graph: {"resolution":512,"activeOutput":"n7","selected":null,"nodes":[{"id":"n1","type":"shape","x":0,"y":0,"params":{"shape":"ring","sizeX":0.6,"sizeY":0.6,"posX":0.5,"posY":0.5,"rotation":0,"softness":0.08,"thickness":0.03,"repeat":false},"anim":{"thickness":{"to":0.09,"curve":"pingpong"}}},{"id":"n2","type":"noise","x":0,"y":174,"params":{"type":"perlin","fractal":"fbm","tile":true,"scale":6,"grain":1,"stretch":1,"seed":2,"octaves":4,"persistence":0.5,"lacunarity":2,"warp":0,"warpScale":2,"evolution":0,"contrast":1,"invert":false},"anim":{"evolution":{"to":1,"curve":"linear"}}},{"id":"n3","type":"warp","x":230,"y":0,"params":{"mode":"gradient","intensity":0.015,"angle":0,"wrap":"repeat"}},{"id":"n4","type":"gaussian","x":460,"y":0,"params":{"sigma":10,"wrap":"repeat","alphaAware":false}},{"id":"n5","type":"blend","x":690,"y":0,"params":{"mode":"add","opacity":0.9,"alpha":"same"}},{"id":"n6","type":"ramp","x":920,"y":0,"params":{"stops":[{"p":0,"c":[0,0,0.06274509803921569,0]},{"p":0.2,"c":[0.10588235294117647,0.0392156862745098,0.43137254901960786,0.6]},{"p":0.5,"c":[0.1843137254901961,0.4196078431372549,1,1]},{"p":0.8,"c":[0.5607843137254902,0.9098039215686274,1,1]},{"p":1,"c":[1,1,1,1]}],"interp":"smooth","source":"L","space":"color"}},{"id":"n7","type":"output","x":1150,"y":0,"params":{"usage":"generic","normalY":"auto","filename":"energy_ring_flipbook"}}],"links":[{"from":"n1","fromPort":0,"to":"n3","toPort":0},{"from":"n2","fromPort":0,"to":"n3","toPort":1},{"from":"n3","fromPort":0,"to":"n4","toPort":0},{"from":"n3","fromPort":0,"to":"n5","toPort":0},{"from":"n4","fromPort":0,"to":"n5","toPort":1},{"from":"n5","fromPort":0,"to":"n6","toPort":0},{"from":"n6","fromPort":0,"to":"n7","toPort":0}],"exposed":[{"node":"n1","key":"sizeX","label":"Размер кольца X"},{"node":"n1","key":"sizeY","label":"Размер кольца Y"},{"node":"n3","key":"intensity","label":"Искажение"},{"node":"n4","key":"sigma","label":"Свечение"},{"node":"n6","key":"stops","label":"Цвета"}],"animation":{"frames":16,"frameSize":256,"fps":24}},
+    title: "Магический круг (флипбук)", fx: true,
+    graph: {"resolution":512,"activeOutput":"n2","selected":null,"nodes":[{"id":"n1","type":"fx","x":0,"y":0,"params":{"effect":"magic","stops":[{"p":0,"c":[0.0392156862745098,0,0.0784313725490196,0]},{"p":0.25,"c":[0.22745098039215686,0.0392156862745098,0.43137254901960786,0.55]},{"p":0.5,"c":[0.6039215686274509,0.17647058823529413,1,1]},{"p":0.75,"c":[1,0.41568627450980394,0.9411764705882353,1]},{"p":1,"c":[1,0.9019607843137255,1,1]}],"intensity":1,"scale":1,"loops":1,"detail":5,"count":5,"thick":0.5,"distort":1,"twist":1,"seed":1,"background":"transparent"}},{"id":"n2","type":"output","x":460,"y":0,"params":{"usage":"generic","normalY":"auto","filename":"magic_circle"}},{"id":"n3","type":"glow","x":230,"y":0,"params":{"threshold":0.3,"knee":0.15,"radius":6,"intensity":1.6,"tint":[1,1,1,1],"alpha":true,"wrap":"clamp"}}],"links":[{"from":"n1","fromPort":0,"to":"n3","toPort":0},{"from":"n3","fromPort":0,"to":"n2","toPort":0}],"exposed":[{"node":"n1","key":"count","label":"Лучей звезды"},{"node":"n1","key":"thick","label":"Толщина линий"},{"node":"n1","key":"stops","label":"Палитра"},{"node":"n3","key":"intensity","label":"Свечение"},{"node":"n3","key":"radius","label":"Радиус свечения"}],"animation":{"frames":32,"frameSize":256,"fps":24}},
+  },
+  {
+    title: "Молния (флипбук)", fx: true,
+    graph: {"resolution":512,"activeOutput":"n2","selected":null,"nodes":[{"id":"n1","type":"fx","x":0,"y":0,"params":{"effect":"lightning","stops":[{"p":0,"c":[0,0,0.06274509803921569,0]},{"p":0.25,"c":[0.10196078431372549,0.10196078431372549,0.5019607843137255,0.55]},{"p":0.5,"c":[0.23137254901960785,0.4235294117647059,1,1]},{"p":0.75,"c":[0.6235294117647059,0.8313725490196079,1,1]},{"p":1,"c":[1,1,1,1]}],"intensity":1,"scale":1,"loops":1,"detail":5,"count":4,"thick":0.5,"distort":1,"twist":1,"seed":1,"background":"transparent"}},{"id":"n2","type":"output","x":460,"y":0,"params":{"usage":"generic","normalY":"auto","filename":"lightning"}},{"id":"n3","type":"glow","x":230,"y":0,"params":{"threshold":0.25,"knee":0.15,"radius":8,"intensity":2,"tint":[1,1,1,1],"alpha":true,"wrap":"clamp"}}],"links":[{"from":"n1","fromPort":0,"to":"n3","toPort":0},{"from":"n3","fromPort":0,"to":"n2","toPort":0}],"exposed":[{"node":"n1","key":"count","label":"Смен формы за цикл"},{"node":"n1","key":"distort","label":"Изломанность"},{"node":"n1","key":"seed","label":"Seed"},{"node":"n3","key":"intensity","label":"Свечение"},{"node":"n3","key":"radius","label":"Радиус свечения"}],"animation":{"frames":16,"frameSize":256,"fps":24}},
+  },
+  {
+    title: "Портал (флипбук)", fx: true,
+    graph: {"resolution":512,"activeOutput":"n2","selected":null,"nodes":[{"id":"n1","type":"fx","x":0,"y":0,"params":{"effect":"vortex","stops":[{"p":0,"c":[0.0392156862745098,0,0.0784313725490196,0]},{"p":0.25,"c":[0.22745098039215686,0.0392156862745098,0.43137254901960786,0.55]},{"p":0.5,"c":[0.6039215686274509,0.17647058823529413,1,1]},{"p":0.75,"c":[1,0.41568627450980394,0.9411764705882353,1]},{"p":1,"c":[1,0.9019607843137255,1,1]}],"intensity":1,"scale":1,"loops":1,"detail":5,"count":4,"thick":0.5,"distort":0.6,"twist":1,"seed":1,"background":"transparent"}},{"id":"n2","type":"output","x":460,"y":0,"params":{"usage":"generic","normalY":"auto","filename":"portal"}},{"id":"n3","type":"glow","x":230,"y":0,"params":{"threshold":0.35,"knee":0.15,"radius":6,"intensity":1.3,"tint":[1,1,1,1],"alpha":true,"wrap":"clamp"}}],"links":[{"from":"n1","fromPort":0,"to":"n3","toPort":0},{"from":"n3","fromPort":0,"to":"n2","toPort":0}],"exposed":[{"node":"n1","key":"count","label":"Рукава"},{"node":"n1","key":"twist","label":"Закрутка"},{"node":"n1","key":"stops","label":"Палитра"},{"node":"n3","key":"intensity","label":"Свечение"},{"node":"n3","key":"radius","label":"Радиус свечения"}],"animation":{"frames":32,"frameSize":256,"fps":24}},
+  },
+  {
+    title: "Энергосфера с разрядами (флипбук)", fx: true,
+    graph: {"resolution":512,"activeOutput":"n4","selected":null,"nodes":[{"id":"n1","type":"fx","x":0,"y":0,"params":{"effect":"orb","stops":[{"p":0,"c":[0,0.03137254901960784,0.0784313725490196,0]},{"p":0.25,"c":[0.023529411764705882,0.22745098039215686,0.4392156862745098,0.55]},{"p":0.5,"c":[0.12156862745098039,0.5607843137254902,1,1]},{"p":0.75,"c":[0.43529411764705883,0.9529411764705882,1,1]},{"p":1,"c":[1,1,1,1]}],"intensity":1,"scale":1,"loops":1,"detail":5,"count":8,"thick":0.5,"distort":1,"twist":1,"seed":1,"background":"transparent"}},{"id":"n2","type":"fx","x":0,"y":174,"params":{"effect":"electric","stops":[{"p":0,"c":[0,0,0.06274509803921569,0]},{"p":0.25,"c":[0.10196078431372549,0.10196078431372549,0.5019607843137255,0.55]},{"p":0.5,"c":[0.23137254901960785,0.4235294117647059,1,1]},{"p":0.75,"c":[0.6235294117647059,0.8313725490196079,1,1]},{"p":1,"c":[1,1,1,1]}],"intensity":1,"scale":1.1,"loops":1,"detail":5,"count":7,"thick":0.4,"distort":1,"twist":1,"seed":1,"background":"transparent"}},{"id":"n3","type":"blend","x":230,"y":0,"params":{"mode":"screen","opacity":1,"alpha":"same"}},{"id":"n4","type":"output","x":460,"y":0,"params":{"usage":"generic","normalY":"auto","filename":"energy_orb"}}],"links":[{"from":"n1","fromPort":0,"to":"n3","toPort":0},{"from":"n2","fromPort":0,"to":"n3","toPort":1},{"from":"n3","fromPort":0,"to":"n4","toPort":0}],"exposed":[{"node":"n1","key":"distort","label":"Разряды на сфере"},{"node":"n2","key":"count","label":"Дуги вокруг"},{"node":"n1","key":"stops","label":"Палитра"}],"animation":{"frames":32,"frameSize":256,"fps":24}},
   },
 ];
 
@@ -5519,14 +6093,14 @@ const App = (() => {
   const $ = (s) => document.querySelector(s);
   const state = { selected: null, selectedLink: null, viewPort: 0, interactive: false, playing: false, displayRes: 512, dirty: false, ready: false };
   let evalRaf = 0, idleTimer = 0, thumbQueue = [], thumbTimer = 0;
-  const CAT_ORDER = ['Источники', 'Узоры', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
+  const CAT_ORDER = ['Источники', 'Узоры', 'Эффекты', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
   const KEYWORDS = {
     image: 'png jpeg jpg файл картинка', constant: 'color цвет value', noise: 'perlin value fbm шум worley white ridged billow облака clouds', voronoi: 'cells worley клетки трещины crackle камни',
     shape: 'circle rect ring круг квадрат кольцо эллипс', gradient: 'ramp linear radial angular', levels: 'уровни контраст',
     invert: 'инверсия negative', grayscale: 'desaturate luminance канал channel', ramp: 'colorize градиент палитра gradient map',
     hsv: 'hue saturation value оттенок', blend: 'mix add multiply screen смешать', transform: 'move scale rotate offset сдвиг поворот',
     gaussian: 'blur размытие', dirblur: 'blur motion размытие', radialblur: 'blur zoom spin размытие', normal: 'normal map bump высота',
-    split: 'channels каналы', waves: 'stripes sine полосы дерево мрамор wood marble', tiler: 'tile sampler bricks кирпичи плитка паркет сетка', splatter: 'scatter разброс камни гравий пятна листья царапины stones', warp: 'distort искажение деформация', combine: 'pack orm hdrp mask упаковка', code: 'glsl shader шейдер custom скрипт', output: 'export экспорт',
+    split: 'channels каналы', fx: 'effect vfx particle flipbook sprite огонь пламя взрыв искры молния дым магия портал лазер вспышка каустика эффект частицы', polar: 'polar круг кольцо радиальный', glow: 'glow bloom свечение ореол неон сияние', waves: 'stripes sine полосы дерево мрамор wood marble', tiler: 'tile sampler bricks кирпичи плитка паркет сетка', splatter: 'scatter разброс камни гравий пятна листья царапины stones', warp: 'distort искажение деформация', combine: 'pack orm hdrp mask упаковка', code: 'glsl shader шейдер custom скрипт', output: 'export экспорт',
   };
 
   // ---------------------------------------------------------------- init
@@ -5849,6 +6423,7 @@ const App = (() => {
       <p>Карты-данные (маски, высота, нормали, упакованные каналы) никогда не проходят гамма-коррекцию. Цветные изображения внутри хранятся в линейном свете (размытие и смешивание физически корректны) и кодируются в sRGB при показе и экспорте. Levels, Invert, HSV, Grayscale и Color Ramp работают со значениями как в файле (sRGB).</p>
       <h3>Бесшовность</h3>
       <p>Шумы и Voronoi в режиме Tileable математически периодичны (целый масштаб). Размытия и Height to Normal в режиме Repeat берут соседей с противоположного края. Поворот, градиенты, Clamp, радиальное размытие и произвольные картинки могут давать шов — у таких нод есть подсказка.</p>
+      <p>Автор: <a href="https://github.com/intpoln/PocketTextureLab" target="_blank" rel="noopener" style="color:var(--acc)">intpoln — github.com/intpoln/PocketTextureLab</a> (исходный код, новые версии, обратная связь).</p>
       <p style="color:var(--fg3)">${GPU.precisionNote} PNG: UPNG.js (MIT, © Photopea) + pako (MIT/Zlib, © Vitaly Puzrin, Andrei Tuputcyn). Полные тексты лицензий — в исходнике страницы.</p>`);
   }
 
