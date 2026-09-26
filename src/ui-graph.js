@@ -11,6 +11,7 @@ const GraphView = (() => {
   function init() {
     root = $('#graph'); inner = $('#graph-inner'); nodesEl = $('#nodes'); wiresEl = $('#wires');
     root.addEventListener('pointerdown', onBgDown);
+    bindTouch();
     root.addEventListener('wheel', onWheel, { passive: false });
     root.addEventListener('dragover', (e) => { e.preventDefault(); });
     root.addEventListener('drop', onDrop);
@@ -94,6 +95,8 @@ const GraphView = (() => {
       e.stopPropagation();
       if (!e.target.classList.contains('dot')) App.select(n.id, { toggle: e.ctrlKey || e.metaKey || e.shiftKey, keep: true });
     });
+    // phone: double tap on a node opens its parameters
+    el.addEventListener('dblclick', (e) => { if (!e.target.classList.contains('dot') && App.isMobile()) App.mtab('params'); });
     el.addEventListener('dragover', (e) => { if (n.type === 'image') e.preventDefault(); });
     el.addEventListener('drop', (e) => {
       if (n.type !== 'image') return;
@@ -287,8 +290,43 @@ const GraphView = (() => {
   }
 
   // Empty space: left drag = selection rectangle (like a desktop), right/middle drag = pan.
+  // Touch: one finger on empty space pans, two fingers pinch-zoom.
+  const touches = new Map();
+  let pinch = null;
+  function bindTouch() {
+    root.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') touches.set(e.pointerId, [e.clientX, e.clientY]); }, true);
+    root.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'touch' || !touches.has(e.pointerId)) return;
+      touches.set(e.pointerId, [e.clientX, e.clientY]);
+      if (touches.size !== 2) return;
+      const [a, b] = [...touches.values()];
+      const d = Math.hypot(a[0] - b[0], a[1] - b[1]), mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+      const r = root.getBoundingClientRect();
+      if (!pinch) { pinch = { d, mx, my, z: view.z, x: view.x, y: view.y }; return; }
+      const z = Math.min(2.5, Math.max(0.2, pinch.z * (d / pinch.d)));
+      const gx = (pinch.mx - r.left - pinch.x) / pinch.z, gy = (pinch.my - r.top - pinch.y) / pinch.z;
+      view.z = z; view.x = mx - r.left - gx * z; view.y = my - r.top - gy * z;
+      applyView();
+    }, true);
+    const end = (e) => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; };
+    root.addEventListener('pointerup', end, true);
+    root.addEventListener('pointercancel', end, true);
+  }
+
   function onBgDown(e) {
     if (e.target.closest('.node') || e.target.closest('#graph-hud')) return;
+    if (e.pointerType === 'touch') {
+      e.preventDefault();
+      if (touches.size > 1) return;
+      const sx = e.clientX, sy = e.clientY, ox = view.x, oy = view.y;
+      let moved = false;
+      drag(e, (ev) => {
+        if (pinch || touches.size > 1) return;
+        if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 6) moved = true;
+        view.x = ox + ev.clientX - sx; view.y = oy + ev.clientY - sy; applyView();
+      }, () => { if (!moved && !pinch) { App.select(null); App.selectLink(null); } });
+      return;
+    }
     if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
     e.preventDefault();
     root.focus({ preventScroll: true });

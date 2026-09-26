@@ -54,7 +54,7 @@ const netRequests = [];
 const pageErrors = [];
 
 async function openPage(opts = {}) {
-  const ctx = await browser.newContext({ acceptDownloads: true, viewport: { width: 1400, height: 860 }, offline: true });
+  const ctx = await browser.newContext({ acceptDownloads: true, viewport: opts.viewport || { width: 1400, height: 860 }, offline: true, ...(opts.mobile ? { isMobile: true, hasTouch: true } : {}) });
   if (opts.init) await ctx.addInitScript(opts.init);
   const page = await ctx.newPage();
   page.on('request', (r) => { const u = r.url(); if (!/^(file|blob|data):/.test(u)) netRequests.push(u); });
@@ -1068,6 +1068,33 @@ await test('Выделение рамкой, групповое перемеще
   ok(await page.evaluate(() => PTL.getGraph().nodes.length) === 6, 'удаление группы отменяется одним Ctrl+Z');
   await page.click('#graph', { position: { x: 15, y: 15 } });
   ok(await page.evaluate(() => PTL.selected().length) === 0, 'щелчок по пустому месту снимает выделение');
+  await page.context().close();
+});
+
+await test('Телефон: одна панель за раз, нижняя навигация, меню', async () => {
+  const page = await openPage({ viewport: { width: 412, height: 860 }, mobile: true });
+  const vis = () => page.evaluate(() => ['catalog', 'graph', 'preview', 'params'].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return r.width > 0 && r.height > 0 ? id : null; }).filter(Boolean).join());
+  ok(await page.isVisible('#mnav') && await vis() === 'graph', 'на узком экране видна нижняя навигация и только граф', await vis());
+  const wide = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
+  ok(wide, 'нет горизонтальной прокрутки страницы');
+  await page.tap('#mnav [data-mtab="catalog"]');
+  ok(await vis() === 'catalog', 'вкладка «Ноды» показывает каталог', await vis());
+  const n0 = await page.evaluate(() => PTL.getGraph().nodes.length);
+  await page.tap('#catalog .item >> nth=2');
+  const r = await page.evaluate(() => ({ n: PTL.getGraph().nodes.length, tab: document.body.dataset.mtab, badge: !!document.querySelector('#mnav .badge') }));
+  ok(r.n === n0 + 1 && r.tab === 'graph' && r.badge, 'добавление из каталога возвращает на граф и отмечает «Параметры»', r);
+  await page.tap('#mnav [data-mtab="preview"]');
+  const pv = await page.evaluate(() => { const c = document.getElementById('view').getBoundingClientRect(); return { v: c.width > 300 && c.height > 300 }; });
+  ok(pv.v && await vis() === 'preview', 'вкладка «Превью» показывает большой предпросмотр', pv);
+  await page.tap('#mnav [data-mtab="params"]');
+  ok(await vis() === 'params' && await page.evaluate(() => !document.querySelector('#mnav .badge')), 'вкладка «Параметры» показывает панель и снимает отметку');
+  const inBar = () => page.evaluate(() => document.getElementById('btn-save').getBoundingClientRect().bottom <= document.getElementById('toolbar').getBoundingClientRect().bottom);
+  const hidden = !(await inBar());
+  await page.tap('#btn-mmenu');
+  const shown = await inBar();
+  await page.tap('#btn-help');
+  const r2 = await page.evaluate(() => ({ menu: document.body.classList.contains('mmenu'), modal: document.getElementById('modal').classList.contains('show') }));
+  ok(hidden && shown && !r2.menu && r2.modal, 'кнопка ☰ раскрывает панель инструментов и сворачивает её после действия', { hidden, shown, ...r2 });
   await page.context().close();
 });
 

@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Pocket Texture Lab v0.1.7 — offline procedural texture editor in one HTML file.
+  Pocket Texture Lab v0.1.8 — offline procedural texture editor in one HTML file.
   Author: intpoln — https://github.com/intpoln/PocketTextureLab
   FOR AI AGENTS / AUTOMATION: this page exposes a full JavaScript API as
   `window.PTL`. Call `PTL.help()` for the manual (it is also embedded below in
@@ -17,11 +17,18 @@
 <meta name="author" content="intpoln — https://github.com/intpoln/PocketTextureLab">
 <title>Pocket Texture Lab</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232d6fb8'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%2358c27d'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%23e0b04d'/%3E%3C/svg%3E">
-<meta name="version" content="0.1.7">
+<meta name="version" content="0.1.8">
 <script type="text/markdown" id="ptl-changelog">
 # История версий
 
 Пока версия начинается с 0 — программа в активной разработке и может содержать ошибки.
+
+## 0.1.8
+- Отдельный интерфейс для телефона: на узком экране одна панель на весь экран и нижняя навигация «Граф / Ноды / Превью / Параметры».
+- Панель инструментов на телефоне свёрнута в одну строку (отмена, повтор, меню ☰); остальные кнопки — по ☰.
+- Жесты: перетаскивание одним пальцем двигает граф, двумя пальцами — масштаб; касание пустого места снимает выделение.
+- После добавления ноды из каталога открывается граф, а на «Параметрах» появляется отметка; двойное касание ноды открывает её параметры.
+- Крупнее кнопки, поля и кружки портов на сенсорных экранах; окна и «Шумы / Эффекты» — во весь экран.
 
 ## 0.1.7
 - Выделение нескольких нод рамкой, как на рабочем столе: протяните мышью по пустому месту графа (Shift/Ctrl — добавить к выделенному).
@@ -520,13 +527,68 @@ main { position: relative; }
 .node.sel.primary { box-shadow: 0 0 0 2px var(--acc), 0 2px 10px #000a; }
 #graph { cursor: default; }
 
+/* ---------------- mobile layout: one panel at a time + bottom navigation ---------------- */
+#mnav, #btn-mmenu { display: none; }
+@media (pointer: coarse) {
+  .port .dot { width: 18px; height: 18px; }
+  .port .dot:not(.on)::after { inset: 4px; }
+  .port { height: 22px; }
+}
+@media (max-width: 820px) {
+  :root { --cat-w: 100vw; }
+  /* toolbar: one row with the essentials, ☰ unfolds everything else */
+  #toolbar { flex-wrap: wrap; max-height: 42px; overflow: hidden; gap: 6px; padding: 5px 6px; align-content: flex-start; }
+  body.mmenu #toolbar { max-height: 80vh; overflow-y: auto; box-shadow: 0 6px 20px #000c; z-index: 20; }
+  #toolbar > * { flex: none; order: 3; }
+  #toolbar .logo { order: 0; }
+  #btn-mmenu { display: inline-block; order: 1; margin-left: auto; font-size: 17px; padding: 3px 12px; }
+  #btn-undo, #btn-redo, #btn-export { order: 1; }
+  #btn-undo, #btn-redo { font-size: 16px; padding: 3px 11px; }
+  body.mmenu #btn-mmenu { background: var(--acc); color: #fff; }
+  #toolbar button, #toolbar select { min-height: 32px; }
+  #toolbar .logo { font-size: 13px; }
+  #toolbar .logo svg + * { display: none; }
+  #toolbar .sep { display: none; }
+  #author-link { margin-left: 0; }
+  main { position: relative; }
+  .split-v, .split-h { display: none; }
+  #catalog, #graph, #right { position: absolute; inset: 0; width: auto; display: none; }
+  body[data-mtab="catalog"] #catalog { display: flex; }
+  body[data-mtab="graph"] #graph { display: block; }
+  body[data-mtab="preview"] #right, body[data-mtab="params"] #right { display: flex; }
+  body[data-mtab="preview"] #params { display: none; }
+  body[data-mtab="preview"] #preview { flex: 1; height: auto; }
+  body[data-mtab="params"] #preview { display: none; }
+  #catalog .item { padding: 9px 10px; font-size: 14px; }
+  #catalog input { font-size: 16px; }
+  #noise-drawer { left: 0; width: 100%; max-width: 100%; }
+  #mnav { display: flex; background: var(--bg2); border-top: 1px solid var(--line); }
+  #mnav button { flex: 1; border: none; border-radius: 0; background: none; padding: 10px 2px; font-size: 13px; color: var(--fg2); }
+  #mnav button.on { color: var(--acc); background: var(--bg3); box-shadow: inset 0 2px 0 var(--acc); }
+  #mnav button .badge { display: inline-block; min-width: 7px; height: 7px; border-radius: 50%; background: var(--acc); margin-left: 4px; vertical-align: middle; }
+  #status { display: none; }
+  #graph-hud { bottom: 10px; right: 10px; }
+  #graph-hud button { padding: 6px 10px; }
+  .prow input[type=range] { height: 26px; }
+  .prow input[type=number] { width: 72px; font-size: 15px; }
+  .prow select, .prow input[type=text] { font-size: 15px; padding: 5px; }
+  #params { padding: 10px 12px 30px; }
+  .modal { width: 100vw; max-height: 100%; height: 100%; border-radius: 0; }
+  .modal-bg.show { align-items: stretch; }
+  #toasts { top: 56px; width: 92vw; }
+  #preview .bar { overflow-x: auto; flex-wrap: nowrap; }
+  #preview .bar > * { flex: none; }
+  #timeline { flex-wrap: wrap; }
+}
+
 </style>
 </head>
 <body>
 <div id="agent-note" class="sr-only">Note for AI agents and screen readers: this is Pocket Texture Lab, a procedural texture editor. It is fully scriptable through the JavaScript object window.PTL. Run PTL.help() in the page for the complete manual (also embedded in this document as script#ptl-agent-guide), PTL.examples() for ready texture templates (brick, asphalt, cobblestone, wood, painted metal) and PTL.exportAll() to download the PNG maps.</div>
 <div id="app">
   <header id="toolbar">
-    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.1.7</button></span>
+    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.1.8</button></span>
+    <button id="btn-mmenu" title="Меню">☰</button>
     <select id="examples" title="Встроенные примеры, шаблоны текстур и ваши шаблоны"></select>
     <button id="btn-lib" title="Мои пресеты и шаблоны (хранятся в браузере), экспорт/импорт">Библиотека</button>
     <button id="btn-new" title="Пустой проект (можно отменить)">Новый</button>
@@ -620,6 +682,12 @@ main { position: relative; }
       <section id="params"></section>
     </aside>
   </main>
+  <nav id="mnav">
+    <button data-mtab="graph" class="on">◇ Граф</button>
+    <button data-mtab="catalog">＋ Ноды</button>
+    <button data-mtab="preview">▣ Превью</button>
+    <button data-mtab="params">⚙ Параметры</button>
+  </nav>
   <footer id="status"><span class="msg" id="status-msg"></span><span id="stats"></span></footer>
 </div>
 <div id="toasts"></div>
@@ -4954,6 +5022,7 @@ const GraphView = (() => {
   function init() {
     root = $('#graph'); inner = $('#graph-inner'); nodesEl = $('#nodes'); wiresEl = $('#wires');
     root.addEventListener('pointerdown', onBgDown);
+    bindTouch();
     root.addEventListener('wheel', onWheel, { passive: false });
     root.addEventListener('dragover', (e) => { e.preventDefault(); });
     root.addEventListener('drop', onDrop);
@@ -5037,6 +5106,8 @@ const GraphView = (() => {
       e.stopPropagation();
       if (!e.target.classList.contains('dot')) App.select(n.id, { toggle: e.ctrlKey || e.metaKey || e.shiftKey, keep: true });
     });
+    // phone: double tap on a node opens its parameters
+    el.addEventListener('dblclick', (e) => { if (!e.target.classList.contains('dot') && App.isMobile()) App.mtab('params'); });
     el.addEventListener('dragover', (e) => { if (n.type === 'image') e.preventDefault(); });
     el.addEventListener('drop', (e) => {
       if (n.type !== 'image') return;
@@ -5230,8 +5301,43 @@ const GraphView = (() => {
   }
 
   // Empty space: left drag = selection rectangle (like a desktop), right/middle drag = pan.
+  // Touch: one finger on empty space pans, two fingers pinch-zoom.
+  const touches = new Map();
+  let pinch = null;
+  function bindTouch() {
+    root.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') touches.set(e.pointerId, [e.clientX, e.clientY]); }, true);
+    root.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'touch' || !touches.has(e.pointerId)) return;
+      touches.set(e.pointerId, [e.clientX, e.clientY]);
+      if (touches.size !== 2) return;
+      const [a, b] = [...touches.values()];
+      const d = Math.hypot(a[0] - b[0], a[1] - b[1]), mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+      const r = root.getBoundingClientRect();
+      if (!pinch) { pinch = { d, mx, my, z: view.z, x: view.x, y: view.y }; return; }
+      const z = Math.min(2.5, Math.max(0.2, pinch.z * (d / pinch.d)));
+      const gx = (pinch.mx - r.left - pinch.x) / pinch.z, gy = (pinch.my - r.top - pinch.y) / pinch.z;
+      view.z = z; view.x = mx - r.left - gx * z; view.y = my - r.top - gy * z;
+      applyView();
+    }, true);
+    const end = (e) => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; };
+    root.addEventListener('pointerup', end, true);
+    root.addEventListener('pointercancel', end, true);
+  }
+
   function onBgDown(e) {
     if (e.target.closest('.node') || e.target.closest('#graph-hud')) return;
+    if (e.pointerType === 'touch') {
+      e.preventDefault();
+      if (touches.size > 1) return;
+      const sx = e.clientX, sy = e.clientY, ox = view.x, oy = view.y;
+      let moved = false;
+      drag(e, (ev) => {
+        if (pinch || touches.size > 1) return;
+        if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 6) moved = true;
+        view.x = ox + ev.clientX - sx; view.y = oy + ev.clientY - sy; applyView();
+      }, () => { if (!moved && !pinch) { App.select(null); App.selectLink(null); } });
+      return;
+    }
     if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
     e.preventDefault();
     root.focus({ preventScroll: true });
@@ -6542,7 +6648,7 @@ const App = (() => {
       requestEval();
     });
     GraphView.init(); ParamsPanel.init(); Preview.init(); PresetBrowser.init();
-    buildCatalog(); bindToolbar(); bindKeys(); bindSplitters(); bindTimeline();
+    buildCatalog(); bindToolbar(); bindKeys(); bindSplitters(); bindTimeline(); bindMobile();
     setInterval(updateStats, 1000);
     window.addEventListener('beforeunload', (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
     loadGraph(EXAMPLES[0].graph);
@@ -6648,6 +6754,36 @@ const App = (() => {
       download(png, name, 'image/png');
       toast(`Спрайт-шит: ${name} — ${r.width}×${r.height}, ${r.frames} кадров (${Math.round(performance.now() - t0)} мс)`);
     } catch (e) { console.warn(e); toast('Ошибка экспорта спрайт-шита: ' + e.message, 'err'); }
+  }
+
+  // ---------------------------------------------------------------- mobile
+  // Narrow screens show one panel at a time with a bottom navigation bar.
+  const isMobile = () => window.matchMedia('(max-width: 820px)').matches;
+  function mtab(tab) {
+    document.body.dataset.mtab = tab;
+    document.querySelectorAll('#mnav [data-mtab]').forEach((b) => b.classList.toggle('on', b.dataset.mtab === tab));
+    if (tab === 'params') { const b = document.querySelector('#mnav [data-mtab="params"] .badge'); if (b) b.remove(); }
+    requestAnimationFrame(() => { Preview.resize(); if (tab === 'graph') GraphView.drawWires(); });
+  }
+  function bindMobile() {
+    document.body.dataset.mtab = 'graph';
+    document.querySelectorAll('#mnav [data-mtab]').forEach((b) => b.addEventListener('click', () => mtab(b.dataset.mtab)));
+    const menu = $('#btn-mmenu');
+    menu.addEventListener('click', (e) => { e.stopPropagation(); document.body.classList.toggle('mmenu'); });
+    // any action inside the unfolded toolbar (or a tap elsewhere) folds it back
+    document.addEventListener('click', (e) => {
+      if (!document.body.classList.contains('mmenu') || e.target === menu) return;
+      if (e.target.closest('#toolbar') && !e.target.closest('button, a')) return;
+      document.body.classList.remove('mmenu');
+    });
+    window.matchMedia('(max-width: 820px)').addEventListener('change', () => { mtab(document.body.dataset.mtab || 'graph'); GraphView.rebuild(); });
+  }
+  // on phones: after picking a node in the catalogue jump to the graph; mark «Параметры» when selection changes
+  function mobileAfterAdd() { if (isMobile()) { mtab('graph'); requestAnimationFrame(() => GraphView.fit()); } }
+  function mobileMarkParams() {
+    if (!isMobile() || document.body.dataset.mtab === 'params') return;
+    const btn = document.querySelector('#mnav [data-mtab="params"]');
+    if (btn && !btn.querySelector('.badge')) { const d = document.createElement('span'); d.className = 'badge'; btn.append(d); }
   }
 
   // ---------------------------------------------------------------- UI bits
@@ -6844,6 +6980,7 @@ const App = (() => {
     modal('Справка', `
       <h3>Граф</h3>
       <ul>
+      <li><b>На телефоне</b>: внизу переключатель панелей «Граф / Ноды / Превью / Параметры»; граф двигается пальцем, масштаб — двумя пальцами; двойное касание ноды открывает её параметры; остальные команды — в меню <b>☰</b>.</li>
       <li><b>Добавить ноду</b>: щелчок по пункту каталога слева (или перетаскивание на граф). Поиск + <kbd>Enter</kbd> добавляет первую найденную.</li>
       <li><b>Соединить</b>: потяните от кружка выхода (справа у ноды) к кружку входа (слева). Можно и наоборот. Один выход может идти в несколько входов; циклы запрещены.</li>
       <li><b>Разорвать связь</b>: потяните за подключённый вход и отпустите в пустом месте; или щёлкните провод и нажмите <kbd>Delete</kbd>; или двойной щелчок / правая кнопка по проводу.</li>
@@ -7024,6 +7161,7 @@ const App = (() => {
     select(n.id);
     commit();
     requestEval();
+    if (document.body.dataset.mtab === 'catalog') mobileAfterAdd();
     return n;
   }
 
@@ -7075,7 +7213,7 @@ const App = (() => {
     } else {
       state.multi = new Set(id ? [id] : []);
     }
-    if (state.selected !== id) state.viewPort = 0;
+    if (state.selected !== id) { state.viewPort = 0; if (id) mobileMarkParams(); }
     state.selected = id;
     if (id) state.selectedLink = null;
     GraphView.refreshMarks();
@@ -7484,7 +7622,7 @@ const App = (() => {
 
   return {
     init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId,
-    undo, redo, flush, removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    undo, redo, flush, mtab, isMobile, removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };
@@ -7765,7 +7903,7 @@ window.PTL = PTL;
 
 // ===== main.js =====
 // Entry point.
-const PTL_VERSION = '0.1.7';
+const PTL_VERSION = '0.1.8';
 (() => {
   const start = () => {
     try {

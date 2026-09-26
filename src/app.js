@@ -36,7 +36,7 @@ const App = (() => {
       requestEval();
     });
     GraphView.init(); ParamsPanel.init(); Preview.init(); PresetBrowser.init();
-    buildCatalog(); bindToolbar(); bindKeys(); bindSplitters(); bindTimeline();
+    buildCatalog(); bindToolbar(); bindKeys(); bindSplitters(); bindTimeline(); bindMobile();
     setInterval(updateStats, 1000);
     window.addEventListener('beforeunload', (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
     loadGraph(EXAMPLES[0].graph);
@@ -142,6 +142,36 @@ const App = (() => {
       download(png, name, 'image/png');
       toast(`Спрайт-шит: ${name} — ${r.width}×${r.height}, ${r.frames} кадров (${Math.round(performance.now() - t0)} мс)`);
     } catch (e) { console.warn(e); toast('Ошибка экспорта спрайт-шита: ' + e.message, 'err'); }
+  }
+
+  // ---------------------------------------------------------------- mobile
+  // Narrow screens show one panel at a time with a bottom navigation bar.
+  const isMobile = () => window.matchMedia('(max-width: 820px)').matches;
+  function mtab(tab) {
+    document.body.dataset.mtab = tab;
+    document.querySelectorAll('#mnav [data-mtab]').forEach((b) => b.classList.toggle('on', b.dataset.mtab === tab));
+    if (tab === 'params') { const b = document.querySelector('#mnav [data-mtab="params"] .badge'); if (b) b.remove(); }
+    requestAnimationFrame(() => { Preview.resize(); if (tab === 'graph') GraphView.drawWires(); });
+  }
+  function bindMobile() {
+    document.body.dataset.mtab = 'graph';
+    document.querySelectorAll('#mnav [data-mtab]').forEach((b) => b.addEventListener('click', () => mtab(b.dataset.mtab)));
+    const menu = $('#btn-mmenu');
+    menu.addEventListener('click', (e) => { e.stopPropagation(); document.body.classList.toggle('mmenu'); });
+    // any action inside the unfolded toolbar (or a tap elsewhere) folds it back
+    document.addEventListener('click', (e) => {
+      if (!document.body.classList.contains('mmenu') || e.target === menu) return;
+      if (e.target.closest('#toolbar') && !e.target.closest('button, a')) return;
+      document.body.classList.remove('mmenu');
+    });
+    window.matchMedia('(max-width: 820px)').addEventListener('change', () => { mtab(document.body.dataset.mtab || 'graph'); GraphView.rebuild(); });
+  }
+  // on phones: after picking a node in the catalogue jump to the graph; mark «Параметры» when selection changes
+  function mobileAfterAdd() { if (isMobile()) { mtab('graph'); requestAnimationFrame(() => GraphView.fit()); } }
+  function mobileMarkParams() {
+    if (!isMobile() || document.body.dataset.mtab === 'params') return;
+    const btn = document.querySelector('#mnav [data-mtab="params"]');
+    if (btn && !btn.querySelector('.badge')) { const d = document.createElement('span'); d.className = 'badge'; btn.append(d); }
   }
 
   // ---------------------------------------------------------------- UI bits
@@ -338,6 +368,7 @@ const App = (() => {
     modal('Справка', `
       <h3>Граф</h3>
       <ul>
+      <li><b>На телефоне</b>: внизу переключатель панелей «Граф / Ноды / Превью / Параметры»; граф двигается пальцем, масштаб — двумя пальцами; двойное касание ноды открывает её параметры; остальные команды — в меню <b>☰</b>.</li>
       <li><b>Добавить ноду</b>: щелчок по пункту каталога слева (или перетаскивание на граф). Поиск + <kbd>Enter</kbd> добавляет первую найденную.</li>
       <li><b>Соединить</b>: потяните от кружка выхода (справа у ноды) к кружку входа (слева). Можно и наоборот. Один выход может идти в несколько входов; циклы запрещены.</li>
       <li><b>Разорвать связь</b>: потяните за подключённый вход и отпустите в пустом месте; или щёлкните провод и нажмите <kbd>Delete</kbd>; или двойной щелчок / правая кнопка по проводу.</li>
@@ -518,6 +549,7 @@ const App = (() => {
     select(n.id);
     commit();
     requestEval();
+    if (document.body.dataset.mtab === 'catalog') mobileAfterAdd();
     return n;
   }
 
@@ -569,7 +601,7 @@ const App = (() => {
     } else {
       state.multi = new Set(id ? [id] : []);
     }
-    if (state.selected !== id) state.viewPort = 0;
+    if (state.selected !== id) { state.viewPort = 0; if (id) mobileMarkParams(); }
     state.selected = id;
     if (id) state.selectedLink = null;
     GraphView.refreshMarks();
@@ -978,7 +1010,7 @@ const App = (() => {
 
   return {
     init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId,
-    undo, redo, flush, removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    undo, redo, flush, mtab, isMobile, removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };

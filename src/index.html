@@ -33,6 +33,7 @@
 <div id="app">
   <header id="toolbar">
     <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v__PTL_VERSION__</button></span>
+    <button id="btn-mmenu" title="Меню">☰</button>
     <select id="examples" title="Встроенные примеры, шаблоны текстур и ваши шаблоны"></select>
     <button id="btn-lib" title="Мои пресеты и шаблоны (хранятся в браузере), экспорт/импорт">Библиотека</button>
     <button id="btn-new" title="Пустой проект (можно отменить)">Новый</button>
@@ -126,6 +127,12 @@
       <section id="params"></section>
     </aside>
   </main>
+  <nav id="mnav">
+    <button data-mtab="graph" class="on">◇ Граф</button>
+    <button data-mtab="catalog">＋ Ноды</button>
+    <button data-mtab="preview">▣ Превью</button>
+    <button data-mtab="params">⚙ Параметры</button>
+  </nav>
   <footer id="status"><span class="msg" id="status-msg"></span><span id="stats"></span></footer>
 </div>
 <div id="toasts"></div>
