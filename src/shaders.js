@@ -550,7 +550,8 @@ uniform bool u_alpha;   // glow extends alpha (sprites)
 void main() {
   ivec2 p = pix();
   vec4 b = in0(p);
-  vec4 g = (in1(p) + in2(p) * 0.7 + in3(p) * 0.45) / 2.15 * u_int;
+  vec2 uv = pixUV();
+  vec4 g = (in1UV(uv) + in2UV(uv) * 0.7 + in3UV(uv) * 0.45) / 2.15 * u_int;
   g.rgb *= u_tint;
   if (u_out == 1) { float a = clamp(g.a, 0.0, 1.0); emit(vec4(a > 1e-5 ? g.rgb / a : vec3(0.0), a)); return; }
   vec3 prem = b.rgb * b.a + g.rgb;
@@ -559,6 +560,10 @@ void main() {
   if (!u_alpha) rgb = b.rgb + g.rgb;
   emit(vec4(rgb, a));
 }` };
+
+  // 2x box downsample of the input (bilinear taps land between texels)
+  S.downsample = { nin: 1, body: `
+void main() { emit(in0UV(pixUV())); }` };
 
   S.copy = { nin: 1, body: `
 void main() { emit(in0(pix())); }` };

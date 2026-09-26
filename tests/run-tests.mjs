@@ -907,6 +907,48 @@ await test('Нода «Эффект (FX)»: все эффекты, бесшов�
   await page.context().close();
 });
 
+await test('Раздел «Шумы», кэш кадров воспроизведения, ленивые вторые выходы', async () => {
+  const page = await openPage();
+  const cat = await page.evaluate(() => {
+    const hs = [...document.querySelectorAll('#catalog h4')].map((h) => h.textContent);
+    const items = [...document.querySelectorAll('#catalog .item.extra')].map((i) => i.textContent);
+    return { hs, items };
+  });
+  ok(cat.hs.some((h) => /Шумы/.test(h)) && cat.items.length >= 25 && cat.items.includes('Мрамор'), 'в каталоге есть раздел «Шумы» с готовыми шумами', cat.items.length);
+  await page.click('#catalog .item.extra:has-text("Мрамор")');
+  const added = await page.evaluate(() => { const n = PTL.getGraph().nodes.at(-1); return { type: n.type, warp: n.params.warp, fractal: n.params.fractal }; });
+  ok(added.type === 'noise' && added.warp === 0.7 && added.fractal === 'ridged', 'щелчок по шуму добавляет ноду с его настройками', added);
+  const r = await page.evaluate(async () => {
+    const all = PTL.noisePresets();
+    PTL.newProject(); PTL.setResolution(256);
+    const errs = [];
+    for (const n of all) { const id = PTL.addNoise(n.title); const st = PTL.stats(id, { size: 64 }); if (st.max[0] - st.min[0] < 20) errs.push(n.title); }
+    // lazy port: fx intensity output computed only when needed
+    PTL.newProject(); PTL.setResolution(256);
+    const f = PTL.addNode('fx'); PTL.setParams(f, { effect: 'orb' });
+    const c = PTL.render(f, { size: 64, port: 0 }).rgba, g = PTL.render(f, { size: 64, port: 1 }).rgba;
+    let diff = 0; for (let i = 0; i < c.length; i++) diff = Math.max(diff, Math.abs(c[i] - g[i]));
+    // playback cache
+    PTL.animation({ frames: 8, frameSize: 128 });
+    PTL.select(f);
+    App.play();
+    const t0 = performance.now();
+    while (App.frameCacheSize() < 8 && performance.now() - t0 < 30000) await new Promise((res) => setTimeout(res, 100));
+    const filled = App.frameCacheSize();
+    let evals = 0;
+    const orig = Engine.evaluate;
+    Engine.evaluate = function (...a) { evals++; return orig.apply(this, a); };
+    await new Promise((res) => setTimeout(res, 800));          // second pass over the loop
+    Engine.evaluate = orig;
+    App.stop();
+    return { errs, diff, filled, evals };
+  });
+  ok(r.errs.length === 0, 'все готовые шумы дают непустой результат', r.errs);
+  ok(r.diff > 30, 'второй выход FX (интенсивность) считается отдельно, когда он нужен', r.diff);
+  ok(r.filled === 8 && r.evals === 0, 'воспроизведение: каждый кадр считается один раз, повторные проходы петли берутся из кэша', { filled: r.filled, evalsOnReplay: r.evals });
+  await page.context().close();
+});
+
 await browser.close();
 
 console.log('\n# Внешние запросы: ' + (netRequests.length ? netRequests.join(', ') : 'нет'));

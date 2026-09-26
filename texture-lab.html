@@ -99,6 +99,9 @@ Editing (all validated; unknown params/enum values throw with the list of valid 
 - Template parameters (a few knobs shown at project level when nothing is selected):
   `PTL.expose(id, key, label)`, `PTL.unexpose(id, key)`, `PTL.exposed()` → `[{node,key,label,value}]`,
   `PTL.setExposed(label, value)`.
+- Ready-made noises (catalog section «Шумы»): `PTL.noisePresets()` → `[{title,type,params,desc}]`,
+  `PTL.addNoise('Мрамор', {params:{seed:3}})` (clouds, ridged, veins, billow, turbulence, marble, domain warp, fog,
+  grunge, spots, worley, cellular fBM, white/grain/pixel, brushed metal, wood fibers, streaks, dunes, voronoi variants, stripes).
 - Colour gradients: `PTL.rampPresets()` (Magma, Inferno, Viridis, Fire, Water, Terrain, Rust, Wood, …);
   `PTL.setParams(rampId, {stops: PTL.rampPreset('Magma')})` or `PTL.applyPreset(rampId, 'Magma')`.
 - Browser library (localStorage of this site): `PTL.library.saveNodePreset(id, name)`, `.nodePresets(type)`,
@@ -444,6 +447,8 @@ main { flex: 1; display: flex; min-height: 0; }
 #preview .bar .sep2 { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
 #author-link { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; color: var(--fg2); text-decoration: none; padding: 3px 8px; border: 1px solid var(--line); border-radius: 4px; }
 #author-link:hover { color: var(--fg); border-color: var(--acc); }
+#catalog .item.extra { padding-left: 14px; font-size: 12.5px; color: var(--fg2); }
+#catalog .item.extra:hover { color: var(--fg); }
 
 </style>
 </head>
@@ -2195,7 +2200,8 @@ uniform bool u_alpha;   // glow extends alpha (sprites)
 void main() {
   ivec2 p = pix();
   vec4 b = in0(p);
-  vec4 g = (in1(p) + in2(p) * 0.7 + in3(p) * 0.45) / 2.15 * u_int;
+  vec2 uv = pixUV();
+  vec4 g = (in1UV(uv) + in2UV(uv) * 0.7 + in3UV(uv) * 0.45) / 2.15 * u_int;
   g.rgb *= u_tint;
   if (u_out == 1) { float a = clamp(g.a, 0.0, 1.0); emit(vec4(a > 1e-5 ? g.rgb / a : vec3(0.0), a)); return; }
   vec3 prem = b.rgb * b.a + g.rgb;
@@ -2204,6 +2210,10 @@ void main() {
   if (!u_alpha) rgb = b.rgb + g.rgb;
   emit(vec4(rgb, a));
 }` };
+
+  // 2x box downsample of the input (bilinear taps land between texels)
+  S.downsample = { nin: 1, body: `
+void main() { emit(in0UV(pixUV())); }` };
 
   S.copy = { nin: 1, body: `
 void main() { emit(in0(pix())); }` };
@@ -2849,9 +2859,13 @@ uniform int u_n;
 uniform float u_pos[8];
 uniform vec4 u_cols[8];
 const float TAU = 6.28318530718;
+// cheap 1-lane PCG hash of an integer lattice point (8 per noise sample)
 float hsh(ivec3 c) {
-  uvec3 r = pcg3(uvec3(c) + uvec3(0u, 0u, uint(u_seed) * 7919u));
-  return float(r.x >> 8u) / 16777215.0;
+  uint h = uint(c.x) * 73856093u ^ uint(c.y) * 19349663u ^ uint(c.z) * 83492791u ^ (uint(u_seed) * 2654435761u + 1u);
+  uint st = h * 747796405u + 2891336453u;
+  uint w = ((st >> ((st >> 28u) + 4u)) ^ st) * 277803737u;
+  w = (w >> 22u) ^ w;
+  return float(w >> 8u) / 16777215.0;
 }
 float hsh1(int i, int k) { return hsh(ivec3(i, k, 977)); }
 ivec3 wr(ivec3 c, ivec3 P) {
@@ -3784,16 +3798,27 @@ const NODES = {
       const u = { u_thr: p.threshold, u_knee: p.knee };
       ctx.bindIn(u, 0, 0, 'native');
       ctx.pass('brightpass', bright, u);
-      const src = { tex: bright, space: sp }, rep = p.wrap === 'repeat';
-      const blurs = [1, 2, 4].map((m) => { const t = ctx.temp(); gaussianInto(ctx, src, 0, t, Math.min(128, ctx.px(p.radius * m)), rep, false); return t; });
+      const rep = p.wrap === 'repeat', wrap = rep ? 'repeat' : 'clamp';
+      // bloom pyramid: blur σ·2^k at resolution res/2^(k+1) (same look, a fraction of the cost)
+      let prev = bright;
+      const blurs = [1, 2, 4].map((m, k) => {
+        const size = Math.max(8, ctx.res >> (k + 1));
+        const down = ctx.tempAt(size), u2 = {};
+        ctx.bindTex(u2, 0, { tex: prev, space: sp }, 'native');
+        ctx.pass('downsample', down, u2, { u_in0: wrap });
+        const t = ctx.tempAt(size);
+        gaussianInto(ctx, { tex: down, space: sp }, 0, t, Math.min(96, ctx.px(p.radius * m) * size / ctx.res), rep, false);
+        prev = down;
+        return t;
+      });
       const tint = sp === 'color' ? p.tint.slice(0, 3).map(ColorUtil.toLin) : p.tint.slice(0, 3);
-      return [0, 1].map((mode) => {
+      return [0, 1].filter((mode) => ctx.used(mode)).map((mode) => {
         const out = ctx.alloc(), w = { u_int: p.intensity, u_tint: tint, u_out: mode, u_alpha: p.alpha };
         ctx.bindIn(w, 0, 0, 'native');
         blurs.forEach((t, k) => ctx.bindTex(w, k + 1, { tex: t, space: sp }, 'native'));
-        ctx.pass('glowmix', out, w);
+        ctx.pass('glowmix', out, w, { u_in1: wrap, u_in2: wrap, u_in3: wrap });
         return { tex: out, space: sp };
-      });
+      }).reduce((a, o, _, arr) => (arr.length === 1 ? [o, o] : arr), []);
     },
   },
 
@@ -3945,8 +3970,10 @@ const NODES = {
         u_t: Anim.t, u_loops: p.loops, u_seed: p.seed, u_oct: p.detail, u_count: p.count, u_int: p.intensity, u_scale: p.scale,
         u_thick: p.thick, u_distort: p.distort, u_twist: p.twist, u_edge: fx.edge || 0, u_blackBg: p.background === 'black', u_n: st.length, u_pos: pos, u_cols: cols,
       };
-      const col = ctx.alloc(), gray = ctx.alloc();
+      const col = ctx.alloc();
       ctx.pass('fx_' + fx.id, col, { ...u, u_outMode: 0 }, null, 2);
+      if (!ctx.used(1)) return [{ tex: col, space: 'color' }, { tex: col, space: 'color' }];
+      const gray = ctx.alloc();
       ctx.pass('fx_' + fx.id, gray, { ...u, u_outMode: 1 });
       return [{ tex: col, space: 'color' }, { tex: gray, space: 'data' }];
     },
@@ -4022,11 +4049,12 @@ function scatterEval(ctx, kind) {
     u_bevel: p.bevel || 0, u_seed: p.seed,
   };
   ctx.bindIn(u, 0, 0, 'data');
-  return [0, 1].map((mode) => {
+  const outs = [0, 1].filter((mode) => ctx.used(mode)).map((mode) => {
     const out = ctx.alloc();
     ctx.pass('scatter', out, { ...u, u_out: mode }, { u_in0: 'clamp' });
     return { tex: out, space: 'data' };
   });
+  return outs.length === 2 ? outs : [outs[0], outs[0]];
 }
 
 // Levels / Invert / HSV: operate on file values; colour inputs are
@@ -4044,7 +4072,7 @@ function gaussianInto(ctx, src, _slot, out, sigma, repeat, alphaAware) {
   ctx.bindTex(u, 0, src, 'native');
   if (!src || sigma <= 0.05) { ctx.pass('copy', out, u); return; }
   const radius = Math.min(512, Math.ceil(sigma * 3));
-  const tmp = ctx.temp();
+  const tmp = ctx.tempAt(out.size);
   ctx.pass('gauss', tmp, { ...u, u_dir: [1, 0], u_sigma: sigma, u_radius: radius, u_rep: repeat, u_premul: alphaAware, u_unpremul: false });
   const u2 = {};
   ctx.bindTex(u2, 0, { tex: tmp, space: src.space }, 'native');
@@ -4136,6 +4164,41 @@ const CATALOG_EXTRA = [
   { type: 'output', title: 'Выход: Normal', params: { usage: 'normal', filename: 'normal' }, desc: 'Выход normal map материала: экспорт PNG + 3D-превью.' },
   { type: 'output', title: 'Выход: ORM', params: { usage: 'orm', filename: 'orm' }, desc: 'Выход ORM (R=AO, G=Roughness, B=Metallic): экспорт PNG + 3D-превью.' },
 ];
+
+// Ready-made noises for the «Шумы» catalog section (regular nodes with tuned parameters).
+const NOISE_PRESETS = [
+  ['Облака (Clouds)', 'noise', { type: 'perlin', scale: 4, octaves: 7, persistence: 0.55, contrast: 1.35 }, 'Классический fBM Perlin: облака, пятна, вариации цвета.'],
+  ['Мягкий Perlin', 'noise', { type: 'perlin', scale: 3, octaves: 3, persistence: 0.4 }, 'Крупные плавные пятна без мелкой детали.'],
+  ['Мелкий Perlin', 'noise', { type: 'perlin', scale: 24, octaves: 4 }, 'Мелкая детализация поверхности, микрорельеф.'],
+  ['Value Noise', 'noise', { type: 'value', scale: 8, octaves: 5 }, 'Более «квадратный» шум значений.'],
+  ['Горы / гребни (Ridged)', 'noise', { type: 'perlin', fractal: 'ridged', scale: 3, octaves: 8, persistence: 0.55 }, 'Острые хребты: горы, скалы, прожилки.'],
+  ['Прожилки / вены', 'noise', { type: 'perlin', fractal: 'ridged', scale: 4, octaves: 5, persistence: 0.35, contrast: 1.6 }, 'Тонкие ветвящиеся линии: вены, молнии, трещины льда.'],
+  ['Клубы (Billow)', 'noise', { type: 'perlin', fractal: 'billow', scale: 4, octaves: 6 }, 'Округлые «клубы»: камни, дым, кучевые облака.'],
+  ['Турбулентность', 'noise', { type: 'perlin', fractal: 'billow', scale: 6, octaves: 7, persistence: 0.6, contrast: 1.4 }, 'Бурлящий шум: огонь, вода, энергия.'],
+  ['Мрамор', 'noise', { type: 'perlin', fractal: 'ridged', scale: 2, octaves: 6, warp: 0.7, warpScale: 2, contrast: 1.3 }, 'Искажённые прожилки мрамора.'],
+  ['Текучий (Domain Warp)', 'noise', { type: 'perlin', scale: 3, octaves: 6, warp: 0.6, warpScale: 3 }, 'Органичные «перетекающие» формы: жидкости, туманности.'],
+  ['Туман / дым', 'noise', { type: 'perlin', fractal: 'billow', scale: 2, octaves: 7, warp: 0.4, warpScale: 2, contrast: 0.8 }, 'Мягкий клубящийся туман.'],
+  ['Грязь / гранж', 'noise', { type: 'perlin', scale: 6, octaves: 8, persistence: 0.6, contrast: 2.4, warp: 0.25 }, 'Контрастные пятна для грязи, износа, ржавчины.'],
+  ['Пятна', 'noise', { type: 'worley', scale: 5, octaves: 2, invert: true, contrast: 2 }, 'Круглые пятна: капли, лишайник, плесень.'],
+  ['Шум Ворли (Worley)', 'noise', { type: 'worley', scale: 6, octaves: 1 }, 'Клеточный шум расстояний.'],
+  ['Клеточный fBM', 'noise', { type: 'worley', scale: 4, octaves: 4, persistence: 0.5 }, 'Многоуровневые клетки: кожа, губка, пена.'],
+  ['Белый шум', 'noise', { type: 'white', grain: 1, octaves: 1 }, 'Случайное значение на пиксель.'],
+  ['Зерно / плёнка', 'noise', { type: 'white', grain: 1, octaves: 3, contrast: 0.6 }, 'Мелкое зерно: песок, штукатурка, плёнка.'],
+  ['Пиксельный шум', 'noise', { type: 'white', grain: 16, octaves: 1 }, 'Крупные случайные квадраты.'],
+  ['Шлифованный металл', 'noise', { type: 'value', scale: 2, stretch: 8, octaves: 5, persistence: 0.6 }, 'Длинные горизонтальные волокна.'],
+  ['Волокна дерева', 'noise', { type: 'perlin', scale: 2, stretch: 6, octaves: 6, warp: 0.2 }, 'Вытянутые волнистые волокна.'],
+  ['Штрихи / дождь', 'noise', { type: 'value', scale: 32, stretch: 0.125, octaves: 3, contrast: 1.8 }, 'Вертикальные штрихи: дождь, потёки.'],
+  ['Дюны / песок', 'noise', { type: 'perlin', fractal: 'ridged', scale: 2, stretch: 3, octaves: 5, warp: 0.35 }, 'Песчаные гряды.'],
+  ['Ячейки (F1)', 'voronoi', { mode: 'f1', scale: 8 }, 'Расстояние до ближайшей точки.'],
+  ['Трещины (F2−F1)', 'voronoi', { mode: 'crackle', scale: 6 }, 'Сеть трещин, высохшая земля.'],
+  ['Камни / плитняк', 'voronoi', { mode: 'border', scale: 6, randomness: 0.85 }, 'Выпуклые ячейки с швами.'],
+  ['Мозаика', 'voronoi', { mode: 'cell', scale: 10 }, 'Случайное значение в каждой ячейке.'],
+  ['Кристаллы (Чебышёв)', 'voronoi', { mode: 'f1', metric: 'chebyshev', scale: 7 }, 'Квадратные грани.'],
+  ['Ромбы (Манхэттен)', 'voronoi', { mode: 'f2', metric: 'manhattan', scale: 6 }, 'Ромбовидные ячейки.'],
+  ['Полосы (синус)', 'waves', { shape: 'sine', countX: 8, countY: 0 }, 'Плавные полосы.'],
+  ['Волны с искажением', 'waves', { shape: 'sine', countX: 0, countY: 12, distort: 3 }, 'Полосы, изогнутые шумом (подключите шум ко входу).'],
+];
+for (const [title, type, params, desc] of NOISE_PRESETS) CATALOG_EXTRA.push({ type, title, params, desc, cat: 'Шумы' });
 
 
 // ===== graph.js =====
@@ -4389,8 +4452,17 @@ const Engine = (() => {
 
   function freeEntry(e) {
     if (!e || !e.outs) return;
-    for (const o of e.outs) if (o) GPU.release(o.tex);
+    const seen = new Set();   // outputs may share a texture (unused lazy ports)
+    for (const o of e.outs) if (o && !seen.has(o.tex)) { seen.add(o.tex); GPU.release(o.tex); }
     e.outs = null;
+  }
+
+  // Is output port k of node needed (linked, previewed or explicitly requested)?
+  function portUsed(id, k, opts) {
+    if (k === 0) return true;
+    if (opts.need && opts.need.id === id && opts.need.port === k) return true;
+    if (opts.view && opts.view.id === id && opts.view.port === k) return true;
+    return Graph.links.some((l) => l.from === id && l.fromPort === k);
   }
 
   function makeCtx(node, inputs, res, projRes, opts) {
@@ -4403,6 +4475,8 @@ const Engine = (() => {
       px: (v) => (v * res) / projRes,
       alloc: () => GPU.acquire(res),
       temp: () => { const t = GPU.acquire(res); temps.push(t); return t; },
+      tempAt: (size) => { const t = GPU.acquire(Math.max(8, Math.round(size))); temps.push(t); return t; },
+      used: (k) => portUsed(node.id, k, opts),
       bindTex(u, slot, src, want) {
         u['u_in' + slot] = src ? src.tex : null;
         u['u_has' + slot] = !!src;
@@ -4415,7 +4489,7 @@ const Engine = (() => {
         u['u_def' + slot] = (def.inputs[k] && def.inputs[k].def) || BLACK;
       },
       pass(name, target, u, samplers, outConv = 0) {
-        GPU.run(name, target, { u_res: [res, res], u_outConv: outConv, u_uvOff: ctx.uvOff, ...u }, { samplers: samplers || {} });
+        GPU.run(name, target, { u_res: [target.size, target.size], u_outConv: outConv, u_uvOff: ctx.uvOff, ...u }, { samplers: samplers || {} });
       },
     };
     return { ctx, temps };
@@ -4436,7 +4510,8 @@ const Engine = (() => {
       return o ? { tex: o.tex, space: o.space, key: r.key + ':' + l.fromPort } : null;
     });
     const animated = Anim.isAnimated(node);
-    const inKey = inputs.map((x) => (x ? x.key : '-')).join('|') + (animated ? '@' + Anim.t : '');
+    const lazy = def.outputs.length > 1 ? '#' + def.outputs.map((_, k) => (portUsed(id, k, opts) ? 1 : 0)).join('') : '';
+    const inKey = inputs.map((x) => (x ? x.key : '-')).join('|') + (animated ? '@' + Anim.t : '') + lazy;
     let m = store.get(id);
     if (!m) store.set(id, (m = new Map()));
     let e = m.get(res);
@@ -4488,7 +4563,7 @@ const Engine = (() => {
   function renderBytes(id, port, res, opts = {}) {
     const store = opts.store || new Map();
     try {
-      const e = evaluate(id, res, new Map(), store, { ...opts, projRes: opts.projRes || Graph.state.resolution });
+      const e = evaluate(id, res, new Map(), store, { ...opts, need: { id, port: port || 0 }, projRes: opts.projRes || Graph.state.resolution });
       if (!e) throw new Error('Нода не найдена');
       const node = Graph.nodes.get(id);
       let o;
@@ -5756,7 +5831,7 @@ const Preview = (() => {
     $('#l-az').oninput = () => { st.az = +$('#l-az').value; draw(); };
     $('#l-el').oninput = () => { st.el = +$('#l-el').value; draw(); };
     $('#l-conv').onchange = () => { st.conv = $('#l-conv').value; draw(); };
-    $('#view-port').onchange = () => { App.state.viewPort = +$('#view-port').value; draw(); };
+    $('#view-port').onchange = () => { App.state.viewPort = +$('#view-port').value; App.requestEval(); };
     $('#m-mesh').onchange = () => { st.m.mesh = $('#m-mesh').value; draw(); };
     $('#m-tiling').onchange = () => { st.m.tiling = +$('#m-tiling').value; draw(); };
     $('#m-az').oninput = () => { st.m.az = +$('#m-az').value; draw(); };
@@ -5857,9 +5932,10 @@ const Preview = (() => {
     if (!id) return null;
     const node = Graph.nodes.get(id);
     const e = entryOf(id);
-    if (!e) return { id, node, entry: null };
+    if (!e) { const c = App.cachedFrame(); return c ? { id, node, entry: { key: 'frame' }, out: c, port: 0 } : { id, node, entry: null }; }
     const port = NODES[node.type].outputs.length > 1 ? Math.min(App.state.viewPort, e.outs.length - 1) : 0;
-    return { id, node, entry: e, out: e.outs[port], port };
+    const cached = App.cachedFrame();
+    return { id, node, entry: e, out: cached || e.outs[port], port };
   }
   function entryOf(id) { return Engine.get(id, App.state.displayRes) || Engine.get(id, App.previewRes()); }
 
@@ -6093,7 +6169,7 @@ const App = (() => {
   const $ = (s) => document.querySelector(s);
   const state = { selected: null, selectedLink: null, viewPort: 0, interactive: false, playing: false, displayRes: 512, dirty: false, ready: false };
   let evalRaf = 0, idleTimer = 0, thumbQueue = [], thumbTimer = 0;
-  const CAT_ORDER = ['Источники', 'Узоры', 'Эффекты', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
+  const CAT_ORDER = ['Источники', 'Шумы', 'Узоры', 'Эффекты', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
   const KEYWORDS = {
     image: 'png jpeg jpg файл картинка', constant: 'color цвет value', noise: 'perlin value fbm шум worley white ridged billow облака clouds', voronoi: 'cells worley клетки трещины crackle камни',
     shape: 'circle rect ring круг квадрат кольцо эллипс', gradient: 'ramp linear radial angular', levels: 'уровни контраст',
@@ -6117,6 +6193,7 @@ const App = (() => {
     });
     canvas.addEventListener('webglcontextrestored', () => {
       GPU.setup({ forceRGBA8: /[?&]rgba8\b/.test(location.search) });
+      frameCache.frames.clear();
       $('#lost').classList.remove('show');
       status('Контекст WebGL восстановлен, граф пересчитан.');
       GraphView.rebuild();
@@ -6158,7 +6235,7 @@ const App = (() => {
       const a = Graph.state.animation;
       a.frames = +$('#tl-frames').value; a.frameSize = +$('#tl-size').value;
       a.fps = Math.min(60, Math.max(1, +$('#tl-fps').value || 24));
-      commit(); animChanged(); setFrame(Math.min(playFrame, a.frames - 1));
+      commit(); clearFrameCache(); animChanged(); setFrame(Math.min(playFrame, a.frames - 1));
     };
     $('#tl-frames').onchange = setSettings; $('#tl-size').onchange = setSettings; $('#tl-fps').onchange = setSettings;
     $('#tl-export').onclick = () => exportSpriteSheet();
@@ -6235,6 +6312,9 @@ const App = (() => {
   // ---------------------------------------------------------------- UI bits
   function buildCatalog() {
     const list = $('#catalog-list'), search = $('#search');
+    let collapsed = new Set();
+    try { collapsed = new Set(JSON.parse(localStorage.getItem('ptl.catalogCollapsed') || '[]')); } catch (e) { /* per-viewer convenience only */ }
+    const saveCollapsed = () => { try { localStorage.setItem('ptl.catalogCollapsed', JSON.stringify([...collapsed])); } catch (e) { /* ignore */ } };
     const render = () => {
       const q = search.value.trim().toLowerCase();
       list.textContent = '';
@@ -6242,14 +6322,18 @@ const App = (() => {
       for (const cat of CAT_ORDER) {
         const items = Object.keys(NODES).filter((t) => NODES[t].cat === cat &&
           (!q || (NODES[t].title + ' ' + t + ' ' + (KEYWORDS[t] || '')).toLowerCase().includes(q)));
-        const extras = CATALOG_EXTRA.map((x, k) => ({ ...x, k })).filter((x) => NODES[x.type].cat === cat &&
-          (!q || (x.title + ' ' + x.type + ' ' + (KEYWORDS[x.type] || '') + ' basecolor albedo normal orm material материал').toLowerCase().includes(q)));
+        const extras = CATALOG_EXTRA.map((x, k) => ({ ...x, k })).filter((x) => (x.cat || NODES[x.type].cat) === cat &&
+          (!q || (x.title + ' ' + x.type + ' ' + (x.desc || '') + ' ' + (x.cat ? 'шум noise' : 'basecolor albedo normal orm material материал')).toLowerCase().includes(q)));
         if (!items.length && !extras.length) continue;
-        const h = document.createElement('h4'); h.textContent = cat; list.append(h);
+        const h = document.createElement('h4'); h.textContent = (collapsed.has(cat) && !q ? '▸ ' : '▾ ') + cat; list.append(h);
+        h.style.cursor = 'pointer';
+        h.title = 'Свернуть / развернуть раздел';
+        h.onclick = () => { collapsed.has(cat) ? collapsed.delete(cat) : collapsed.add(cat); saveCollapsed(); render(); };
+        if (collapsed.has(cat) && !q) continue;
         if (cat === 'Выход') h.dataset.cat = cat;
         for (const x of extras) {
           const it = document.createElement('div');
-          it.className = 'item';
+          it.className = 'item' + (x.cat ? ' extra' : '');
           it.textContent = x.title;
           it.dataset.type = x.type + '#' + x.k;
           it.title = x.desc + '\n\nЩелчок — добавить, или перетащите на граф';
@@ -6532,6 +6616,7 @@ const App = (() => {
 
   // Central change notification. commit=false => live (interactive) change.
   function changed(o = {}) {
+    if (frameCache.frames.size) clearFrameCache();
     state.interactive = !!o.interactive;
     if (o.commit) commit();
     if (o.structure) { GraphView.drawWires(); GraphView.refreshMarks(); }
@@ -6596,6 +6681,7 @@ const App = (() => {
   }
 
   function afterLoad() {
+    if (frameCache.frames.size) clearFrameCache();
     if (state.selected && !Graph.nodes.has(state.selected)) state.selected = null;
     state.selectedLink = null;
     $('#res').value = Graph.state.resolution;
@@ -6670,10 +6756,27 @@ const App = (() => {
     const pres = previewRes();
     const viewed = viewedId();
     const t0 = performance.now();
+    const vopt = { view: { id: viewed, port: state.viewPort } };
     if (state.playing) {
-      state.displayRes = pres;
-      const memo = new Map();
-      for (const id of liveIds(viewed)) Engine.evaluate(id, pres, memo);
+      // playback at the sprite-sheet frame size; every frame is computed once
+      // and then replayed from the frame cache until something changes
+      const r = playRes();
+      state.displayRes = r;
+      const ck = viewed + ':' + state.viewPort + ':' + r;
+      if (frameCache.key !== ck) clearFrameCache(ck);
+      const k = Math.round(Anim.t * Anim.settings().frames);
+      const need3d = Preview.materialIds().length > 0;
+      if (!frameCache.frames.has(k) || need3d) {
+        const memo = new Map();
+        for (const id of liveIds(viewed)) Engine.evaluate(id, r, memo, undefined, vopt);
+        const e = viewed && Engine.get(viewed, r);
+        if (e && frameCache.enabled && !frameCache.frames.has(k)) {
+          const o = e.outs[Math.min(state.viewPort, e.outs.length - 1)];
+          const t = GPU.acquire(r);
+          GPU.run('copy', t, { u_in0: o.tex, u_has0: true, u_col0: false, u_conv0: 0, u_def0: [0, 0, 0, 1], u_res: [r, r], u_outConv: 0 });
+          frameCache.frames.set(k, { tex: t, space: o.space });
+        }
+      }
       Preview.draw();
       return;
     }
@@ -6681,15 +6784,15 @@ const App = (() => {
       const r = dragRes(pres);
       state.displayRes = r;
       const memo = new Map();
-      for (const id of liveIds(viewed)) Engine.evaluate(id, r, memo);
+      for (const id of liveIds(viewed)) Engine.evaluate(id, r, memo, undefined, vopt);
       // settle to full quality shortly after the last live change
       clearTimeout(idleTimer);
       idleTimer = setTimeout(() => { state.interactive = false; requestEval(); }, 350);
     } else {
       state.displayRes = pres;
       const memo = new Map();
-      if (viewed) Engine.evaluate(viewed, pres, memo);
-      for (const id of Graph.nodes.keys()) Engine.evaluate(id, pres, memo);
+      if (viewed) Engine.evaluate(viewed, pres, memo, undefined, vopt);
+      for (const id of Graph.nodes.keys()) Engine.evaluate(id, pres, memo, undefined, vopt);
       Engine.purge([pres]);
       queueThumbs(pres);
     }
@@ -6698,6 +6801,21 @@ const App = (() => {
     ParamsPanel.refreshStatus();
     Preview.draw();
   }
+
+  // ---- playback frame cache
+  const frameCache = { key: null, frames: new Map(), enabled: true };
+  function clearFrameCache(key = null) {
+    for (const f of frameCache.frames.values()) GPU.release(f.tex);
+    frameCache.frames.clear();
+    frameCache.key = key;
+    const a = Anim.settings(), r = playRes();
+    frameCache.enabled = a.frames * r * r * 8 <= 192 * 1024 * 1024;   // memory cap
+  }
+  function cachedFrame() {
+    if (!state.playing) return null;
+    return frameCache.frames.get(Math.round(Anim.t * Anim.settings().frames)) || null;
+  }
+  function playRes() { return Math.min(previewRes(), Math.max(256, Anim.settings().frameSize)); }
 
   // Nodes that must be fresh during drags/playback: the viewed one + material outputs shown in 3D.
   function liveIds(viewed) {
@@ -6898,7 +7016,7 @@ const App = (() => {
 
   return {
     init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId,
-    undo, redo, flush, animChanged, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    undo, redo, flush, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };
@@ -7072,6 +7190,12 @@ const PTL = (() => {
       return { width: r.width, height: r.height, cols: r.cols, rows: r.rows, frames: r.frames, png: await PNG.encodeAsync(r.bytes, r.width, r.height) };
     },
     exportSpriteSheet(id) { return App.exportSpriteSheet(id || App.viewedId()); },
+    noisePresets() { return NOISE_PRESETS.map(([title, type, params, desc]) => ({ title, type, params, desc })); },
+    addNoise(title, opts = {}) {
+      const pr = NOISE_PRESETS.find((x) => x[0] === title) || NOISE_PRESETS.find((x) => x[0].toLowerCase().includes(String(title).toLowerCase()));
+      if (!pr) throw new Error('PTL: нет шума "' + title + '". Есть: ' + NOISE_PRESETS.map((x) => x[0]).join(' | '));
+      return api.addNode(pr[1], { ...opts, params: { ...pr[2], ...(opts.params || {}) } });
+    },
     rampPresets() { return Object.keys(RAMP_PRESETS); },
     rampPreset(name) { const r = rampFromPreset(name); if (!r) throw new Error(`PTL: нет градиента "${name}". Есть: ${Object.keys(RAMP_PRESETS).join(', ')}`); return r; },
     library: {

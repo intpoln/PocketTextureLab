@@ -164,6 +164,12 @@ const PTL = (() => {
       return { width: r.width, height: r.height, cols: r.cols, rows: r.rows, frames: r.frames, png: await PNG.encodeAsync(r.bytes, r.width, r.height) };
     },
     exportSpriteSheet(id) { return App.exportSpriteSheet(id || App.viewedId()); },
+    noisePresets() { return NOISE_PRESETS.map(([title, type, params, desc]) => ({ title, type, params, desc })); },
+    addNoise(title, opts = {}) {
+      const pr = NOISE_PRESETS.find((x) => x[0] === title) || NOISE_PRESETS.find((x) => x[0].toLowerCase().includes(String(title).toLowerCase()));
+      if (!pr) throw new Error('PTL: нет шума "' + title + '". Есть: ' + NOISE_PRESETS.map((x) => x[0]).join(' | '));
+      return api.addNode(pr[1], { ...opts, params: { ...pr[2], ...(opts.params || {}) } });
+    },
     rampPresets() { return Object.keys(RAMP_PRESETS); },
     rampPreset(name) { const r = rampFromPreset(name); if (!r) throw new Error(`PTL: нет градиента "${name}". Есть: ${Object.keys(RAMP_PRESETS).join(', ')}`); return r; },
     library: {

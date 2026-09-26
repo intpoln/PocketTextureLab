@@ -79,6 +79,9 @@ Editing (all validated; unknown params/enum values throw with the list of valid 
 - Template parameters (a few knobs shown at project level when nothing is selected):
   `PTL.expose(id, key, label)`, `PTL.unexpose(id, key)`, `PTL.exposed()` → `[{node,key,label,value}]`,
   `PTL.setExposed(label, value)`.
+- Ready-made noises (catalog section «Шумы»): `PTL.noisePresets()` → `[{title,type,params,desc}]`,
+  `PTL.addNoise('Мрамор', {params:{seed:3}})` (clouds, ridged, veins, billow, turbulence, marble, domain warp, fog,
+  grunge, spots, worley, cellular fBM, white/grain/pixel, brushed metal, wood fibers, streaks, dunes, voronoi variants, stripes).
 - Colour gradients: `PTL.rampPresets()` (Magma, Inferno, Viridis, Fire, Water, Terrain, Rust, Wood, …);
   `PTL.setParams(rampId, {stops: PTL.rampPreset('Magma')})` or `PTL.applyPreset(rampId, 'Magma')`.
 - Browser library (localStorage of this site): `PTL.library.saveNodePreset(id, name)`, `.nodePresets(type)`,

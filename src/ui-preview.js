@@ -23,7 +23,7 @@ const Preview = (() => {
     $('#l-az').oninput = () => { st.az = +$('#l-az').value; draw(); };
     $('#l-el').oninput = () => { st.el = +$('#l-el').value; draw(); };
     $('#l-conv').onchange = () => { st.conv = $('#l-conv').value; draw(); };
-    $('#view-port').onchange = () => { App.state.viewPort = +$('#view-port').value; draw(); };
+    $('#view-port').onchange = () => { App.state.viewPort = +$('#view-port').value; App.requestEval(); };
     $('#m-mesh').onchange = () => { st.m.mesh = $('#m-mesh').value; draw(); };
     $('#m-tiling').onchange = () => { st.m.tiling = +$('#m-tiling').value; draw(); };
     $('#m-az').oninput = () => { st.m.az = +$('#m-az').value; draw(); };
@@ -124,9 +124,10 @@ const Preview = (() => {
     if (!id) return null;
     const node = Graph.nodes.get(id);
     const e = entryOf(id);
-    if (!e) return { id, node, entry: null };
+    if (!e) { const c = App.cachedFrame(); return c ? { id, node, entry: { key: 'frame' }, out: c, port: 0 } : { id, node, entry: null }; }
     const port = NODES[node.type].outputs.length > 1 ? Math.min(App.state.viewPort, e.outs.length - 1) : 0;
-    return { id, node, entry: e, out: e.outs[port], port };
+    const cached = App.cachedFrame();
+    return { id, node, entry: e, out: cached || e.outs[port], port };
   }
   function entryOf(id) { return Engine.get(id, App.state.displayRes) || Engine.get(id, App.previewRes()); }
 

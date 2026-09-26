@@ -556,16 +556,27 @@ const NODES = {
       const u = { u_thr: p.threshold, u_knee: p.knee };
       ctx.bindIn(u, 0, 0, 'native');
       ctx.pass('brightpass', bright, u);
-      const src = { tex: bright, space: sp }, rep = p.wrap === 'repeat';
-      const blurs = [1, 2, 4].map((m) => { const t = ctx.temp(); gaussianInto(ctx, src, 0, t, Math.min(128, ctx.px(p.radius * m)), rep, false); return t; });
+      const rep = p.wrap === 'repeat', wrap = rep ? 'repeat' : 'clamp';
+      // bloom pyramid: blur σ·2^k at resolution res/2^(k+1) (same look, a fraction of the cost)
+      let prev = bright;
+      const blurs = [1, 2, 4].map((m, k) => {
+        const size = Math.max(8, ctx.res >> (k + 1));
+        const down = ctx.tempAt(size), u2 = {};
+        ctx.bindTex(u2, 0, { tex: prev, space: sp }, 'native');
+        ctx.pass('downsample', down, u2, { u_in0: wrap });
+        const t = ctx.tempAt(size);
+        gaussianInto(ctx, { tex: down, space: sp }, 0, t, Math.min(96, ctx.px(p.radius * m) * size / ctx.res), rep, false);
+        prev = down;
+        return t;
+      });
       const tint = sp === 'color' ? p.tint.slice(0, 3).map(ColorUtil.toLin) : p.tint.slice(0, 3);
-      return [0, 1].map((mode) => {
+      return [0, 1].filter((mode) => ctx.used(mode)).map((mode) => {
         const out = ctx.alloc(), w = { u_int: p.intensity, u_tint: tint, u_out: mode, u_alpha: p.alpha };
         ctx.bindIn(w, 0, 0, 'native');
         blurs.forEach((t, k) => ctx.bindTex(w, k + 1, { tex: t, space: sp }, 'native'));
-        ctx.pass('glowmix', out, w);
+        ctx.pass('glowmix', out, w, { u_in1: wrap, u_in2: wrap, u_in3: wrap });
         return { tex: out, space: sp };
-      });
+      }).reduce((a, o, _, arr) => (arr.length === 1 ? [o, o] : arr), []);
     },
   },
 
@@ -717,8 +728,10 @@ const NODES = {
         u_t: Anim.t, u_loops: p.loops, u_seed: p.seed, u_oct: p.detail, u_count: p.count, u_int: p.intensity, u_scale: p.scale,
         u_thick: p.thick, u_distort: p.distort, u_twist: p.twist, u_edge: fx.edge || 0, u_blackBg: p.background === 'black', u_n: st.length, u_pos: pos, u_cols: cols,
       };
-      const col = ctx.alloc(), gray = ctx.alloc();
+      const col = ctx.alloc();
       ctx.pass('fx_' + fx.id, col, { ...u, u_outMode: 0 }, null, 2);
+      if (!ctx.used(1)) return [{ tex: col, space: 'color' }, { tex: col, space: 'color' }];
+      const gray = ctx.alloc();
       ctx.pass('fx_' + fx.id, gray, { ...u, u_outMode: 1 });
       return [{ tex: col, space: 'color' }, { tex: gray, space: 'data' }];
     },
@@ -794,11 +807,12 @@ function scatterEval(ctx, kind) {
     u_bevel: p.bevel || 0, u_seed: p.seed,
   };
   ctx.bindIn(u, 0, 0, 'data');
-  return [0, 1].map((mode) => {
+  const outs = [0, 1].filter((mode) => ctx.used(mode)).map((mode) => {
     const out = ctx.alloc();
     ctx.pass('scatter', out, { ...u, u_out: mode }, { u_in0: 'clamp' });
     return { tex: out, space: 'data' };
   });
+  return outs.length === 2 ? outs : [outs[0], outs[0]];
 }
 
 // Levels / Invert / HSV: operate on file values; colour inputs are
@@ -816,7 +830,7 @@ function gaussianInto(ctx, src, _slot, out, sigma, repeat, alphaAware) {
   ctx.bindTex(u, 0, src, 'native');
   if (!src || sigma <= 0.05) { ctx.pass('copy', out, u); return; }
   const radius = Math.min(512, Math.ceil(sigma * 3));
-  const tmp = ctx.temp();
+  const tmp = ctx.tempAt(out.size);
   ctx.pass('gauss', tmp, { ...u, u_dir: [1, 0], u_sigma: sigma, u_radius: radius, u_rep: repeat, u_premul: alphaAware, u_unpremul: false });
   const u2 = {};
   ctx.bindTex(u2, 0, { tex: tmp, space: src.space }, 'native');
@@ -908,3 +922,38 @@ const CATALOG_EXTRA = [
   { type: 'output', title: 'Выход: Normal', params: { usage: 'normal', filename: 'normal' }, desc: 'Выход normal map материала: экспорт PNG + 3D-превью.' },
   { type: 'output', title: 'Выход: ORM', params: { usage: 'orm', filename: 'orm' }, desc: 'Выход ORM (R=AO, G=Roughness, B=Metallic): экспорт PNG + 3D-превью.' },
 ];
+
+// Ready-made noises for the «Шумы» catalog section (regular nodes with tuned parameters).
+const NOISE_PRESETS = [
+  ['Облака (Clouds)', 'noise', { type: 'perlin', scale: 4, octaves: 7, persistence: 0.55, contrast: 1.35 }, 'Классический fBM Perlin: облака, пятна, вариации цвета.'],
+  ['Мягкий Perlin', 'noise', { type: 'perlin', scale: 3, octaves: 3, persistence: 0.4 }, 'Крупные плавные пятна без мелкой детали.'],
+  ['Мелкий Perlin', 'noise', { type: 'perlin', scale: 24, octaves: 4 }, 'Мелкая детализация поверхности, микрорельеф.'],
+  ['Value Noise', 'noise', { type: 'value', scale: 8, octaves: 5 }, 'Более «квадратный» шум значений.'],
+  ['Горы / гребни (Ridged)', 'noise', { type: 'perlin', fractal: 'ridged', scale: 3, octaves: 8, persistence: 0.55 }, 'Острые хребты: горы, скалы, прожилки.'],
+  ['Прожилки / вены', 'noise', { type: 'perlin', fractal: 'ridged', scale: 4, octaves: 5, persistence: 0.35, contrast: 1.6 }, 'Тонкие ветвящиеся линии: вены, молнии, трещины льда.'],
+  ['Клубы (Billow)', 'noise', { type: 'perlin', fractal: 'billow', scale: 4, octaves: 6 }, 'Округлые «клубы»: камни, дым, кучевые облака.'],
+  ['Турбулентность', 'noise', { type: 'perlin', fractal: 'billow', scale: 6, octaves: 7, persistence: 0.6, contrast: 1.4 }, 'Бурлящий шум: огонь, вода, энергия.'],
+  ['Мрамор', 'noise', { type: 'perlin', fractal: 'ridged', scale: 2, octaves: 6, warp: 0.7, warpScale: 2, contrast: 1.3 }, 'Искажённые прожилки мрамора.'],
+  ['Текучий (Domain Warp)', 'noise', { type: 'perlin', scale: 3, octaves: 6, warp: 0.6, warpScale: 3 }, 'Органичные «перетекающие» формы: жидкости, туманности.'],
+  ['Туман / дым', 'noise', { type: 'perlin', fractal: 'billow', scale: 2, octaves: 7, warp: 0.4, warpScale: 2, contrast: 0.8 }, 'Мягкий клубящийся туман.'],
+  ['Грязь / гранж', 'noise', { type: 'perlin', scale: 6, octaves: 8, persistence: 0.6, contrast: 2.4, warp: 0.25 }, 'Контрастные пятна для грязи, износа, ржавчины.'],
+  ['Пятна', 'noise', { type: 'worley', scale: 5, octaves: 2, invert: true, contrast: 2 }, 'Круглые пятна: капли, лишайник, плесень.'],
+  ['Шум Ворли (Worley)', 'noise', { type: 'worley', scale: 6, octaves: 1 }, 'Клеточный шум расстояний.'],
+  ['Клеточный fBM', 'noise', { type: 'worley', scale: 4, octaves: 4, persistence: 0.5 }, 'Многоуровневые клетки: кожа, губка, пена.'],
+  ['Белый шум', 'noise', { type: 'white', grain: 1, octaves: 1 }, 'Случайное значение на пиксель.'],
+  ['Зерно / плёнка', 'noise', { type: 'white', grain: 1, octaves: 3, contrast: 0.6 }, 'Мелкое зерно: песок, штукатурка, плёнка.'],
+  ['Пиксельный шум', 'noise', { type: 'white', grain: 16, octaves: 1 }, 'Крупные случайные квадраты.'],
+  ['Шлифованный металл', 'noise', { type: 'value', scale: 2, stretch: 8, octaves: 5, persistence: 0.6 }, 'Длинные горизонтальные волокна.'],
+  ['Волокна дерева', 'noise', { type: 'perlin', scale: 2, stretch: 6, octaves: 6, warp: 0.2 }, 'Вытянутые волнистые волокна.'],
+  ['Штрихи / дождь', 'noise', { type: 'value', scale: 32, stretch: 0.125, octaves: 3, contrast: 1.8 }, 'Вертикальные штрихи: дождь, потёки.'],
+  ['Дюны / песок', 'noise', { type: 'perlin', fractal: 'ridged', scale: 2, stretch: 3, octaves: 5, warp: 0.35 }, 'Песчаные гряды.'],
+  ['Ячейки (F1)', 'voronoi', { mode: 'f1', scale: 8 }, 'Расстояние до ближайшей точки.'],
+  ['Трещины (F2−F1)', 'voronoi', { mode: 'crackle', scale: 6 }, 'Сеть трещин, высохшая земля.'],
+  ['Камни / плитняк', 'voronoi', { mode: 'border', scale: 6, randomness: 0.85 }, 'Выпуклые ячейки с швами.'],
+  ['Мозаика', 'voronoi', { mode: 'cell', scale: 10 }, 'Случайное значение в каждой ячейке.'],
+  ['Кристаллы (Чебышёв)', 'voronoi', { mode: 'f1', metric: 'chebyshev', scale: 7 }, 'Квадратные грани.'],
+  ['Ромбы (Манхэттен)', 'voronoi', { mode: 'f2', metric: 'manhattan', scale: 6 }, 'Ромбовидные ячейки.'],
+  ['Полосы (синус)', 'waves', { shape: 'sine', countX: 8, countY: 0 }, 'Плавные полосы.'],
+  ['Волны с искажением', 'waves', { shape: 'sine', countX: 0, countY: 12, distort: 3 }, 'Полосы, изогнутые шумом (подключите шум ко входу).'],
+];
+for (const [title, type, params, desc] of NOISE_PRESETS) CATALOG_EXTRA.push({ type, title, params, desc, cat: 'Шумы' });

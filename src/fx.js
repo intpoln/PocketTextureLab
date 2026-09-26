@@ -25,9 +25,13 @@ uniform int u_n;
 uniform float u_pos[8];
 uniform vec4 u_cols[8];
 const float TAU = 6.28318530718;
+// cheap 1-lane PCG hash of an integer lattice point (8 per noise sample)
 float hsh(ivec3 c) {
-  uvec3 r = pcg3(uvec3(c) + uvec3(0u, 0u, uint(u_seed) * 7919u));
-  return float(r.x >> 8u) / 16777215.0;
+  uint h = uint(c.x) * 73856093u ^ uint(c.y) * 19349663u ^ uint(c.z) * 83492791u ^ (uint(u_seed) * 2654435761u + 1u);
+  uint st = h * 747796405u + 2891336453u;
+  uint w = ((st >> ((st >> 28u) + 4u)) ^ st) * 277803737u;
+  w = (w >> 22u) ^ w;
+  return float(w >> 8u) / 16777215.0;
 }
 float hsh1(int i, int k) { return hsh(ivec3(i, k, 977)); }
 ivec3 wr(ivec3 c, ivec3 P) {

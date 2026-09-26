@@ -5,7 +5,7 @@ const App = (() => {
   const $ = (s) => document.querySelector(s);
   const state = { selected: null, selectedLink: null, viewPort: 0, interactive: false, playing: false, displayRes: 512, dirty: false, ready: false };
   let evalRaf = 0, idleTimer = 0, thumbQueue = [], thumbTimer = 0;
-  const CAT_ORDER = ['Источники', 'Узоры', 'Эффекты', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
+  const CAT_ORDER = ['Источники', 'Шумы', 'Узоры', 'Эффекты', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
   const KEYWORDS = {
     image: 'png jpeg jpg файл картинка', constant: 'color цвет value', noise: 'perlin value fbm шум worley white ridged billow облака clouds', voronoi: 'cells worley клетки трещины crackle камни',
     shape: 'circle rect ring круг квадрат кольцо эллипс', gradient: 'ramp linear radial angular', levels: 'уровни контраст',
@@ -29,6 +29,7 @@ const App = (() => {
     });
     canvas.addEventListener('webglcontextrestored', () => {
       GPU.setup({ forceRGBA8: /[?&]rgba8\b/.test(location.search) });
+      frameCache.frames.clear();
       $('#lost').classList.remove('show');
       status('Контекст WebGL восстановлен, граф пересчитан.');
       GraphView.rebuild();
@@ -70,7 +71,7 @@ const App = (() => {
       const a = Graph.state.animation;
       a.frames = +$('#tl-frames').value; a.frameSize = +$('#tl-size').value;
       a.fps = Math.min(60, Math.max(1, +$('#tl-fps').value || 24));
-      commit(); animChanged(); setFrame(Math.min(playFrame, a.frames - 1));
+      commit(); clearFrameCache(); animChanged(); setFrame(Math.min(playFrame, a.frames - 1));
     };
     $('#tl-frames').onchange = setSettings; $('#tl-size').onchange = setSettings; $('#tl-fps').onchange = setSettings;
     $('#tl-export').onclick = () => exportSpriteSheet();
@@ -147,6 +148,9 @@ const App = (() => {
   // ---------------------------------------------------------------- UI bits
   function buildCatalog() {
     const list = $('#catalog-list'), search = $('#search');
+    let collapsed = new Set();
+    try { collapsed = new Set(JSON.parse(localStorage.getItem('ptl.catalogCollapsed') || '[]')); } catch (e) { /* per-viewer convenience only */ }
+    const saveCollapsed = () => { try { localStorage.setItem('ptl.catalogCollapsed', JSON.stringify([...collapsed])); } catch (e) { /* ignore */ } };
     const render = () => {
       const q = search.value.trim().toLowerCase();
       list.textContent = '';
@@ -154,14 +158,18 @@ const App = (() => {
       for (const cat of CAT_ORDER) {
         const items = Object.keys(NODES).filter((t) => NODES[t].cat === cat &&
           (!q || (NODES[t].title + ' ' + t + ' ' + (KEYWORDS[t] || '')).toLowerCase().includes(q)));
-        const extras = CATALOG_EXTRA.map((x, k) => ({ ...x, k })).filter((x) => NODES[x.type].cat === cat &&
-          (!q || (x.title + ' ' + x.type + ' ' + (KEYWORDS[x.type] || '') + ' basecolor albedo normal orm material материал').toLowerCase().includes(q)));
+        const extras = CATALOG_EXTRA.map((x, k) => ({ ...x, k })).filter((x) => (x.cat || NODES[x.type].cat) === cat &&
+          (!q || (x.title + ' ' + x.type + ' ' + (x.desc || '') + ' ' + (x.cat ? 'шум noise' : 'basecolor albedo normal orm material материал')).toLowerCase().includes(q)));
         if (!items.length && !extras.length) continue;
-        const h = document.createElement('h4'); h.textContent = cat; list.append(h);
+        const h = document.createElement('h4'); h.textContent = (collapsed.has(cat) && !q ? '▸ ' : '▾ ') + cat; list.append(h);
+        h.style.cursor = 'pointer';
+        h.title = 'Свернуть / развернуть раздел';
+        h.onclick = () => { collapsed.has(cat) ? collapsed.delete(cat) : collapsed.add(cat); saveCollapsed(); render(); };
+        if (collapsed.has(cat) && !q) continue;
         if (cat === 'Выход') h.dataset.cat = cat;
         for (const x of extras) {
           const it = document.createElement('div');
-          it.className = 'item';
+          it.className = 'item' + (x.cat ? ' extra' : '');
           it.textContent = x.title;
           it.dataset.type = x.type + '#' + x.k;
           it.title = x.desc + '\n\nЩелчок — добавить, или перетащите на граф';
@@ -444,6 +452,7 @@ const App = (() => {
 
   // Central change notification. commit=false => live (interactive) change.
   function changed(o = {}) {
+    if (frameCache.frames.size) clearFrameCache();
     state.interactive = !!o.interactive;
     if (o.commit) commit();
     if (o.structure) { GraphView.drawWires(); GraphView.refreshMarks(); }
@@ -508,6 +517,7 @@ const App = (() => {
   }
 
   function afterLoad() {
+    if (frameCache.frames.size) clearFrameCache();
     if (state.selected && !Graph.nodes.has(state.selected)) state.selected = null;
     state.selectedLink = null;
     $('#res').value = Graph.state.resolution;
@@ -582,10 +592,27 @@ const App = (() => {
     const pres = previewRes();
     const viewed = viewedId();
     const t0 = performance.now();
+    const vopt = { view: { id: viewed, port: state.viewPort } };
     if (state.playing) {
-      state.displayRes = pres;
-      const memo = new Map();
-      for (const id of liveIds(viewed)) Engine.evaluate(id, pres, memo);
+      // playback at the sprite-sheet frame size; every frame is computed once
+      // and then replayed from the frame cache until something changes
+      const r = playRes();
+      state.displayRes = r;
+      const ck = viewed + ':' + state.viewPort + ':' + r;
+      if (frameCache.key !== ck) clearFrameCache(ck);
+      const k = Math.round(Anim.t * Anim.settings().frames);
+      const need3d = Preview.materialIds().length > 0;
+      if (!frameCache.frames.has(k) || need3d) {
+        const memo = new Map();
+        for (const id of liveIds(viewed)) Engine.evaluate(id, r, memo, undefined, vopt);
+        const e = viewed && Engine.get(viewed, r);
+        if (e && frameCache.enabled && !frameCache.frames.has(k)) {
+          const o = e.outs[Math.min(state.viewPort, e.outs.length - 1)];
+          const t = GPU.acquire(r);
+          GPU.run('copy', t, { u_in0: o.tex, u_has0: true, u_col0: false, u_conv0: 0, u_def0: [0, 0, 0, 1], u_res: [r, r], u_outConv: 0 });
+          frameCache.frames.set(k, { tex: t, space: o.space });
+        }
+      }
       Preview.draw();
       return;
     }
@@ -593,15 +620,15 @@ const App = (() => {
       const r = dragRes(pres);
       state.displayRes = r;
       const memo = new Map();
-      for (const id of liveIds(viewed)) Engine.evaluate(id, r, memo);
+      for (const id of liveIds(viewed)) Engine.evaluate(id, r, memo, undefined, vopt);
       // settle to full quality shortly after the last live change
       clearTimeout(idleTimer);
       idleTimer = setTimeout(() => { state.interactive = false; requestEval(); }, 350);
     } else {
       state.displayRes = pres;
       const memo = new Map();
-      if (viewed) Engine.evaluate(viewed, pres, memo);
-      for (const id of Graph.nodes.keys()) Engine.evaluate(id, pres, memo);
+      if (viewed) Engine.evaluate(viewed, pres, memo, undefined, vopt);
+      for (const id of Graph.nodes.keys()) Engine.evaluate(id, pres, memo, undefined, vopt);
       Engine.purge([pres]);
       queueThumbs(pres);
     }
@@ -610,6 +637,21 @@ const App = (() => {
     ParamsPanel.refreshStatus();
     Preview.draw();
   }
+
+  // ---- playback frame cache
+  const frameCache = { key: null, frames: new Map(), enabled: true };
+  function clearFrameCache(key = null) {
+    for (const f of frameCache.frames.values()) GPU.release(f.tex);
+    frameCache.frames.clear();
+    frameCache.key = key;
+    const a = Anim.settings(), r = playRes();
+    frameCache.enabled = a.frames * r * r * 8 <= 192 * 1024 * 1024;   // memory cap
+  }
+  function cachedFrame() {
+    if (!state.playing) return null;
+    return frameCache.frames.get(Math.round(Anim.t * Anim.settings().frames)) || null;
+  }
+  function playRes() { return Math.min(previewRes(), Math.max(256, Anim.settings().frameSize)); }
 
   // Nodes that must be fresh during drags/playback: the viewed one + material outputs shown in 3D.
   function liveIds(viewed) {
@@ -810,7 +852,7 @@ const App = (() => {
 
   return {
     init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId,
-    undo, redo, flush, animChanged, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    undo, redo, flush, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };

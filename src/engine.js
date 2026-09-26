@@ -10,8 +10,17 @@ const Engine = (() => {
 
   function freeEntry(e) {
     if (!e || !e.outs) return;
-    for (const o of e.outs) if (o) GPU.release(o.tex);
+    const seen = new Set();   // outputs may share a texture (unused lazy ports)
+    for (const o of e.outs) if (o && !seen.has(o.tex)) { seen.add(o.tex); GPU.release(o.tex); }
     e.outs = null;
+  }
+
+  // Is output port k of node needed (linked, previewed or explicitly requested)?
+  function portUsed(id, k, opts) {
+    if (k === 0) return true;
+    if (opts.need && opts.need.id === id && opts.need.port === k) return true;
+    if (opts.view && opts.view.id === id && opts.view.port === k) return true;
+    return Graph.links.some((l) => l.from === id && l.fromPort === k);
   }
 
   function makeCtx(node, inputs, res, projRes, opts) {
@@ -24,6 +33,8 @@ const Engine = (() => {
       px: (v) => (v * res) / projRes,
       alloc: () => GPU.acquire(res),
       temp: () => { const t = GPU.acquire(res); temps.push(t); return t; },
+      tempAt: (size) => { const t = GPU.acquire(Math.max(8, Math.round(size))); temps.push(t); return t; },
+      used: (k) => portUsed(node.id, k, opts),
       bindTex(u, slot, src, want) {
         u['u_in' + slot] = src ? src.tex : null;
         u['u_has' + slot] = !!src;
@@ -36,7 +47,7 @@ const Engine = (() => {
         u['u_def' + slot] = (def.inputs[k] && def.inputs[k].def) || BLACK;
       },
       pass(name, target, u, samplers, outConv = 0) {
-        GPU.run(name, target, { u_res: [res, res], u_outConv: outConv, u_uvOff: ctx.uvOff, ...u }, { samplers: samplers || {} });
+        GPU.run(name, target, { u_res: [target.size, target.size], u_outConv: outConv, u_uvOff: ctx.uvOff, ...u }, { samplers: samplers || {} });
       },
     };
     return { ctx, temps };
@@ -57,7 +68,8 @@ const Engine = (() => {
       return o ? { tex: o.tex, space: o.space, key: r.key + ':' + l.fromPort } : null;
     });
     const animated = Anim.isAnimated(node);
-    const inKey = inputs.map((x) => (x ? x.key : '-')).join('|') + (animated ? '@' + Anim.t : '');
+    const lazy = def.outputs.length > 1 ? '#' + def.outputs.map((_, k) => (portUsed(id, k, opts) ? 1 : 0)).join('') : '';
+    const inKey = inputs.map((x) => (x ? x.key : '-')).join('|') + (animated ? '@' + Anim.t : '') + lazy;
     let m = store.get(id);
     if (!m) store.set(id, (m = new Map()));
     let e = m.get(res);
@@ -109,7 +121,7 @@ const Engine = (() => {
   function renderBytes(id, port, res, opts = {}) {
     const store = opts.store || new Map();
     try {
-      const e = evaluate(id, res, new Map(), store, { ...opts, projRes: opts.projRes || Graph.state.resolution });
+      const e = evaluate(id, res, new Map(), store, { ...opts, need: { id, port: port || 0 }, projRes: opts.projRes || Graph.state.resolution });
       if (!e) throw new Error('Нода не найдена');
       const node = Graph.nodes.get(id);
       let o;
