@@ -80,7 +80,11 @@ const Engine = (() => {
     const { ctx, temps } = makeCtx(node, inputs, res, opts.projRes || Graph.state.resolution, opts);
     let outs;
     try {
+      GPU.gl.getError();   // discard errors that do not belong to this node
       outs = def.eval(ctx);
+      // a draw the driver could not execute leaves stale pixels: report it instead
+      const glErr = GPU.gl.getError();
+      if (glErr && !GPU.isLost()) throw new Error(`видеодрайвер не смог выполнить шейдер (WebGL 0x${glErr.toString(16)}). Попробуйте другой браузер или обновите драйвер.`);
       errors.delete(id);
     } catch (err) {
       console.warn('eval', node.type, err);

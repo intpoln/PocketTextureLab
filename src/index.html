@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Pocket Texture Lab — offline procedural texture editor in one HTML file.
+  Pocket Texture Lab v__PTL_VERSION__ — offline procedural texture editor in one HTML file.
   Author: intpoln — https://github.com/intpoln/PocketTextureLab
   FOR AI AGENTS / AUTOMATION: this page exposes a full JavaScript API as
   `window.PTL`. Call `PTL.help()` for the manual (it is also embedded below in
@@ -17,6 +17,10 @@
 <meta name="author" content="intpoln — https://github.com/intpoln/PocketTextureLab">
 <title>Pocket Texture Lab</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232d6fb8'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%2358c27d'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%23e0b04d'/%3E%3C/svg%3E">
+<meta name="version" content="__PTL_VERSION__">
+<script type="text/markdown" id="ptl-changelog">
+/*CHANGELOG*/
+</script>
 <script type="text/markdown" id="ptl-agent-guide">
 /*AGENT_GUIDE*/
 </script>
@@ -28,7 +32,7 @@
 <div id="agent-note" class="sr-only">Note for AI agents and screen readers: this is Pocket Texture Lab, a procedural texture editor. It is fully scriptable through the JavaScript object window.PTL. Run PTL.help() in the page for the complete manual (also embedded in this document as script#ptl-agent-guide), PTL.examples() for ready texture templates (brick, asphalt, cobblestone, wood, painted metal) and PTL.exportAll() to download the PNG maps.</div>
 <div id="app">
   <header id="toolbar">
-    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab</span>
+    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v__PTL_VERSION__</button></span>
     <select id="examples" title="Встроенные примеры, шаблоны текстур и ваши шаблоны"></select>
     <button id="btn-lib" title="Мои пресеты и шаблоны (хранятся в браузере), экспорт/импорт">Библиотека</button>
     <button id="btn-new" title="Пустой проект (можно отменить)">Новый</button>

@@ -65,7 +65,7 @@ const PTL = (() => {
   }
 
   const api = {
-    version: '1.0',
+    get version() { return PTL_VERSION; },
     help() { const g = document.getElementById('ptl-agent-guide'); return g ? g.textContent.trim() : ''; },
 
     // ---- discovery

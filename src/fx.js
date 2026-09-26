@@ -34,10 +34,14 @@ float hsh(ivec3 c) {
   return float(w >> 8u) / 16777215.0;
 }
 float hsh1(int i, int k) { return hsh(ivec3(i, k, 977)); }
+// Wrap lattice coordinates by period P (P <= 0: no wrap). Written without any
+// division by zero even in unused branches: HLSL (ANGLE on Windows) evaluates
+// both sides of ?: and some drivers then refuse to run the shader.
 ivec3 wr(ivec3 c, ivec3 P) {
-  return ivec3(P.x > 0 ? ((c.x % P.x) + P.x) % P.x : c.x + 65536,
-               P.y > 0 ? ((c.y % P.y) + P.y) % P.y : c.y + 65536,
-               P.z > 0 ? ((c.z % P.z) + P.z) % P.z : c.z + 65536);
+  ivec3 q = max(P, ivec3(1));
+  ivec3 m = ((c % q) + q) % q;
+  bvec3 w = greaterThan(P, ivec3(0));
+  return ivec3(w.x ? m.x : c.x + 65536, w.y ? m.y : c.y + 65536, w.z ? m.z : c.z + 65536);
 }
 // value noise, periodic along axes with P > 0 (P = 0: not periodic)
 float vn3(vec3 p, ivec3 P) {

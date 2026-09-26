@@ -102,6 +102,12 @@ normal maps, упаковка каналов в RGBA, экспорт PNG без 
   в веб-интерфейс (Netlify Drop, Cloudflare «Direct Upload»), без аккаунта на GitHub.
 - **Vercel, Surge.sh, Neocities, itch.io (HTML-проект)** — тоже бесплатно принимают один HTML.
 
+## Версии
+
+Текущая версия видна в панели инструментов рядом с названием (щелчок — список изменений) и в `PTL.version`.
+История изменений — [`CHANGELOG.md`](CHANGELOG.md). Номер версии хранится в `package.json` и повышается с каждым
+обновлением; при сборке он вшивается в `texture-lab.html`.
+
 ## Разработка
 
 Исходники модульные (`src/`), итоговый файл собирается скриптом:
@@ -109,7 +115,7 @@ normal maps, упаковка каналов в RGBA, экспорт PNG без 
 ```sh
 npm install        # только для разработки: playwright, pngjs, pako, upng-js
 npm run build      # src/ -> texture-lab.html
-npm test           # сборка + 160 проверок в настоящем Chromium через file://
+npm test           # сборка + 164 проверки в настоящем Chromium через file://
 node tests/perf.mjs
 node tools/ptl-run.mjs script.js out/   # выполнить сценарий PTL без UI и сохранить PNG
 ```

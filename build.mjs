@@ -33,9 +33,15 @@ for (const f of ORDER) {
 const guide = r('docs/AGENT_GUIDE.md');
 if (/<\/script/i.test(guide)) throw new Error('guide contains </script');
 
+const version = JSON.parse(r('package.json')).version;
+const changelog = r('CHANGELOG.md');
+if (/<\/script/i.test(changelog)) throw new Error('changelog contains </script');
+js = js.split('__PTL_VERSION__').join(version);
 let html = r('src/index.html');
+html = html.split('__PTL_VERSION__').join(version);
+html = html.replace('/*CHANGELOG*/', () => changelog);
 html = html.replace('/*CSS*/', () => r('src/style.css'));
 html = html.replace('/*AGENT_GUIDE*/', () => guide);
 html = html.replace('/*SCRIPTS*/', () => js);
 writeFileSync(new URL('texture-lab.html', import.meta.url), html);
-console.log('texture-lab.html', (html.length / 1024).toFixed(0), 'KB');
+console.log('texture-lab.html v' + version, (html.length / 1024).toFixed(0), 'KB');

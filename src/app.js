@@ -221,6 +221,7 @@ const App = (() => {
     $('#btn-export-sel').onclick = () => { if (state.selected) exportNode(state.selected, state.viewPort); else toast('Сначала выберите ноду.', 'warn'); };
     $('#btn-help').onclick = () => showHelp();
     $('#btn-api').onclick = () => showApi();
+    $('#app-version').onclick = () => showChangelog();
     $('#modal-close').onclick = () => $('#modal').classList.remove('show');
     $('#modal').addEventListener('pointerdown', (e) => { if (e.target.id === 'modal') $('#modal').classList.remove('show'); });
     $('#file-image').onchange = (e) => {
@@ -428,6 +429,19 @@ const App = (() => {
         h('span', { style: 'color:var(--fg3)', textContent: `занято ≈ ${(Library.usedBytes() / 1024).toFixed(0)} КБ` })));
     };
     render();
+  }
+
+  function showChangelog() {
+    const src = (document.getElementById('ptl-changelog') || {}).textContent || '';
+    const body = document.createElement('div');
+    for (const line of src.trim().split('\n')) {
+      if (/^# /.test(line)) continue;
+      if (/^## /.test(line)) { const h = document.createElement('h3'); h.textContent = 'Версия ' + line.slice(3); body.append(h); }
+      else if (/^- /.test(line)) { let ul = body.lastElementChild; if (!ul || ul.tagName !== 'UL') { ul = document.createElement('ul'); body.append(ul); } const li = document.createElement('li'); li.textContent = line.slice(2); ul.append(li); }
+      else if (line.trim()) { const p = document.createElement('p'); p.textContent = line; body.append(p); }
+    }
+    modal(`Pocket Texture Lab v${PTL_VERSION} — что нового`, '');
+    $('#modal-body').append(body);
   }
 
   function showApi() {
@@ -776,7 +790,7 @@ const App = (() => {
     const ids = new Set();
     for (const n of g.nodes) if (n.type === 'image' && n.params.asset) ids.add(n.params.asset);
     return {
-      format: 'pocket-texture-lab', version: 1, app: 'Pocket Texture Lab', saved: new Date().toISOString(),
+      format: 'pocket-texture-lab', version: 1, app: 'Pocket Texture Lab', appVersion: PTL_VERSION, saved: new Date().toISOString(),
       ...g, selected: state.selected, view: { ...GraphView.view },
       assets: Assets.serialize(ids),
     };

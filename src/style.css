@@ -181,3 +181,5 @@ main { position: relative; }
 #stats .stat b { color: var(--fg3); font-weight: 600; margin-right: 2px; }
 #stats .stat { color: var(--fg2); }
 #status .msg { min-width: 0; }
+#app-version { font-size: 11px; font-weight: 600; padding: 1px 6px; margin-left: 4px; color: var(--acc); background: transparent; border: 1px solid var(--acc2); border-radius: 10px; }
+#app-version:hover { background: var(--acc2); color: var(--fg); }

@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Pocket Texture Lab — offline procedural texture editor in one HTML file.
+  Pocket Texture Lab v1.6.0 — offline procedural texture editor in one HTML file.
   Author: intpoln — https://github.com/intpoln/PocketTextureLab
   FOR AI AGENTS / AUTOMATION: this page exposes a full JavaScript API as
   `window.PTL`. Call `PTL.help()` for the manual (it is also embedded below in
@@ -17,6 +17,40 @@
 <meta name="author" content="intpoln — https://github.com/intpoln/PocketTextureLab">
 <title>Pocket Texture Lab</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232d6fb8'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%2358c27d'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%23e0b04d'/%3E%3C/svg%3E">
+<meta name="version" content="1.6.0">
+<script type="text/markdown" id="ptl-changelog">
+# История версий
+
+## 1.6.0
+- Исправлено: на части видеокарт (Windows, Direct3D) некоторые эффекты FX не отрисовывались — нода и превью показывали чужую картинку, а анимация сильно тормозила. Шейдеры эффектов переписаны без операций, которые отвергает драйвер.
+- Если видеодрайвер всё же не смог выполнить шейдер, нода показывает понятную ошибку, а не старое изображение.
+- Группа «Петли» в окне эффектов переименована в «Зацикленные».
+- Номер версии в панели инструментов и эта история изменений.
+
+## 1.5.0
+- Отдельное окно «Шумы / Эффекты» с превью-миниатюрами (щелчок — добавить, перетаскивание на граф).
+- Статистика внизу окна: ноды, разрешение, время пересчёта, видеопамять, формат, FPS, видеокарта.
+
+## 1.4.0
+- Быстрое воспроизведение флипбуков: кэш кадров, расчёт в размере кадра, Glow через пирамиду уменьшенных копий, неиспользуемые выходы не считаются.
+- 30 готовых шумов.
+
+## 1.3.0
+- Нода «Эффект (FX)»: 19 зацикленных эффектов для частиц (пламя, огонь, взрыв, дым, искры, молния, электричество, вспышка, звезда, ударная волна, магический круг, энергосфера, портал, лазер, слэш, облако, каустика).
+- Ноды «Свечение (Glow)» и «Полярные координаты». Ссылка на автора.
+
+## 1.2.0
+- Выходы Base Color / Normal / ORM и 3D-превью материала.
+- Анимация параметров и экспорт спрайт-шитов (размер всегда степень двойки).
+- Переработанные шаблоны материалов.
+
+## 1.1.0
+- Цветные пины по типу данных, новые шумы и узоры (Tile Sampler, Splatter, Waves, Warp), пресеты градиентов, библиотека пресетов и шаблонов в браузере.
+
+## 1.0.0
+- Первая версия: нодовый редактор процедурных текстур в одном HTML-файле, точный экспорт PNG, проекты JSON, примеры, API для агентов.
+
+</script>
 <script type="text/markdown" id="ptl-agent-guide">
 # Pocket Texture Lab — guide for AI agents and scripts
 
@@ -83,7 +117,7 @@ await PTL.exportPNG(ids.out);             // triggers a browser download
 ## API reference
 
 Discovery / state
-- `PTL.help()` — this text.
+- `PTL.help()` — this text. `PTL.version` — app version (also shown in the toolbar; changelog in `#ptl-changelog`).
 - `PTL.nodeTypes()` — `[{type, title, category, inputs[], outputs[], params[{key,type,min,max,options,default,help}], presets[], help}]`.
 - `PTL.getGraph()` — `{resolution, activeOutput, nodes:[{id,type,x,y,params}], links:[{from,fromPort,to,toPort}]}`.
 - `PTL.getNode(id)`, `PTL.getParams(id)`, `PTL.errors()` (per-node errors, e.g. GLSL compile logs), `PTL.info()`.
@@ -469,6 +503,8 @@ main { position: relative; }
 #stats .stat b { color: var(--fg3); font-weight: 600; margin-right: 2px; }
 #stats .stat { color: var(--fg2); }
 #status .msg { min-width: 0; }
+#app-version { font-size: 11px; font-weight: 600; padding: 1px 6px; margin-left: 4px; color: var(--acc); background: transparent; border: 1px solid var(--acc2); border-radius: 10px; }
+#app-version:hover { background: var(--acc2); color: var(--fg); }
 
 </style>
 </head>
@@ -476,7 +512,7 @@ main { position: relative; }
 <div id="agent-note" class="sr-only">Note for AI agents and screen readers: this is Pocket Texture Lab, a procedural texture editor. It is fully scriptable through the JavaScript object window.PTL. Run PTL.help() in the page for the complete manual (also embedded in this document as script#ptl-agent-guide), PTL.examples() for ready texture templates (brick, asphalt, cobblestone, wood, painted metal) and PTL.exportAll() to download the PNG maps.</div>
 <div id="app">
   <header id="toolbar">
-    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab</span>
+    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v1.6.0</button></span>
     <select id="examples" title="Встроенные примеры, шаблоны текстур и ваши шаблоны"></select>
     <button id="btn-lib" title="Мои пресеты и шаблоны (хранятся в браузере), экспорт/импорт">Библиотека</button>
     <button id="btn-new" title="Пустой проект (можно отменить)">Новый</button>
@@ -2913,10 +2949,14 @@ float hsh(ivec3 c) {
   return float(w >> 8u) / 16777215.0;
 }
 float hsh1(int i, int k) { return hsh(ivec3(i, k, 977)); }
+// Wrap lattice coordinates by period P (P <= 0: no wrap). Written without any
+// division by zero even in unused branches: HLSL (ANGLE on Windows) evaluates
+// both sides of ?: and some drivers then refuse to run the shader.
 ivec3 wr(ivec3 c, ivec3 P) {
-  return ivec3(P.x > 0 ? ((c.x % P.x) + P.x) % P.x : c.x + 65536,
-               P.y > 0 ? ((c.y % P.y) + P.y) % P.y : c.y + 65536,
-               P.z > 0 ? ((c.z % P.z) + P.z) % P.z : c.z + 65536);
+  ivec3 q = max(P, ivec3(1));
+  ivec3 m = ((c % q) + q) % q;
+  bvec3 w = greaterThan(P, ivec3(0));
+  return ivec3(w.x ? m.x : c.x + 65536, w.y ? m.y : c.y + 65536, w.z ? m.z : c.z + 65536);
 }
 // value noise, periodic along axes with P > 0 (P = 0: not periodic)
 float vn3(vec3 p, ivec3 P) {
@@ -4567,7 +4607,11 @@ const Engine = (() => {
     const { ctx, temps } = makeCtx(node, inputs, res, opts.projRes || Graph.state.resolution, opts);
     let outs;
     try {
+      GPU.gl.getError();   // discard errors that do not belong to this node
       outs = def.eval(ctx);
+      // a draw the driver could not execute leaves stale pixels: report it instead
+      const glErr = GPU.gl.getError();
+      if (glErr && !GPU.isLost()) throw new Error(`видеодрайвер не смог выполнить шейдер (WebGL 0x${glErr.toString(16)}). Попробуйте другой браузер или обновите драйвер.`);
       errors.delete(id);
     } catch (err) {
       console.warn('eval', node.type, err);
@@ -4759,7 +4803,7 @@ const PresetBrowser = (() => {
       return NOISE_PRESETS.map(([title, type, params, desc, group], k) => ({ key: 'n' + k, title, type, params, desc, group }));
     }
     return FX_LIST.map((fx) => ({
-      key: 'fx:' + fx.id, title: fx.title, type: 'fx', desc: fx.note, group: fx.oneShot ? 'Однократные' : 'Петли',
+      key: 'fx:' + fx.id, title: fx.title, type: 'fx', desc: fx.note, group: fx.oneShot ? 'Однократные' : 'Зацикленные',
       params: { effect: fx.id, stops: fxStops(fx.palette), ...fx.defaults },
     }));
   }
@@ -4831,7 +4875,10 @@ const PresetBrowser = (() => {
       try {
         const saved = Anim.t;
         if (it.type === 'fx') Anim.t = 0.3;
+        GPU.gl.getError();
         const px = Engine.renderStandalone(it.type, { ...it.params, ...(it.type === 'fx' ? { background: 'black' } : {}) }, TH);
+        const glErr = GPU.gl.getError();
+        if (glErr) { Anim.t = saved; cv.title = 'Видеодрайвер не смог выполнить этот шейдер (WebGL 0x' + glErr.toString(16) + ')'; continue; }
         Anim.t = saved;
         img = new ImageData(new Uint8ClampedArray(px.buffer, px.byteOffset, TH * TH * 4), TH, TH);
         if (it.type !== 'fx') for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255;
@@ -6552,6 +6599,7 @@ const App = (() => {
     $('#btn-export-sel').onclick = () => { if (state.selected) exportNode(state.selected, state.viewPort); else toast('Сначала выберите ноду.', 'warn'); };
     $('#btn-help').onclick = () => showHelp();
     $('#btn-api').onclick = () => showApi();
+    $('#app-version').onclick = () => showChangelog();
     $('#modal-close').onclick = () => $('#modal').classList.remove('show');
     $('#modal').addEventListener('pointerdown', (e) => { if (e.target.id === 'modal') $('#modal').classList.remove('show'); });
     $('#file-image').onchange = (e) => {
@@ -6759,6 +6807,19 @@ const App = (() => {
         h('span', { style: 'color:var(--fg3)', textContent: `занято ≈ ${(Library.usedBytes() / 1024).toFixed(0)} КБ` })));
     };
     render();
+  }
+
+  function showChangelog() {
+    const src = (document.getElementById('ptl-changelog') || {}).textContent || '';
+    const body = document.createElement('div');
+    for (const line of src.trim().split('\n')) {
+      if (/^# /.test(line)) continue;
+      if (/^## /.test(line)) { const h = document.createElement('h3'); h.textContent = 'Версия ' + line.slice(3); body.append(h); }
+      else if (/^- /.test(line)) { let ul = body.lastElementChild; if (!ul || ul.tagName !== 'UL') { ul = document.createElement('ul'); body.append(ul); } const li = document.createElement('li'); li.textContent = line.slice(2); ul.append(li); }
+      else if (line.trim()) { const p = document.createElement('p'); p.textContent = line; body.append(p); }
+    }
+    modal(`Pocket Texture Lab v${PTL_VERSION} — что нового`, '');
+    $('#modal-body').append(body);
   }
 
   function showApi() {
@@ -7107,7 +7168,7 @@ const App = (() => {
     const ids = new Set();
     for (const n of g.nodes) if (n.type === 'image' && n.params.asset) ids.add(n.params.asset);
     return {
-      format: 'pocket-texture-lab', version: 1, app: 'Pocket Texture Lab', saved: new Date().toISOString(),
+      format: 'pocket-texture-lab', version: 1, app: 'Pocket Texture Lab', appVersion: PTL_VERSION, saved: new Date().toISOString(),
       ...g, selected: state.selected, view: { ...GraphView.view },
       assets: Assets.serialize(ids),
     };
@@ -7290,7 +7351,7 @@ const PTL = (() => {
   }
 
   const api = {
-    version: '1.0',
+    get version() { return PTL_VERSION; },
     help() { const g = document.getElementById('ptl-agent-guide'); return g ? g.textContent.trim() : ''; },
 
     // ---- discovery
@@ -7494,10 +7555,11 @@ window.PTL = PTL;
 
 // ===== main.js =====
 // Entry point.
+const PTL_VERSION = '1.6.0';
 (() => {
   const start = () => {
     try {
-      if (App.init()) console.info('Pocket Texture Lab ready. Automation/agents: window.PTL — call PTL.help() for the manual.');
+      if (App.init()) console.info('Pocket Texture Lab v' + PTL_VERSION + ' ready. Automation/agents: window.PTL — call PTL.help() for the manual.');
     } catch (e) {
       console.error(e);
       const box = document.getElementById('fatal-box');

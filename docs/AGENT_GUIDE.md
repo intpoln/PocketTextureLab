@@ -63,7 +63,7 @@ await PTL.exportPNG(ids.out);             // triggers a browser download
 ## API reference
 
 Discovery / state
-- `PTL.help()` — this text.
+- `PTL.help()` — this text. `PTL.version` — app version (also shown in the toolbar; changelog in `#ptl-changelog`).
 - `PTL.nodeTypes()` — `[{type, title, category, inputs[], outputs[], params[{key,type,min,max,options,default,help}], presets[], help}]`.
 - `PTL.getGraph()` — `{resolution, activeOutput, nodes:[{id,type,x,y,params}], links:[{from,fromPort,to,toPort}]}`.
 - `PTL.getNode(id)`, `PTL.getParams(id)`, `PTL.errors()` (per-node errors, e.g. GLSL compile logs), `PTL.info()`.

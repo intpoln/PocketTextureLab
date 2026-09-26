@@ -1,8 +1,9 @@
 // Entry point.
+const PTL_VERSION = '__PTL_VERSION__';
 (() => {
   const start = () => {
     try {
-      if (App.init()) console.info('Pocket Texture Lab ready. Automation/agents: window.PTL — call PTL.help() for the manual.');
+      if (App.init()) console.info('Pocket Texture Lab v' + PTL_VERSION + ' ready. Automation/agents: window.PTL — call PTL.help() for the manual.');
     } catch (e) {
       console.error(e);
       const box = document.getElementById('fatal-box');

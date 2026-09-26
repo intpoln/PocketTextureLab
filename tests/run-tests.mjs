@@ -675,6 +675,12 @@ await test('API для агентов: справка, описание нод, 
   ok(r.types >= 20, 'PTL.nodeTypes() описывает все ноды', r.types);
   ok(/perlin, value|perlin/.test(r.e2) && /Есть:/.test(r.e1), 'понятные ошибки валидации', [r.e1.slice(0, 60), r.e2]);
   ok(r.pngSig.join() === '137,80,78,71,13,10,26,10', 'renderPNG возвращает PNG');
+  const pkgVersion = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+  const ver = await page.evaluate(() => ({ api: PTL.version, badge: document.getElementById('app-version').textContent, saved: PTL.saveProject().appVersion }));
+  await page.click('#app-version');
+  const cl = await page.locator('#modal-body').textContent();
+  ok(ver.api === pkgVersion && ver.badge === 'v' + pkgVersion && ver.saved === pkgVersion, 'версия видна в интерфейсе, в PTL.version и в сохранённом проекте', ver);
+  ok(cl.includes('Версия ' + pkgVersion), 'щелчок по версии открывает историю изменений');
   await page.context().close();
 });
 
@@ -927,6 +933,19 @@ await test('Окно «Шумы/Эффекты» с превью, статист
   await page.waitForTimeout(500);
   const fxCards = await page.evaluate(() => document.querySelectorAll('#nd-body .nd-card').length);
   ok(fxCards === 19, 'вкладка «Эффекты» с превью всех 19 эффектов', fxCards);
+  const distinct = await page.evaluate(() => {
+    const imgs = FX_LIST.map((fx) => { Anim.t = 0.3; return Engine.renderStandalone('fx', { effect: fx.id, stops: fxStops(fx.palette), ...fx.defaults, background: 'black' }, 48); });
+    Anim.t = 0;
+    const same = [];
+    for (let a = 0; a < imgs.length; a++) for (let b = a + 1; b < imgs.length; b++) {
+      let d = 0; for (let i = 0; i < imgs[a].length; i++) d += Math.abs(imgs[a][i] - imgs[b][i]);
+      if (d / imgs[a].length < 2) same.push([FX_LIST[a].id, FX_LIST[b].id]);
+    }
+    const groups = [...document.querySelectorAll('#nd-body h4')].map((h) => h.textContent);
+    return { same, groups };
+  });
+  ok(distinct.same.length === 0, 'превью всех эффектов попарно различаются (нет «чужих» картинок)', distinct.same);
+  ok(distinct.groups.includes('Зацикленные') && distinct.groups.includes('Однократные'), 'группы «Зацикленные» и «Однократные»', distinct.groups);
   const stats = await page.evaluate(() => document.getElementById('stats').textContent);
   ok(/Ноды/.test(stats) && /VRAM/.test(stats) && /Пересчёт/.test(stats) && !/Промежуточные результаты/.test(stats), 'строка статистики внизу (ноды, разрешение, пересчёт, VRAM, формат, GPU)', stats.slice(0, 120));
   const r = await page.evaluate(async () => {
