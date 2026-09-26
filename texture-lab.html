@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Pocket Texture Lab v1.6.0 — offline procedural texture editor in one HTML file.
+  Pocket Texture Lab v0.1.6 — offline procedural texture editor in one HTML file.
   Author: intpoln — https://github.com/intpoln/PocketTextureLab
   FOR AI AGENTS / AUTOMATION: this page exposes a full JavaScript API as
   `window.PTL`. Call `PTL.help()` for the manual (it is also embedded below in
@@ -17,37 +17,42 @@
 <meta name="author" content="intpoln — https://github.com/intpoln/PocketTextureLab">
 <title>Pocket Texture Lab</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232d6fb8'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%2358c27d'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%23e0b04d'/%3E%3C/svg%3E">
-<meta name="version" content="1.6.0">
+<meta name="version" content="0.1.6">
 <script type="text/markdown" id="ptl-changelog">
 # История версий
 
-## 1.6.0
+Пока версия начинается с 0 — программа в активной разработке и может содержать ошибки.
+
+## 0.1.6
 - Исправлено: на части видеокарт (Windows, Direct3D) некоторые эффекты FX не отрисовывались — нода и превью показывали чужую картинку, а анимация сильно тормозила. Шейдеры эффектов переписаны без операций, которые отвергает драйвер.
 - Если видеодрайвер всё же не смог выполнить шейдер, нода показывает понятную ошибку, а не старое изображение.
 - Группа «Петли» в окне эффектов переименована в «Зацикленные».
-- Номер версии в панели инструментов и эта история изменений.
+- Эффект, добавленный из каталога или окна «Эффекты», сразу показывает таймлайн анимации (раньше он появлялся только в примерах). Превью эффектов в окне оживают при наведении мыши.
+- Горячие клавиши работают на любой раскладке (в том числе русской); справка по клавишам — кнопка ⌨ или «?». Новые клавиши: Ctrl+O, Ctrl+E, Пробел и ←/→ для анимации, N и E — окна шумов и эффектов.
+- В панели «Эффект (FX)» выбор эффекта перенесён наверх, «Пресет цвета» — к палитре и показывает текущий пресет (так же в Color Ramp).
+- Номер версии в панели инструментов и эта история изменений (нумерация 0.x — программа в активной разработке).
 
-## 1.5.0
+## 0.1.5
 - Отдельное окно «Шумы / Эффекты» с превью-миниатюрами (щелчок — добавить, перетаскивание на граф).
 - Статистика внизу окна: ноды, разрешение, время пересчёта, видеопамять, формат, FPS, видеокарта.
 
-## 1.4.0
+## 0.1.4
 - Быстрое воспроизведение флипбуков: кэш кадров, расчёт в размере кадра, Glow через пирамиду уменьшенных копий, неиспользуемые выходы не считаются.
 - 30 готовых шумов.
 
-## 1.3.0
+## 0.1.3
 - Нода «Эффект (FX)»: 19 зацикленных эффектов для частиц (пламя, огонь, взрыв, дым, искры, молния, электричество, вспышка, звезда, ударная волна, магический круг, энергосфера, портал, лазер, слэш, облако, каустика).
 - Ноды «Свечение (Glow)» и «Полярные координаты». Ссылка на автора.
 
-## 1.2.0
+## 0.1.2
 - Выходы Base Color / Normal / ORM и 3D-превью материала.
 - Анимация параметров и экспорт спрайт-шитов (размер всегда степень двойки).
 - Переработанные шаблоны материалов.
 
-## 1.1.0
+## 0.1.1
 - Цветные пины по типу данных, новые шумы и узоры (Tile Sampler, Splatter, Waves, Warp), пресеты градиентов, библиотека пресетов и шаблонов в браузере.
 
-## 1.0.0
+## 0.1.0
 - Первая версия: нодовый редактор процедурных текстур в одном HTML-файле, точный экспорт PNG, проекты JSON, примеры, API для агентов.
 
 </script>
@@ -512,7 +517,7 @@ main { position: relative; }
 <div id="agent-note" class="sr-only">Note for AI agents and screen readers: this is Pocket Texture Lab, a procedural texture editor. It is fully scriptable through the JavaScript object window.PTL. Run PTL.help() in the page for the complete manual (also embedded in this document as script#ptl-agent-guide), PTL.examples() for ready texture templates (brick, asphalt, cobblestone, wood, painted metal) and PTL.exportAll() to download the PNG maps.</div>
 <div id="app">
   <header id="toolbar">
-    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v1.6.0</button></span>
+    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.1.6</button></span>
     <select id="examples" title="Встроенные примеры, шаблоны текстур и ваши шаблоны"></select>
     <button id="btn-lib" title="Мои пресеты и шаблоны (хранятся в браузере), экспорт/импорт">Библиотека</button>
     <button id="btn-new" title="Пустой проект (можно отменить)">Новый</button>
@@ -530,6 +535,7 @@ main { position: relative; }
     <button id="btn-export-sel" title="Экспорт результата выбранной ноды в PNG">PNG выбранной</button>
     <span class="sep"></span>
     <button id="btn-help" title="Справка">Справка</button>
+    <button id="btn-keys" title="Горячие клавиши (?)">⌨</button>
     <button id="btn-api" title="Программный интерфейс для скриптов и AI-агентов">API</button>
     <a id="author-link" href="https://github.com/intpoln/PocketTextureLab" target="_blank" rel="noopener" title="Автор: intpoln — исходный код, новые версии и обратная связь на GitHub"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>intpoln</a>
   </header>
@@ -548,7 +554,7 @@ main { position: relative; }
         <input id="nd-search" type="search" placeholder="Поиск…">
         <button id="nd-close" title="Закрыть (Esc)">✕</button>
       </div>
-      <div class="nd-hint">Щелчок — добавить в центр графа, или перетащите карточку на граф.</div>
+      <div class="nd-hint">Щелчок — добавить в центр графа, или перетащите карточку на граф. Наведите мышь на эффект — превью оживёт.</div>
       <div class="nd-body" id="nd-body"></div>
     </aside>
     <section id="graph" tabindex="0">
@@ -3699,6 +3705,7 @@ const NODES = {
       e('source', 'Входное значение', [['L', 'Яркость (Luminance)'], ['R', 'Канал R']], 'L'),
       e('space', 'Выход', [['color', 'Цвет sRGB'], ['data', 'Данные']], 'color', { help: 'Цвет: точки задаются в sRGB, размытие/смешивание дальше идут в линейном свете. Данные: значения точек пишутся в каналы как есть.' }),
     ],
+    colorPresets: 'stops',
     presets: Object.keys(RAMP_PRESETS).map((name) => ({ label: name, get apply() { return { stops: rampFromPreset(name) }; } })),
     help: 'Интерполяция идёт между значениями точек (в sRGB). При совпадающих позициях получается резкий переход: в самой позиции действует точка, стоящая в списке позже.',
     eval(ctx) {
@@ -4040,6 +4047,8 @@ const NODES = {
       i('seed', 'Seed', 0, 99999, 1),
       e('background', 'Фон', [['transparent', 'Прозрачный (альфа из палитры)'], ['black', 'Чёрный (для аддитивного смешивания)']], 'transparent'),
     ],
+    topParams: ['effect'],
+    colorPresets: 'stops',
     presetParam: 'effect',
     presetValues: Object.fromEntries(FX_LIST.map((x) => [x.id, { get stops() { return fxStops(x.palette); }, ...x.defaults }])),
     presets: [...Object.keys(FX_PALETTES), ...Object.keys(RAMP_PRESETS)].map((name) => ({ label: name, get apply() { return { stops: fxStops(name) }; } })),
@@ -4823,7 +4832,7 @@ const PresetBrowser = (() => {
     render();
     $('#nd-search').focus();
   }
-  function close() { $('#noise-drawer').classList.remove('show'); clearTimeout(timer); }
+  function close() { $('#noise-drawer').classList.remove('show'); clearTimeout(timer); stopHover(); }
   const isOpen = () => $('#noise-drawer').classList.contains('show');
 
   function add(it, pos) {
@@ -4854,6 +4863,10 @@ const PresetBrowser = (() => {
         const lbl = document.createElement('div'); lbl.textContent = it.title;
         card.append(cv, lbl);
         card.addEventListener('click', () => add(it));
+        if (it.type === 'fx') {   // animate the preview while hovered
+          card.addEventListener('mouseenter', () => startHover(it, cv));
+          card.addEventListener('mouseleave', stopHover);
+        }
         card.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/ptl-preset', JSON.stringify({ type: it.type, params: it.params, title: it.title })); e.dataTransfer.effectAllowed = 'copy'; });
         grid.append(card);
         if (thumbs.has(it.key)) cv.getContext('2d').putImageData(thumbs.get(it.key), 0, 0);
@@ -4863,6 +4876,31 @@ const PresetBrowser = (() => {
     if (!list.length) body.textContent = 'Ничего не найдено.';
     clearTimeout(timer);
     timer = setTimeout(pump, 20);
+  }
+
+  let hover = null;
+  function startHover(it, cv) {
+    stopHover();
+    const t0 = performance.now();
+    const step = () => {
+      if (!hover || GPU.isLost()) return;
+      const saved = Anim.t;
+      try {
+        Anim.t = ((performance.now() - t0) / 2000) % 1;
+        const px = Engine.renderStandalone(it.type, { ...it.params, background: 'black' }, TH);
+        cv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.buffer, px.byteOffset, TH * TH * 4), TH, TH), 0, 0);
+      } catch (e) { /* ignore */ } finally { Anim.t = saved; }
+      hover.timer = setTimeout(step, 50);
+    };
+    hover = { it, cv, timer: 0 };
+    step();
+  }
+  function stopHover() {
+    if (!hover) return;
+    clearTimeout(hover.timer);
+    const { it, cv } = hover;
+    hover = null;
+    if (thumbs.has(it.key)) cv.getContext('2d').putImageData(thumbs.get(it.key), 0, 0);
   }
 
   // Render a few thumbnails per tick so the UI stays responsive.
@@ -5311,7 +5349,16 @@ const ParamsPanel = (() => {
       Object.assign(node.params, JSON.parse(JSON.stringify(params)));
       Graph.touch(node); GraphView.updateLabels(node.id); App.changed({ commit: true, node: node.id, structure: true }); build();
     };
-    if (def.presets && def.presets.length > 6) {
+    // parameters that belong at the very top (e.g. which effect)
+    const topKeys = def.topParams || [];
+    for (const d of def.params.filter((q) => topKeys.includes(q.key))) {
+      const row = makeRow(node, d);
+      rows.push({ d, row });
+      el.append(row.el);
+    }
+    if (def.colorPresets) {
+      /* colour presets are shown next to the palette (see below) */
+    } else if (def.presets && def.presets.length > 6) {
       const sel = h('select', { title: 'Встроенные пресеты' }, h('option', { value: '', text: 'Пресет…' }));
       def.presets.forEach((pr, k) => sel.append(h('option', { value: k, text: pr.label })));
       sel.addEventListener('change', () => { if (sel.value !== '') applyParams(def.presets[+sel.value].apply); });
@@ -5331,7 +5378,9 @@ const ParamsPanel = (() => {
     } else portsEl = null;
     let group = null;
     for (const d of def.params) {
+      if (topKeys.includes(d.key)) continue;
       if (d.group && d.group !== group) { group = d.group; el.append(h('div', { class: 'group', text: 'Канал ' + group })); }
+      if (def.colorPresets === d.key) el.append(colorPresetRow(node, def, applyParams));
       const row = makeRow(node, d);
       rows.push({ d, row });
       el.append(row.el);
@@ -5386,6 +5435,20 @@ const ParamsPanel = (() => {
     to.addEventListener('change', apply);
     curve.addEventListener('change', apply);
     wrap.append(h('div', { class: 'ctl animrow' }, h('span', { text: '⏱ конец:' }), to, curve));
+  }
+
+  // «Пресет цвета» select, showing which preset the current palette matches.
+  function colorPresetRow(node, def, applyParams) {
+    const cur = JSON.stringify(node.params[def.colorPresets]);
+    const idx = def.presets.findIndex((pr) => JSON.stringify(pr.apply[def.colorPresets]) === cur);
+    const sel = h('select', { title: 'Готовые палитры: выбор заменяет точки градиента ниже' },
+      h('option', { value: '', text: idx < 0 ? 'Пресет цвета: свой' : 'Пресет цвета…' }));
+    def.presets.forEach((pr, k) => sel.append(h('option', { value: k, text: 'Пресет цвета: ' + pr.label })));
+    sel.value = idx < 0 ? '' : String(idx);
+    sel.addEventListener('change', () => { if (sel.value !== '') applyParams(def.presets[+sel.value].apply); });
+    const wrap = h('div', { class: 'prow' }, h('label', { text: 'Пресет цвета' }), h('div', { class: 'ctl' }, sel));
+    wrap.dataset.key = 'colorPreset';
+    return wrap;
   }
 
   // Saved-in-browser presets for this node type.
@@ -6600,6 +6663,7 @@ const App = (() => {
     $('#btn-help').onclick = () => showHelp();
     $('#btn-api').onclick = () => showApi();
     $('#app-version').onclick = () => showChangelog();
+    $('#btn-keys').onclick = () => showHotkeys();
     $('#modal-close').onclick = () => $('#modal').classList.remove('show');
     $('#modal').addEventListener('pointerdown', (e) => { if (e.target.id === 'modal') $('#modal').classList.remove('show'); });
     $('#file-image').onchange = (e) => {
@@ -6622,16 +6686,34 @@ const App = (() => {
     return t && (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || (t.tagName === 'INPUT' && !['checkbox', 'range', 'color', 'button'].includes(t.type)));
   }
 
+  // Hotkeys use physical key codes (e.code), so they work in any keyboard layout
+  // (Russian ЙЦУКЕН included): Ctrl+Z is the same key as Ctrl+Я.
+  const HOTKEYS = [
+    ['Ctrl+Z', 'Отменить'], ['Ctrl+Shift+Z / Ctrl+Y', 'Повторить'], ['Ctrl+D', 'Дублировать выбранную ноду'],
+    ['Delete / Backspace', 'Удалить выбранную ноду или связь'], ['Ctrl+S', 'Сохранить проект'], ['Ctrl+O', 'Открыть проект'],
+    ['Ctrl+E', 'Экспорт PNG основного выхода'], ['F', 'Показать весь граф'], ['Пробел', 'Анимация: воспроизвести / пауза'],
+    ['← / →', 'Анимация: предыдущий / следующий кадр'], ['N', 'Окно «Шумы»'], ['E', 'Окно «Эффекты»'],
+    ['Ctrl+Enter', 'Применить код в ноде «Код (GLSL)»'], ['Esc', 'Закрыть окно / справку'], ['? (Shift+/)', 'Эта справка по клавишам'],
+    ['Колесо мыши', 'Масштаб графа / предпросмотра'], ['Перетаскивание фона', 'Сдвиг графа'],
+    ['Shift+мышь в 3D', 'Двигать свет'], ['Двойной щелчок по проводу', 'Удалить связь'],
+  ];
+  function showHotkeys() {
+    const rows = HOTKEYS.map(([k, v]) => `<tr><td style="padding:3px 14px 3px 0;white-space:nowrap">${k.split(' / ').map((x) => x.split('+').map((y) => `<kbd>${y}</kbd>`).join('+')).join(' / ')}</td><td>${v}</td></tr>`).join('');
+    modal('Горячие клавиши', `<p style="color:var(--fg2)">Работают при любой раскладке клавиатуры (в том числе русской). На macOS вместо Ctrl — Cmd.</p><table>${rows}</table>`);
+  }
+
   function bindKeys() {
     document.addEventListener('keydown', (e) => {
-      if ($('#modal').classList.contains('show') && e.key === 'Escape') { $('#modal').classList.remove('show'); return; }
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); saveProject(); return; }
+      if (e.key === 'Escape' && $('#modal').classList.contains('show')) { $('#modal').classList.remove('show'); return; }
+      const mod = e.ctrlKey || e.metaKey, code = e.code;
+      if (mod && code === 'KeyS') { e.preventDefault(); saveProject(); return; }
+      if (mod && code === 'KeyO') { e.preventDefault(); $('#file-project').click(); return; }
+      if (mod && code === 'KeyE') { e.preventDefault(); exportActive(); return; }
       if (isTyping(e.target)) return;
-      if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
-      if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
-      if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); if (state.selected) duplicate(state.selected); return; }
-      if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (mod && code === 'KeyZ') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+      if (mod && code === 'KeyY') { e.preventDefault(); redo(); return; }
+      if (mod && code === 'KeyD') { e.preventDefault(); if (state.selected) duplicate(state.selected); return; }
+      if (code === 'Delete' || code === 'Backspace') {
         if (state.selectedLink) {
           Graph.disconnect(state.selectedLink.to, state.selectedLink.toPort);
           state.selectedLink = null;
@@ -6640,7 +6722,14 @@ const App = (() => {
         e.preventDefault();
         return;
       }
-      if (!mod && e.key.toLowerCase() === 'f') GraphView.fit();
+      if (mod || e.altKey) return;
+      if (code === 'Slash' && e.shiftKey) { e.preventDefault(); showHotkeys(); return; }
+      if (code === 'KeyF') { GraphView.fit(); return; }
+      if (code === 'KeyN') { PresetBrowser.open('noise'); return; }
+      if (code === 'KeyE') { PresetBrowser.open('fx'); return; }
+      const tl = $('#timeline').classList.contains('show');
+      if (tl && code === 'Space') { e.preventDefault(); state.playing ? stop() : play(); return; }
+      if (tl && (code === 'ArrowLeft' || code === 'ArrowRight')) { e.preventDefault(); stop(); setFrame(playFrame + (code === 'ArrowRight' ? 1 : -1)); }
     });
   }
 
@@ -6695,6 +6784,7 @@ const App = (() => {
       <li><b>Отмена / повтор</b>: <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> (<kbd>Ctrl+Y</kbd>). Одно перетаскивание ползунка — один шаг отмены.</li>
       <li>Число можно ввести точно в поле рядом с ползунком; <b>↺</b> сбрасывает параметр к значению по умолчанию.</li>
       </ul>
+      <p>Полный список горячих клавиш — кнопка <b>⌨</b> в панели или клавиша <kbd>?</kbd>. Работают при любой раскладке.</p>
       <h3>Предпросмотр</h3>
       <ul>
       <li>Выбранная нода показывается справа вверху (без выбора — основной Output ★). Кнопки <b>R G B A</b> показывают отдельный канал, <b>RGBA</b> — с прозрачностью на шахматке, <b>Normal</b> — освещённую плоскость по normal map (свет регулируется).</li>
@@ -6839,6 +6929,7 @@ const App = (() => {
   function commit() {
     if (History.commit()) state.dirty = true;
     updateUndo();
+    animChanged();   // timeline appears as soon as something animated is in the graph
   }
 
   // Central change notification. commit=false => live (interactive) change.
@@ -7276,7 +7367,7 @@ const App = (() => {
 
   return {
     init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId,
-    undo, redo, flush, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    undo, redo, flush, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };
@@ -7555,7 +7646,7 @@ window.PTL = PTL;
 
 // ===== main.js =====
 // Entry point.
-const PTL_VERSION = '1.6.0';
+const PTL_VERSION = '0.1.6';
 (() => {
   const start = () => {
     try {

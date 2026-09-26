@@ -222,6 +222,7 @@ const App = (() => {
     $('#btn-help').onclick = () => showHelp();
     $('#btn-api').onclick = () => showApi();
     $('#app-version').onclick = () => showChangelog();
+    $('#btn-keys').onclick = () => showHotkeys();
     $('#modal-close').onclick = () => $('#modal').classList.remove('show');
     $('#modal').addEventListener('pointerdown', (e) => { if (e.target.id === 'modal') $('#modal').classList.remove('show'); });
     $('#file-image').onchange = (e) => {
@@ -244,16 +245,34 @@ const App = (() => {
     return t && (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || (t.tagName === 'INPUT' && !['checkbox', 'range', 'color', 'button'].includes(t.type)));
   }
 
+  // Hotkeys use physical key codes (e.code), so they work in any keyboard layout
+  // (Russian ЙЦУКЕН included): Ctrl+Z is the same key as Ctrl+Я.
+  const HOTKEYS = [
+    ['Ctrl+Z', 'Отменить'], ['Ctrl+Shift+Z / Ctrl+Y', 'Повторить'], ['Ctrl+D', 'Дублировать выбранную ноду'],
+    ['Delete / Backspace', 'Удалить выбранную ноду или связь'], ['Ctrl+S', 'Сохранить проект'], ['Ctrl+O', 'Открыть проект'],
+    ['Ctrl+E', 'Экспорт PNG основного выхода'], ['F', 'Показать весь граф'], ['Пробел', 'Анимация: воспроизвести / пауза'],
+    ['← / →', 'Анимация: предыдущий / следующий кадр'], ['N', 'Окно «Шумы»'], ['E', 'Окно «Эффекты»'],
+    ['Ctrl+Enter', 'Применить код в ноде «Код (GLSL)»'], ['Esc', 'Закрыть окно / справку'], ['? (Shift+/)', 'Эта справка по клавишам'],
+    ['Колесо мыши', 'Масштаб графа / предпросмотра'], ['Перетаскивание фона', 'Сдвиг графа'],
+    ['Shift+мышь в 3D', 'Двигать свет'], ['Двойной щелчок по проводу', 'Удалить связь'],
+  ];
+  function showHotkeys() {
+    const rows = HOTKEYS.map(([k, v]) => `<tr><td style="padding:3px 14px 3px 0;white-space:nowrap">${k.split(' / ').map((x) => x.split('+').map((y) => `<kbd>${y}</kbd>`).join('+')).join(' / ')}</td><td>${v}</td></tr>`).join('');
+    modal('Горячие клавиши', `<p style="color:var(--fg2)">Работают при любой раскладке клавиатуры (в том числе русской). На macOS вместо Ctrl — Cmd.</p><table>${rows}</table>`);
+  }
+
   function bindKeys() {
     document.addEventListener('keydown', (e) => {
-      if ($('#modal').classList.contains('show') && e.key === 'Escape') { $('#modal').classList.remove('show'); return; }
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); saveProject(); return; }
+      if (e.key === 'Escape' && $('#modal').classList.contains('show')) { $('#modal').classList.remove('show'); return; }
+      const mod = e.ctrlKey || e.metaKey, code = e.code;
+      if (mod && code === 'KeyS') { e.preventDefault(); saveProject(); return; }
+      if (mod && code === 'KeyO') { e.preventDefault(); $('#file-project').click(); return; }
+      if (mod && code === 'KeyE') { e.preventDefault(); exportActive(); return; }
       if (isTyping(e.target)) return;
-      if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
-      if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
-      if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); if (state.selected) duplicate(state.selected); return; }
-      if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (mod && code === 'KeyZ') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+      if (mod && code === 'KeyY') { e.preventDefault(); redo(); return; }
+      if (mod && code === 'KeyD') { e.preventDefault(); if (state.selected) duplicate(state.selected); return; }
+      if (code === 'Delete' || code === 'Backspace') {
         if (state.selectedLink) {
           Graph.disconnect(state.selectedLink.to, state.selectedLink.toPort);
           state.selectedLink = null;
@@ -262,7 +281,14 @@ const App = (() => {
         e.preventDefault();
         return;
       }
-      if (!mod && e.key.toLowerCase() === 'f') GraphView.fit();
+      if (mod || e.altKey) return;
+      if (code === 'Slash' && e.shiftKey) { e.preventDefault(); showHotkeys(); return; }
+      if (code === 'KeyF') { GraphView.fit(); return; }
+      if (code === 'KeyN') { PresetBrowser.open('noise'); return; }
+      if (code === 'KeyE') { PresetBrowser.open('fx'); return; }
+      const tl = $('#timeline').classList.contains('show');
+      if (tl && code === 'Space') { e.preventDefault(); state.playing ? stop() : play(); return; }
+      if (tl && (code === 'ArrowLeft' || code === 'ArrowRight')) { e.preventDefault(); stop(); setFrame(playFrame + (code === 'ArrowRight' ? 1 : -1)); }
     });
   }
 
@@ -317,6 +343,7 @@ const App = (() => {
       <li><b>Отмена / повтор</b>: <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> (<kbd>Ctrl+Y</kbd>). Одно перетаскивание ползунка — один шаг отмены.</li>
       <li>Число можно ввести точно в поле рядом с ползунком; <b>↺</b> сбрасывает параметр к значению по умолчанию.</li>
       </ul>
+      <p>Полный список горячих клавиш — кнопка <b>⌨</b> в панели или клавиша <kbd>?</kbd>. Работают при любой раскладке.</p>
       <h3>Предпросмотр</h3>
       <ul>
       <li>Выбранная нода показывается справа вверху (без выбора — основной Output ★). Кнопки <b>R G B A</b> показывают отдельный канал, <b>RGBA</b> — с прозрачностью на шахматке, <b>Normal</b> — освещённую плоскость по normal map (свет регулируется).</li>
@@ -461,6 +488,7 @@ const App = (() => {
   function commit() {
     if (History.commit()) state.dirty = true;
     updateUndo();
+    animChanged();   // timeline appears as soon as something animated is in the graph
   }
 
   // Central change notification. commit=false => live (interactive) change.
@@ -898,7 +926,7 @@ const App = (() => {
 
   return {
     init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId,
-    undo, redo, flush, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    undo, redo, flush, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };

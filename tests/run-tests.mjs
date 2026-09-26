@@ -933,6 +933,23 @@ await test('Окно «Шумы/Эффекты» с превью, статист
   await page.waitForTimeout(500);
   const fxCards = await page.evaluate(() => document.querySelectorAll('#nd-body .nd-card').length);
   ok(fxCards === 19, 'вкладка «Эффекты» с превью всех 19 эффектов', fxCards);
+  const tlBefore = await page.evaluate(() => { PTL.newProject(); return document.getElementById('timeline').classList.contains('show'); });
+  await page.click('#nd-body .nd-card:has-text("Портал")');
+  const tlAfter = await page.evaluate(() => document.getElementById('timeline').classList.contains('show'));
+  ok(!tlBefore && tlAfter, 'эффект, добавленный из окна, сразу показывает таймлайн анимации', [tlBefore, tlAfter]);
+  const hov = await page.evaluate(async () => {
+    const card = [...document.querySelectorAll('#nd-body .nd-card')].find((c) => /Портал/.test(c.textContent));
+    const cv = card.querySelector('canvas');
+    card.dispatchEvent(new MouseEvent('mouseenter'));
+    await new Promise((r) => setTimeout(r, 150));
+    const a = cv.getContext('2d').getImageData(0, 0, 88, 88).data.slice();
+    await new Promise((r) => setTimeout(r, 900));
+    const b = cv.getContext('2d').getImageData(0, 0, 88, 88).data;
+    card.dispatchEvent(new MouseEvent('mouseleave'));
+    let d = 0; for (let i = 0; i < a.length; i++) d = Math.max(d, Math.abs(a[i] - b[i]));
+    return d;
+  });
+  ok(hov > 20, 'превью эффекта анимируется при наведении', hov);
   const distinct = await page.evaluate(() => {
     const imgs = FX_LIST.map((fx) => { Anim.t = 0.3; return Engine.renderStandalone('fx', { effect: fx.id, stops: fxStops(fx.palette), ...fx.defaults, background: 'black' }, 48); });
     Anim.t = 0;
@@ -976,6 +993,41 @@ await test('Окно «Шумы/Эффекты» с превью, статист
   ok(r.errs.length === 0, 'все готовые шумы дают непустой результат', r.errs);
   ok(r.diff > 30, 'второй выход FX (интенсивность) считается отдельно, когда он нужен', r.diff);
   ok(r.filled === 8 && r.evals === 0, 'воспроизведение: каждый кадр считается один раз, повторные проходы петли берутся из кэша', { filled: r.filled, evalsOnReplay: r.evals });
+  await page.context().close();
+});
+
+await test('Хоткеи на любой раскладке, справка по клавишам, панель FX: эффект сверху, «Пресет цвета» у палитры', async () => {
+  const page = await openPage();
+  const r = await page.evaluate(async () => {
+    PTL.newProject();
+    const a = PTL.addNode('noise');
+    const n0 = PTL.getGraph().nodes.length;
+    document.getElementById('graph').focus();
+    // Russian layout: the key labelled «Я» has code KeyZ
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'я', code: 'KeyZ', ctrlKey: true, bubbles: true }));
+    const afterUndo = PTL.getGraph().nodes.length;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'н', code: 'KeyY', ctrlKey: true, bubbles: true }));
+    const afterRedo = PTL.getGraph().nodes.length;
+    PTL.select(PTL.getGraph().nodes[0].id);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'в', code: 'KeyD', ctrlKey: true, bubbles: true }));
+    const afterDup = PTL.getGraph().nodes.length;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', code: 'Slash', shiftKey: true, bubbles: true }));
+    const keysModal = document.getElementById('modal-title').textContent;
+    document.getElementById('modal').classList.remove('show');
+    // FX panel layout
+    const f = PTL.addNode('fx'); PTL.select(f);
+    const keys = [...document.querySelectorAll('#params .prow')].map((r) => r.dataset.key);
+    const cp = document.querySelector('#params .prow[data-key="colorPreset"] select');
+    const shown = cp.options[cp.selectedIndex].textContent;
+    PTL.setParams(f, { effect: 'magic' }); PTL.select(f);
+    const cp2 = document.querySelector('#params .prow[data-key="colorPreset"] select');
+    const shown2 = cp2.options[cp2.selectedIndex].textContent;
+    return { n0, afterUndo, afterRedo, afterDup, keysModal, keys, shown, shown2 };
+  });
+  ok(r.afterUndo === r.n0 - 1 && r.afterRedo === r.n0 && r.afterDup === r.n0 + 1, 'Ctrl+Z / Ctrl+Y / Ctrl+D работают на русской раскладке (Я / Н / В)', r);
+  ok(/Горячие клавиши/.test(r.keysModal), 'клавиша ? открывает справку по горячим клавишам', r.keysModal);
+  ok(r.keys[0] === 'effect' && r.keys.indexOf('colorPreset') === r.keys.indexOf('stops') - 1, 'в панели FX выбор эффекта наверху, «Пресет цвета» прямо над палитрой', r.keys.slice(0, 4));
+  ok(r.shown === 'Пресет цвета: Огонь (Fire)' && r.shown2 === 'Пресет цвета: Магия (Magic)', 'показывается текущий выбранный пресет цвета', [r.shown, r.shown2]);
   await page.context().close();
 });
 

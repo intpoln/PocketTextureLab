@@ -34,7 +34,7 @@ const PresetBrowser = (() => {
     render();
     $('#nd-search').focus();
   }
-  function close() { $('#noise-drawer').classList.remove('show'); clearTimeout(timer); }
+  function close() { $('#noise-drawer').classList.remove('show'); clearTimeout(timer); stopHover(); }
   const isOpen = () => $('#noise-drawer').classList.contains('show');
 
   function add(it, pos) {
@@ -65,6 +65,10 @@ const PresetBrowser = (() => {
         const lbl = document.createElement('div'); lbl.textContent = it.title;
         card.append(cv, lbl);
         card.addEventListener('click', () => add(it));
+        if (it.type === 'fx') {   // animate the preview while hovered
+          card.addEventListener('mouseenter', () => startHover(it, cv));
+          card.addEventListener('mouseleave', stopHover);
+        }
         card.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/ptl-preset', JSON.stringify({ type: it.type, params: it.params, title: it.title })); e.dataTransfer.effectAllowed = 'copy'; });
         grid.append(card);
         if (thumbs.has(it.key)) cv.getContext('2d').putImageData(thumbs.get(it.key), 0, 0);
@@ -74,6 +78,31 @@ const PresetBrowser = (() => {
     if (!list.length) body.textContent = 'Ничего не найдено.';
     clearTimeout(timer);
     timer = setTimeout(pump, 20);
+  }
+
+  let hover = null;
+  function startHover(it, cv) {
+    stopHover();
+    const t0 = performance.now();
+    const step = () => {
+      if (!hover || GPU.isLost()) return;
+      const saved = Anim.t;
+      try {
+        Anim.t = ((performance.now() - t0) / 2000) % 1;
+        const px = Engine.renderStandalone(it.type, { ...it.params, background: 'black' }, TH);
+        cv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.buffer, px.byteOffset, TH * TH * 4), TH, TH), 0, 0);
+      } catch (e) { /* ignore */ } finally { Anim.t = saved; }
+      hover.timer = setTimeout(step, 50);
+    };
+    hover = { it, cv, timer: 0 };
+    step();
+  }
+  function stopHover() {
+    if (!hover) return;
+    clearTimeout(hover.timer);
+    const { it, cv } = hover;
+    hover = null;
+    if (thumbs.has(it.key)) cv.getContext('2d').putImageData(thumbs.get(it.key), 0, 0);
   }
 
   // Render a few thumbnails per tick so the UI stays responsive.

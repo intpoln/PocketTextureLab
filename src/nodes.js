@@ -372,6 +372,7 @@ const NODES = {
       e('source', 'Входное значение', [['L', 'Яркость (Luminance)'], ['R', 'Канал R']], 'L'),
       e('space', 'Выход', [['color', 'Цвет sRGB'], ['data', 'Данные']], 'color', { help: 'Цвет: точки задаются в sRGB, размытие/смешивание дальше идут в линейном свете. Данные: значения точек пишутся в каналы как есть.' }),
     ],
+    colorPresets: 'stops',
     presets: Object.keys(RAMP_PRESETS).map((name) => ({ label: name, get apply() { return { stops: rampFromPreset(name) }; } })),
     help: 'Интерполяция идёт между значениями точек (в sRGB). При совпадающих позициях получается резкий переход: в самой позиции действует точка, стоящая в списке позже.',
     eval(ctx) {
@@ -713,6 +714,8 @@ const NODES = {
       i('seed', 'Seed', 0, 99999, 1),
       e('background', 'Фон', [['transparent', 'Прозрачный (альфа из палитры)'], ['black', 'Чёрный (для аддитивного смешивания)']], 'transparent'),
     ],
+    topParams: ['effect'],
+    colorPresets: 'stops',
     presetParam: 'effect',
     presetValues: Object.fromEntries(FX_LIST.map((x) => [x.id, { get stops() { return fxStops(x.palette); }, ...x.defaults }])),
     presets: [...Object.keys(FX_PALETTES), ...Object.keys(RAMP_PRESETS)].map((name) => ({ label: name, get apply() { return { stops: fxStops(name) }; } })),

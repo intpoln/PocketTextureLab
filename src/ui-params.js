@@ -61,7 +61,16 @@ const ParamsPanel = (() => {
       Object.assign(node.params, JSON.parse(JSON.stringify(params)));
       Graph.touch(node); GraphView.updateLabels(node.id); App.changed({ commit: true, node: node.id, structure: true }); build();
     };
-    if (def.presets && def.presets.length > 6) {
+    // parameters that belong at the very top (e.g. which effect)
+    const topKeys = def.topParams || [];
+    for (const d of def.params.filter((q) => topKeys.includes(q.key))) {
+      const row = makeRow(node, d);
+      rows.push({ d, row });
+      el.append(row.el);
+    }
+    if (def.colorPresets) {
+      /* colour presets are shown next to the palette (see below) */
+    } else if (def.presets && def.presets.length > 6) {
       const sel = h('select', { title: 'Встроенные пресеты' }, h('option', { value: '', text: 'Пресет…' }));
       def.presets.forEach((pr, k) => sel.append(h('option', { value: k, text: pr.label })));
       sel.addEventListener('change', () => { if (sel.value !== '') applyParams(def.presets[+sel.value].apply); });
@@ -81,7 +90,9 @@ const ParamsPanel = (() => {
     } else portsEl = null;
     let group = null;
     for (const d of def.params) {
+      if (topKeys.includes(d.key)) continue;
       if (d.group && d.group !== group) { group = d.group; el.append(h('div', { class: 'group', text: 'Канал ' + group })); }
+      if (def.colorPresets === d.key) el.append(colorPresetRow(node, def, applyParams));
       const row = makeRow(node, d);
       rows.push({ d, row });
       el.append(row.el);
@@ -136,6 +147,20 @@ const ParamsPanel = (() => {
     to.addEventListener('change', apply);
     curve.addEventListener('change', apply);
     wrap.append(h('div', { class: 'ctl animrow' }, h('span', { text: '⏱ конец:' }), to, curve));
+  }
+
+  // «Пресет цвета» select, showing which preset the current palette matches.
+  function colorPresetRow(node, def, applyParams) {
+    const cur = JSON.stringify(node.params[def.colorPresets]);
+    const idx = def.presets.findIndex((pr) => JSON.stringify(pr.apply[def.colorPresets]) === cur);
+    const sel = h('select', { title: 'Готовые палитры: выбор заменяет точки градиента ниже' },
+      h('option', { value: '', text: idx < 0 ? 'Пресет цвета: свой' : 'Пресет цвета…' }));
+    def.presets.forEach((pr, k) => sel.append(h('option', { value: k, text: 'Пресет цвета: ' + pr.label })));
+    sel.value = idx < 0 ? '' : String(idx);
+    sel.addEventListener('change', () => { if (sel.value !== '') applyParams(def.presets[+sel.value].apply); });
+    const wrap = h('div', { class: 'prow' }, h('label', { text: 'Пресет цвета' }), h('div', { class: 'ctl' }, sel));
+    wrap.dataset.key = 'colorPreset';
+    return wrap;
   }
 
   // Saved-in-browser presets for this node type.
