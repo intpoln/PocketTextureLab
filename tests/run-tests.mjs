@@ -178,7 +178,7 @@ await test('UI: добавить, соединить, запрет цикла, �
   const t0 = await page.locator('#graph-inner').evaluate((e) => e.style.transform);
   await page.mouse.move(700, 700); await page.mouse.wheel(0, -300); await page.waitForTimeout(50);
   const box = await page.locator('#graph').boundingBox();
-  await page.mouse.move(box.x + 30, box.y + box.height - 30); await page.mouse.down(); await page.mouse.move(box.x + 130, box.y + box.height - 80, { steps: 4 }); await page.mouse.up();
+  await page.mouse.move(box.x + 30, box.y + box.height - 30); await page.mouse.down({ button: 'middle' }); await page.mouse.move(box.x + 130, box.y + box.height - 80, { steps: 4 }); await page.mouse.up({ button: 'middle' });
   const t1 = await page.locator('#graph-inner').evaluate((e) => e.style.transform);
   ok(t0 !== t1 && /scale\((?!1\))/.test(t1), 'вид графа сдвигается и масштабируется', [t0, t1]);
   // wire click + Delete
@@ -1028,6 +1028,46 @@ await test('Хоткеи на любой раскладке, справка по
   ok(/Горячие клавиши/.test(r.keysModal), 'клавиша ? открывает справку по горячим клавишам', r.keysModal);
   ok(r.keys[0] === 'effect' && r.keys.indexOf('colorPreset') === r.keys.indexOf('stops') - 1, 'в панели FX выбор эффекта наверху, «Пресет цвета» прямо над палитрой', r.keys.slice(0, 4));
   ok(r.shown === 'Пресет цвета: Огонь (Fire)' && r.shown2 === 'Пресет цвета: Магия (Magic)', 'показывается текущий выбранный пресет цвета', [r.shown, r.shown2]);
+  await page.context().close();
+});
+
+await test('Выделение рамкой, групповое перемещение, удаление и дублирование', async () => {
+  const page = await openPage();
+  const ids = await page.evaluate(() => {
+    PTL.newProject();
+    const a = PTL.addNode('noise', { x: 0, y: 0 }), b = PTL.addNode('levels', { x: 240, y: 0 }), c = PTL.addNode('output', { x: 480, y: 300 });
+    PTL.connect(a, 0, b, 0); PTL.connect(b, 0, c, 0);
+    PTL.select(null); PTL.fitGraph();
+    return { a, b, c };
+  });
+  await idle(page);
+  const ra = await page.locator(`.node[data-id="${ids.a}"]`).boundingBox(), rb = await page.locator(`.node[data-id="${ids.b}"]`).boundingBox();
+  // rectangle from above-left of A to below-right of B (C stays outside)
+  await page.mouse.move(ra.x - 15, ra.y - 15); await page.mouse.down();
+  await page.mouse.move(rb.x + rb.width / 2, rb.y + rb.height / 2, { steps: 5 });
+  await page.mouse.move(rb.x + rb.width + 10, rb.y + rb.height + 10, { steps: 5 }); await page.mouse.up();
+  let sel = await page.evaluate(() => ({ ids: PTL.selected().sort(), panel: document.querySelector('#params h3').textContent }));
+  ok(sel.ids.join() === [ids.a, ids.b].sort().join() && /Выбрано нод: 2/.test(sel.panel), 'рамка выделяет ноды, попавшие в неё; панель показывает группу', sel);
+  // move the group by dragging one header
+  const before = await page.evaluate((i) => [PTL.getNode(i.a).x, PTL.getNode(i.b).x, PTL.getNode(i.c).x], ids);
+  const hb = await page.locator(`.node[data-id="${ids.b}"] .head`).boundingBox();
+  await page.mouse.move(hb.x + 20, hb.y + 8); await page.mouse.down(); await page.mouse.move(hb.x + 120, hb.y + 8, { steps: 5 }); await page.mouse.up();
+  const after = await page.evaluate((i) => [PTL.getNode(i.a).x, PTL.getNode(i.b).x, PTL.getNode(i.c).x], ids);
+  ok(after[0] - before[0] > 50 && after[0] - before[0] === after[1] - before[1] && after[2] === before[2], 'перетаскивание одной ноды двигает всю выделенную группу', { before, after });
+  // Ctrl+click adds C, Ctrl+D duplicates with internal links
+  await page.click(`.node[data-id="${ids.c}"] .head`, { modifiers: ['Control'] });
+  sel = await page.evaluate(() => PTL.selected().length);
+  ok(sel === 3, 'Ctrl+щелчок добавляет ноду к выделению', sel);
+  await page.keyboard.press('Control+d');
+  const dup = await page.evaluate(() => ({ nodes: PTL.getGraph().nodes.length, links: PTL.getGraph().links.length, sel: PTL.selected().length }));
+  ok(dup.nodes === 6 && dup.links === 4 && dup.sel === 3, 'Ctrl+D дублирует группу вместе со связями между нодами', dup);
+  await page.keyboard.press('Delete');
+  const del = await page.evaluate(() => ({ nodes: PTL.getGraph().nodes.length, links: PTL.getGraph().links.length }));
+  ok(del.nodes === 3 && del.links === 2, 'Delete удаляет всю выделенную группу', del);
+  await page.keyboard.press('Control+z');
+  ok(await page.evaluate(() => PTL.getGraph().nodes.length) === 6, 'удаление группы отменяется одним Ctrl+Z');
+  await page.click('#graph', { position: { x: 15, y: 15 } });
+  ok(await page.evaluate(() => PTL.selected().length) === 0, 'щелчок по пустому месту снимает выделение');
   await page.context().close();
 });
 

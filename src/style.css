@@ -183,3 +183,6 @@ main { position: relative; }
 #status .msg { min-width: 0; }
 #app-version { font-size: 11px; font-weight: 600; padding: 1px 6px; margin-left: 4px; color: var(--acc); background: transparent; border: 1px solid var(--acc2); border-radius: 10px; }
 #app-version:hover { background: var(--acc2); color: var(--fg); }
+#marquee { position: absolute; display: none; border: 1px solid var(--acc); background: rgba(78,161,255,.12); pointer-events: none; z-index: 5; }
+.node.sel.primary { box-shadow: 0 0 0 2px var(--acc), 0 2px 10px #000a; }
+#graph { cursor: default; }

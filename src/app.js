@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 const App = (() => {
   const $ = (s) => document.querySelector(s);
-  const state = { selected: null, selectedLink: null, viewPort: 0, interactive: false, playing: false, displayRes: 512, dirty: false, ready: false };
+  const state = { multi: new Set(), selected: null, selectedLink: null, viewPort: 0, interactive: false, playing: false, displayRes: 512, dirty: false, ready: false };
   let evalRaf = 0, idleTimer = 0, thumbQueue = [], thumbTimer = 0;
   const CAT_ORDER = ['Источники', 'Узоры', 'Эффекты', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
   const KEYWORDS = {
@@ -248,12 +248,13 @@ const App = (() => {
   // Hotkeys use physical key codes (e.code), so they work in any keyboard layout
   // (Russian ЙЦУКЕН included): Ctrl+Z is the same key as Ctrl+Я.
   const HOTKEYS = [
-    ['Ctrl+Z', 'Отменить'], ['Ctrl+Shift+Z / Ctrl+Y', 'Повторить'], ['Ctrl+D', 'Дублировать выбранную ноду'],
-    ['Delete / Backspace', 'Удалить выбранную ноду или связь'], ['Ctrl+S', 'Сохранить проект'], ['Ctrl+O', 'Открыть проект'],
+    ['Ctrl+Z', 'Отменить'], ['Ctrl+Shift+Z / Ctrl+Y', 'Повторить'], ['Ctrl+D', 'Дублировать выбранные ноды (со связями между ними)'], ['Ctrl+A', 'Выделить все ноды'],
+    ['Delete / Backspace', 'Удалить выбранные ноды или связь'], ['Ctrl+S', 'Сохранить проект'], ['Ctrl+O', 'Открыть проект'],
     ['Ctrl+E', 'Экспорт PNG основного выхода'], ['F', 'Показать весь граф'], ['Пробел', 'Анимация: воспроизвести / пауза'],
     ['← / →', 'Анимация: предыдущий / следующий кадр'], ['N', 'Окно «Шумы»'], ['E', 'Окно «Эффекты»'],
     ['Ctrl+Enter', 'Применить код в ноде «Код (GLSL)»'], ['Esc', 'Закрыть окно / справку'], ['? (Shift+/)', 'Эта справка по клавишам'],
-    ['Колесо мыши', 'Масштаб графа / предпросмотра'], ['Перетаскивание фона', 'Сдвиг графа'],
+    ['Колесо мыши', 'Масштаб графа / предпросмотра'], ['Перетаскивание по пустому месту', 'Рамка выделения (Shift / Ctrl — добавить к выделенному)'],
+    ['Ctrl / Shift + щелчок по ноде', 'Добавить ноду к выделению или убрать из него'], ['Правая или средняя кнопка + перетаскивание', 'Сдвиг графа'],
     ['Shift+мышь в 3D', 'Двигать свет'], ['Двойной щелчок по проводу', 'Удалить связь'],
   ];
   function showHotkeys() {
@@ -264,6 +265,7 @@ const App = (() => {
   function bindKeys() {
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && $('#modal').classList.contains('show')) { $('#modal').classList.remove('show'); return; }
+      if (e.key === 'Escape' && !isTyping(e.target) && state.multi.size) { select(null); return; }
       const mod = e.ctrlKey || e.metaKey, code = e.code;
       if (mod && code === 'KeyS') { e.preventDefault(); saveProject(); return; }
       if (mod && code === 'KeyO') { e.preventDefault(); $('#file-project').click(); return; }
@@ -271,13 +273,14 @@ const App = (() => {
       if (isTyping(e.target)) return;
       if (mod && code === 'KeyZ') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
       if (mod && code === 'KeyY') { e.preventDefault(); redo(); return; }
-      if (mod && code === 'KeyD') { e.preventDefault(); if (state.selected) duplicate(state.selected); return; }
+      if (mod && code === 'KeyD') { e.preventDefault(); const ids = selectedIds(); if (ids.length) duplicateMany(ids); return; }
+      if (mod && code === 'KeyA') { e.preventDefault(); selectMany([...Graph.nodes.keys()]); return; }
       if (code === 'Delete' || code === 'Backspace') {
         if (state.selectedLink) {
           Graph.disconnect(state.selectedLink.to, state.selectedLink.toPort);
           state.selectedLink = null;
           changed({ commit: true, structure: true });
-        } else if (state.selected) removeNode(state.selected);
+        } else { const ids = selectedIds(); if (ids.length) removeNodes(ids); }
         e.preventDefault();
         return;
       }
@@ -339,7 +342,8 @@ const App = (() => {
       <li><b>Соединить</b>: потяните от кружка выхода (справа у ноды) к кружку входа (слева). Можно и наоборот. Один выход может идти в несколько входов; циклы запрещены.</li>
       <li><b>Разорвать связь</b>: потяните за подключённый вход и отпустите в пустом месте; или щёлкните провод и нажмите <kbd>Delete</kbd>; или двойной щелчок / правая кнопка по проводу.</li>
       <li><b>Переместить</b> ноду — за заголовок. <b>Удалить</b> — <kbd>Delete</kbd>, <b>дублировать</b> — <kbd>Ctrl+D</kbd>.</li>
-      <li><b>Вид графа</b>: перетаскивание пустого места — сдвиг, колесо — масштаб, <kbd>F</kbd> — показать всё.</li>
+      <li><b>Выделение</b>: протяните мышью по пустому месту — рамка выделит несколько нод (с <kbd>Shift</kbd>/<kbd>Ctrl</kbd> — добавить к выделенному); <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+щелчок по ноде — добавить или убрать; <kbd>Ctrl+A</kbd> — все. Выделенную группу можно двигать, удалять и дублировать (<kbd>Ctrl+D</kbd> копирует и связи между ними).</li>
+      <li><b>Вид графа</b>: перетаскивание правой или средней кнопкой — сдвиг, колесо — масштаб, <kbd>F</kbd> — показать всё.</li>
       <li><b>Отмена / повтор</b>: <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> (<kbd>Ctrl+Y</kbd>). Одно перетаскивание ползунка — один шаг отмены.</li>
       <li>Число можно ввести точно в поле рядом с ползунком; <b>↺</b> сбрасывает параметр к значению по умолчанию.</li>
       </ul>
@@ -517,10 +521,14 @@ const App = (() => {
     return n;
   }
 
-  function removeNode(id) {
-    if (!Graph.nodes.has(id)) return;
-    Graph.removeNode(id);
-    if (state.selected === id) state.selected = null;
+  function removeNode(id) { removeNodes([id]); }
+
+  function removeNodes(ids) {
+    ids = ids.filter((id) => Graph.nodes.has(id));
+    if (!ids.length) return;
+    for (const id of ids) Graph.removeNode(id);
+    if (ids.includes(state.selected)) state.selected = null;
+    for (const id of ids) state.multi.delete(id);
     state.selectedLink = null;
     GraphView.rebuild();
     ParamsPanel.build();
@@ -529,14 +537,38 @@ const App = (() => {
     requestEval();
   }
 
-  function duplicate(id) {
-    const n = Graph.nodes.get(id);
-    if (!n) return null;
-    return addNode(n.type, n.x + 30, n.y + 30, n.params);
+  function duplicate(id) { return duplicateMany([id])[0] || null; }
+
+  // Duplicate a group of nodes, keeping the links between them.
+  function duplicateMany(ids) {
+    ids = ids.filter((id) => Graph.nodes.has(id));
+    const map = new Map();
+    for (const id of ids) {
+      const n = Graph.nodes.get(id);
+      const c = Graph.addNode(n.type, n.x + 30, n.y + 30, n.params);
+      if (n.anim) c.anim = JSON.parse(JSON.stringify(n.anim));
+      map.set(id, c.id);
+    }
+    for (const l of Graph.links.slice()) if (map.has(l.from) && map.has(l.to)) Graph.connect(map.get(l.from), l.fromPort, map.get(l.to), l.toPort);
+    const created = [...map.values()];
+    GraphView.rebuild();
+    selectMany(created);
+    commit();
+    requestEval();
+    return created.map((id) => Graph.nodes.get(id));
   }
 
-  function select(id) {
+  // opts.toggle: Ctrl/Shift+click adds/removes the node from the selection.
+  function select(id, opts = {}) {
     if (id && !Graph.nodes.has(id)) id = null;
+    if (opts.toggle && id) {
+      if (state.multi.has(id)) { state.multi.delete(id); if (state.selected === id) id = [...state.multi].pop() || null; }
+      else state.multi.add(id);
+    } else if (opts.keep && id && state.multi.has(id)) {
+      /* clicking a node that is already part of a group keeps the group */
+    } else {
+      state.multi = new Set(id ? [id] : []);
+    }
     if (state.selected !== id) state.viewPort = 0;
     state.selected = id;
     if (id) state.selectedLink = null;
@@ -544,6 +576,24 @@ const App = (() => {
     GraphView.drawWires();
     ParamsPanel.build();
     requestEval();
+  }
+
+  function selectMany(ids, add = false) {
+    const set = add ? new Set([...state.multi, ...ids]) : new Set(ids);
+    state.multi = set;
+    state.selected = ids.length ? ids[ids.length - 1] : (add ? state.selected : null);
+    state.viewPort = 0;
+    state.selectedLink = null;
+    GraphView.refreshMarks();
+    GraphView.drawWires();
+    ParamsPanel.build();
+    requestEval();
+  }
+
+  function selectedIds() {
+    const ids = [...state.multi].filter((id) => Graph.nodes.has(id));
+    if (!ids.length && state.selected && Graph.nodes.has(state.selected)) ids.push(state.selected);
+    return ids;
   }
 
   function selectLink(l) {
@@ -560,6 +610,8 @@ const App = (() => {
   function afterLoad() {
     if (frameCache.frames.size) clearFrameCache();
     if (state.selected && !Graph.nodes.has(state.selected)) state.selected = null;
+    state.multi = new Set([...state.multi].filter((id) => Graph.nodes.has(id)));
+    if (state.selected) state.multi.add(state.selected);
     state.selectedLink = null;
     $('#res').value = Graph.state.resolution;
     GraphView.rebuild();
@@ -926,7 +978,7 @@ const App = (() => {
 
   return {
     init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId,
-    undo, redo, flush, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    undo, redo, flush, removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };

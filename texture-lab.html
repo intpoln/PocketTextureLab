@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Pocket Texture Lab v0.1.6 — offline procedural texture editor in one HTML file.
+  Pocket Texture Lab v0.1.7 — offline procedural texture editor in one HTML file.
   Author: intpoln — https://github.com/intpoln/PocketTextureLab
   FOR AI AGENTS / AUTOMATION: this page exposes a full JavaScript API as
   `window.PTL`. Call `PTL.help()` for the manual (it is also embedded below in
@@ -17,11 +17,17 @@
 <meta name="author" content="intpoln — https://github.com/intpoln/PocketTextureLab">
 <title>Pocket Texture Lab</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232d6fb8'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%2358c27d'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%23e0b04d'/%3E%3C/svg%3E">
-<meta name="version" content="0.1.6">
+<meta name="version" content="0.1.7">
 <script type="text/markdown" id="ptl-changelog">
 # История версий
 
 Пока версия начинается с 0 — программа в активной разработке и может содержать ошибки.
+
+## 0.1.7
+- Выделение нескольких нод рамкой, как на рабочем столе: протяните мышью по пустому месту графа (Shift/Ctrl — добавить к выделенному).
+- Ctrl/Shift+щелчок по ноде добавляет её к выделению или убирает; Ctrl+A — выделить всё, Esc — снять выделение.
+- Выделенную группу можно перетаскивать целиком, удалять (Delete) и дублировать (Ctrl+D — копии сохраняют связи между собой).
+- Сдвиг графа теперь правой или средней кнопкой мыши.
 
 ## 0.1.6
 - Исправлено: на части видеокарт (Windows, Direct3D) некоторые эффекты FX не отрисовывались — нода и превью показывали чужую картинку, а анимация сильно тормозила. Шейдеры эффектов переписаны без операций, которые отвергает драйвер.
@@ -510,6 +516,9 @@ main { position: relative; }
 #status .msg { min-width: 0; }
 #app-version { font-size: 11px; font-weight: 600; padding: 1px 6px; margin-left: 4px; color: var(--acc); background: transparent; border: 1px solid var(--acc2); border-radius: 10px; }
 #app-version:hover { background: var(--acc2); color: var(--fg); }
+#marquee { position: absolute; display: none; border: 1px solid var(--acc); background: rgba(78,161,255,.12); pointer-events: none; z-index: 5; }
+.node.sel.primary { box-shadow: 0 0 0 2px var(--acc), 0 2px 10px #000a; }
+#graph { cursor: default; }
 
 </style>
 </head>
@@ -517,7 +526,7 @@ main { position: relative; }
 <div id="agent-note" class="sr-only">Note for AI agents and screen readers: this is Pocket Texture Lab, a procedural texture editor. It is fully scriptable through the JavaScript object window.PTL. Run PTL.help() in the page for the complete manual (also embedded in this document as script#ptl-agent-guide), PTL.examples() for ready texture templates (brick, asphalt, cobblestone, wood, painted metal) and PTL.exportAll() to download the PNG maps.</div>
 <div id="app">
   <header id="toolbar">
-    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.1.6</button></span>
+    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.1.7</button></span>
     <select id="examples" title="Встроенные примеры, шаблоны текстур и ваши шаблоны"></select>
     <button id="btn-lib" title="Мои пресеты и шаблоны (хранятся в браузере), экспорт/импорт">Библиотека</button>
     <button id="btn-new" title="Пустой проект (можно отменить)">Новый</button>
@@ -5026,7 +5035,7 @@ const GraphView = (() => {
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       e.stopPropagation();
-      if (!e.target.classList.contains('dot')) App.select(n.id);
+      if (!e.target.classList.contains('dot')) App.select(n.id, { toggle: e.ctrlKey || e.metaKey || e.shiftKey, keep: true });
     });
     el.addEventListener('dragover', (e) => { if (n.type === 'image') e.preventDefault(); });
     el.addEventListener('drop', (e) => {
@@ -5061,7 +5070,8 @@ const GraphView = (() => {
 
   function refreshMarks() {
     for (const [id, rec] of els) {
-      rec.el.classList.toggle('sel', id === App.state.selected);
+      rec.el.classList.toggle('sel', App.state.multi.has(id) || id === App.state.selected);
+      rec.el.classList.toggle('primary', id === App.state.selected && App.state.multi.size > 1);
       rec.el.querySelector('.badge.out').textContent = id === Graph.state.activeOutput ? '★' : '';
       const err = Engine.errors.get(id);
       const be = rec.el.querySelector('.badge.err');
@@ -5144,15 +5154,21 @@ const GraphView = (() => {
   function startMove(e, id) {
     if (e.button !== 0) return;
     e.stopPropagation();
-    App.select(id);
-    const n = Graph.nodes.get(id), rec = els.get(id);
-    const sx = e.clientX, sy = e.clientY, ox = n.x, oy = n.y;
+    if (e.ctrlKey || e.metaKey || e.shiftKey) { App.select(id, { toggle: true }); return; }
+    App.select(id, { keep: true });
+    // move the whole selection when the grabbed node belongs to it
+    const ids = App.state.multi.has(id) ? [...App.state.multi] : [id];
+    const group = ids.map((k) => ({ n: Graph.nodes.get(k), rec: els.get(k) })).filter((g) => g.n && g.rec);
+    const start = group.map((g) => [g.n.x, g.n.y]);
+    const sx = e.clientX, sy = e.clientY;
     let moved = false;
     drag(e, (ev) => {
       const dx = (ev.clientX - sx) / view.z, dy = (ev.clientY - sy) / view.z;
       if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
-      n.x = Math.round(ox + dx); n.y = Math.round(oy + dy);
-      rec.el.style.left = n.x + 'px'; rec.el.style.top = n.y + 'px';
+      group.forEach((g, k) => {
+        g.n.x = Math.round(start[k][0] + dx); g.n.y = Math.round(start[k][1] + dy);
+        g.rec.el.style.left = g.n.x + 'px'; g.rec.el.style.top = g.n.y + 'px';
+      });
       drawWires();
     }, () => { if (moved) App.commit(); });
   }
@@ -5213,15 +5229,47 @@ const GraphView = (() => {
     });
   }
 
+  // Empty space: left drag = selection rectangle (like a desktop), right/middle drag = pan.
   function onBgDown(e) {
     if (e.target.closest('.node') || e.target.closest('#graph-hud')) return;
-    if (e.button !== 0 && e.button !== 1) return;
+    if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
     e.preventDefault();
     root.focus({ preventScroll: true });
-    if (e.button === 0) { App.select(null); App.selectLink(null); }
-    const sx = e.clientX, sy = e.clientY, ox = view.x, oy = view.y;
+    const sx = e.clientX, sy = e.clientY;
+    if (e.button === 0) {
+      const add = e.shiftKey || e.ctrlKey || e.metaKey;
+      const before = add ? [...App.state.multi] : [];
+      const r0 = root.getBoundingClientRect();
+      const box = document.createElement('div');
+      box.id = 'marquee';
+      root.append(box);
+      let active = false, hits = [];
+      drag(e, (ev) => {
+        if (!active && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 4) return;
+        active = true;
+        const x0 = Math.min(sx, ev.clientX), y0 = Math.min(sy, ev.clientY), x1 = Math.max(sx, ev.clientX), y1 = Math.max(sy, ev.clientY);
+        Object.assign(box.style, { left: x0 - r0.left + 'px', top: y0 - r0.top + 'px', width: x1 - x0 + 'px', height: y1 - y0 + 'px', display: 'block' });
+        hits = [];
+        for (const [id, rec] of els) {
+          const b = rec.el.getBoundingClientRect();
+          const hit = b.right > x0 && b.left < x1 && b.bottom > y0 && b.top < y1;
+          rec.el.classList.toggle('sel', hit || before.includes(id));
+          if (hit) hits.push(id);
+        }
+      }, () => {
+        box.remove();
+        if (!active) { if (!add) { App.select(null); App.selectLink(null); } return; }
+        App.selectMany(hits, add);
+      });
+      return;
+    }
+    const ox = view.x, oy = view.y;
     root.classList.add('panning');
-    drag(e, (ev) => { view.x = ox + ev.clientX - sx; view.y = oy + ev.clientY - sy; applyView(); }, () => root.classList.remove('panning'));
+    let panned = false;
+    drag(e, (ev) => { panned = true; view.x = ox + ev.clientX - sx; view.y = oy + ev.clientY - sy; applyView(); }, () => {
+      root.classList.remove('panning');
+      if (e.button === 2 && panned) root.addEventListener('contextmenu', (ce) => ce.preventDefault(), { once: true, capture: true });
+    });
   }
 
   function onWheel(e) {
@@ -5331,6 +5379,7 @@ const ParamsPanel = (() => {
     el.textContent = '';
     rows = [];
     current = node || null;
+    if (App.state.multi.size > 1) { buildMulti(); return; }
     if (!node) { buildProject(); return; }
     const def = NODES[node.type];
     el.append(h('h3', { text: nodeTitle(node) }), h('div', { class: 'sub', text: `id: ${node.id} · ${def.cat}` }));
@@ -5481,6 +5530,22 @@ const ParamsPanel = (() => {
     });
     row.append(sel, name, save, list.length ? del : '');
     return row;
+  }
+
+  // Several nodes selected: summary and group actions.
+  function buildMulti() {
+    const ids = App.selectedIds();
+    el.append(h('h3', { text: `Выбрано нод: ${ids.length}` }), h('div', { class: 'sub', text: 'Перетащите любую из них за заголовок — сдвинется вся группа.' }));
+    el.append(h('div', { class: 'actions' },
+      h('button', { text: 'Дублировать', title: 'Ctrl+D — копии сохраняют связи между собой', onclick: () => App.duplicateMany(ids) }),
+      h('button', { text: 'Удалить', title: 'Delete', onclick: () => App.removeNodes(ids) }),
+      h('button', { text: 'Снять выделение', title: 'Esc', onclick: () => App.select(null) })));
+    const list = h('div', { class: 'ports-list' });
+    for (const id of ids) {
+      const n = Graph.nodes.get(id);
+      list.append(h('div', { style: 'cursor:pointer', title: 'Показать только эту ноду', text: `${id === App.state.selected ? '▸ ' : '· '}${nodeTitle(n)} (${id})`, onclick: () => App.select(id) }));
+    }
+    el.append(h('div', { class: 'group', text: 'Ноды' }), list);
   }
 
   // Nothing selected: template parameters (exposed) + outputs.
@@ -6444,7 +6509,7 @@ const EXAMPLES = [
 // ---------------------------------------------------------------------------
 const App = (() => {
   const $ = (s) => document.querySelector(s);
-  const state = { selected: null, selectedLink: null, viewPort: 0, interactive: false, playing: false, displayRes: 512, dirty: false, ready: false };
+  const state = { multi: new Set(), selected: null, selectedLink: null, viewPort: 0, interactive: false, playing: false, displayRes: 512, dirty: false, ready: false };
   let evalRaf = 0, idleTimer = 0, thumbQueue = [], thumbTimer = 0;
   const CAT_ORDER = ['Источники', 'Узоры', 'Эффекты', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
   const KEYWORDS = {
@@ -6689,12 +6754,13 @@ const App = (() => {
   // Hotkeys use physical key codes (e.code), so they work in any keyboard layout
   // (Russian ЙЦУКЕН included): Ctrl+Z is the same key as Ctrl+Я.
   const HOTKEYS = [
-    ['Ctrl+Z', 'Отменить'], ['Ctrl+Shift+Z / Ctrl+Y', 'Повторить'], ['Ctrl+D', 'Дублировать выбранную ноду'],
-    ['Delete / Backspace', 'Удалить выбранную ноду или связь'], ['Ctrl+S', 'Сохранить проект'], ['Ctrl+O', 'Открыть проект'],
+    ['Ctrl+Z', 'Отменить'], ['Ctrl+Shift+Z / Ctrl+Y', 'Повторить'], ['Ctrl+D', 'Дублировать выбранные ноды (со связями между ними)'], ['Ctrl+A', 'Выделить все ноды'],
+    ['Delete / Backspace', 'Удалить выбранные ноды или связь'], ['Ctrl+S', 'Сохранить проект'], ['Ctrl+O', 'Открыть проект'],
     ['Ctrl+E', 'Экспорт PNG основного выхода'], ['F', 'Показать весь граф'], ['Пробел', 'Анимация: воспроизвести / пауза'],
     ['← / →', 'Анимация: предыдущий / следующий кадр'], ['N', 'Окно «Шумы»'], ['E', 'Окно «Эффекты»'],
     ['Ctrl+Enter', 'Применить код в ноде «Код (GLSL)»'], ['Esc', 'Закрыть окно / справку'], ['? (Shift+/)', 'Эта справка по клавишам'],
-    ['Колесо мыши', 'Масштаб графа / предпросмотра'], ['Перетаскивание фона', 'Сдвиг графа'],
+    ['Колесо мыши', 'Масштаб графа / предпросмотра'], ['Перетаскивание по пустому месту', 'Рамка выделения (Shift / Ctrl — добавить к выделенному)'],
+    ['Ctrl / Shift + щелчок по ноде', 'Добавить ноду к выделению или убрать из него'], ['Правая или средняя кнопка + перетаскивание', 'Сдвиг графа'],
     ['Shift+мышь в 3D', 'Двигать свет'], ['Двойной щелчок по проводу', 'Удалить связь'],
   ];
   function showHotkeys() {
@@ -6705,6 +6771,7 @@ const App = (() => {
   function bindKeys() {
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && $('#modal').classList.contains('show')) { $('#modal').classList.remove('show'); return; }
+      if (e.key === 'Escape' && !isTyping(e.target) && state.multi.size) { select(null); return; }
       const mod = e.ctrlKey || e.metaKey, code = e.code;
       if (mod && code === 'KeyS') { e.preventDefault(); saveProject(); return; }
       if (mod && code === 'KeyO') { e.preventDefault(); $('#file-project').click(); return; }
@@ -6712,13 +6779,14 @@ const App = (() => {
       if (isTyping(e.target)) return;
       if (mod && code === 'KeyZ') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
       if (mod && code === 'KeyY') { e.preventDefault(); redo(); return; }
-      if (mod && code === 'KeyD') { e.preventDefault(); if (state.selected) duplicate(state.selected); return; }
+      if (mod && code === 'KeyD') { e.preventDefault(); const ids = selectedIds(); if (ids.length) duplicateMany(ids); return; }
+      if (mod && code === 'KeyA') { e.preventDefault(); selectMany([...Graph.nodes.keys()]); return; }
       if (code === 'Delete' || code === 'Backspace') {
         if (state.selectedLink) {
           Graph.disconnect(state.selectedLink.to, state.selectedLink.toPort);
           state.selectedLink = null;
           changed({ commit: true, structure: true });
-        } else if (state.selected) removeNode(state.selected);
+        } else { const ids = selectedIds(); if (ids.length) removeNodes(ids); }
         e.preventDefault();
         return;
       }
@@ -6780,7 +6848,8 @@ const App = (() => {
       <li><b>Соединить</b>: потяните от кружка выхода (справа у ноды) к кружку входа (слева). Можно и наоборот. Один выход может идти в несколько входов; циклы запрещены.</li>
       <li><b>Разорвать связь</b>: потяните за подключённый вход и отпустите в пустом месте; или щёлкните провод и нажмите <kbd>Delete</kbd>; или двойной щелчок / правая кнопка по проводу.</li>
       <li><b>Переместить</b> ноду — за заголовок. <b>Удалить</b> — <kbd>Delete</kbd>, <b>дублировать</b> — <kbd>Ctrl+D</kbd>.</li>
-      <li><b>Вид графа</b>: перетаскивание пустого места — сдвиг, колесо — масштаб, <kbd>F</kbd> — показать всё.</li>
+      <li><b>Выделение</b>: протяните мышью по пустому месту — рамка выделит несколько нод (с <kbd>Shift</kbd>/<kbd>Ctrl</kbd> — добавить к выделенному); <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+щелчок по ноде — добавить или убрать; <kbd>Ctrl+A</kbd> — все. Выделенную группу можно двигать, удалять и дублировать (<kbd>Ctrl+D</kbd> копирует и связи между ними).</li>
+      <li><b>Вид графа</b>: перетаскивание правой или средней кнопкой — сдвиг, колесо — масштаб, <kbd>F</kbd> — показать всё.</li>
       <li><b>Отмена / повтор</b>: <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> (<kbd>Ctrl+Y</kbd>). Одно перетаскивание ползунка — один шаг отмены.</li>
       <li>Число можно ввести точно в поле рядом с ползунком; <b>↺</b> сбрасывает параметр к значению по умолчанию.</li>
       </ul>
@@ -6958,10 +7027,14 @@ const App = (() => {
     return n;
   }
 
-  function removeNode(id) {
-    if (!Graph.nodes.has(id)) return;
-    Graph.removeNode(id);
-    if (state.selected === id) state.selected = null;
+  function removeNode(id) { removeNodes([id]); }
+
+  function removeNodes(ids) {
+    ids = ids.filter((id) => Graph.nodes.has(id));
+    if (!ids.length) return;
+    for (const id of ids) Graph.removeNode(id);
+    if (ids.includes(state.selected)) state.selected = null;
+    for (const id of ids) state.multi.delete(id);
     state.selectedLink = null;
     GraphView.rebuild();
     ParamsPanel.build();
@@ -6970,14 +7043,38 @@ const App = (() => {
     requestEval();
   }
 
-  function duplicate(id) {
-    const n = Graph.nodes.get(id);
-    if (!n) return null;
-    return addNode(n.type, n.x + 30, n.y + 30, n.params);
+  function duplicate(id) { return duplicateMany([id])[0] || null; }
+
+  // Duplicate a group of nodes, keeping the links between them.
+  function duplicateMany(ids) {
+    ids = ids.filter((id) => Graph.nodes.has(id));
+    const map = new Map();
+    for (const id of ids) {
+      const n = Graph.nodes.get(id);
+      const c = Graph.addNode(n.type, n.x + 30, n.y + 30, n.params);
+      if (n.anim) c.anim = JSON.parse(JSON.stringify(n.anim));
+      map.set(id, c.id);
+    }
+    for (const l of Graph.links.slice()) if (map.has(l.from) && map.has(l.to)) Graph.connect(map.get(l.from), l.fromPort, map.get(l.to), l.toPort);
+    const created = [...map.values()];
+    GraphView.rebuild();
+    selectMany(created);
+    commit();
+    requestEval();
+    return created.map((id) => Graph.nodes.get(id));
   }
 
-  function select(id) {
+  // opts.toggle: Ctrl/Shift+click adds/removes the node from the selection.
+  function select(id, opts = {}) {
     if (id && !Graph.nodes.has(id)) id = null;
+    if (opts.toggle && id) {
+      if (state.multi.has(id)) { state.multi.delete(id); if (state.selected === id) id = [...state.multi].pop() || null; }
+      else state.multi.add(id);
+    } else if (opts.keep && id && state.multi.has(id)) {
+      /* clicking a node that is already part of a group keeps the group */
+    } else {
+      state.multi = new Set(id ? [id] : []);
+    }
     if (state.selected !== id) state.viewPort = 0;
     state.selected = id;
     if (id) state.selectedLink = null;
@@ -6985,6 +7082,24 @@ const App = (() => {
     GraphView.drawWires();
     ParamsPanel.build();
     requestEval();
+  }
+
+  function selectMany(ids, add = false) {
+    const set = add ? new Set([...state.multi, ...ids]) : new Set(ids);
+    state.multi = set;
+    state.selected = ids.length ? ids[ids.length - 1] : (add ? state.selected : null);
+    state.viewPort = 0;
+    state.selectedLink = null;
+    GraphView.refreshMarks();
+    GraphView.drawWires();
+    ParamsPanel.build();
+    requestEval();
+  }
+
+  function selectedIds() {
+    const ids = [...state.multi].filter((id) => Graph.nodes.has(id));
+    if (!ids.length && state.selected && Graph.nodes.has(state.selected)) ids.push(state.selected);
+    return ids;
   }
 
   function selectLink(l) {
@@ -7001,6 +7116,8 @@ const App = (() => {
   function afterLoad() {
     if (frameCache.frames.size) clearFrameCache();
     if (state.selected && !Graph.nodes.has(state.selected)) state.selected = null;
+    state.multi = new Set([...state.multi].filter((id) => Graph.nodes.has(id)));
+    if (state.selected) state.multi.add(state.selected);
     state.selectedLink = null;
     $('#res').value = Graph.state.resolution;
     GraphView.rebuild();
@@ -7367,7 +7484,7 @@ const App = (() => {
 
   return {
     init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId,
-    undo, redo, flush, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    undo, redo, flush, removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };
@@ -7556,6 +7673,8 @@ const PTL = (() => {
       saveTemplate: (name) => { Library.saveTemplate(name, App.projectData()); App.refreshExamplesMenu(); },
       loadTemplate: async (name) => { const t = Library.templates().find((x) => x.name === name); if (!t) throw new Error('PTL: нет шаблона ' + name); await App.loadProjectData(t.project); },
     },
+    selectMany(ids) { ids.forEach(need); App.selectMany(ids); },
+    selected() { return App.selectedIds(); },
     select(id) { if (id != null) need(id); App.select(id || null); },
     setActiveOutput(id) { const n = need(id); if (n.type !== 'output') throw new Error('PTL: активным может быть только узел output'); Graph.state.activeOutput = id; after(); },
     setResolution(r) { App.setResolution(+r); },
@@ -7646,7 +7765,7 @@ window.PTL = PTL;
 
 // ===== main.js =====
 // Entry point.
-const PTL_VERSION = '0.1.6';
+const PTL_VERSION = '0.1.7';
 (() => {
   const start = () => {
     try {

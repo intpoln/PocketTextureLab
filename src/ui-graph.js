@@ -92,7 +92,7 @@ const GraphView = (() => {
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       e.stopPropagation();
-      if (!e.target.classList.contains('dot')) App.select(n.id);
+      if (!e.target.classList.contains('dot')) App.select(n.id, { toggle: e.ctrlKey || e.metaKey || e.shiftKey, keep: true });
     });
     el.addEventListener('dragover', (e) => { if (n.type === 'image') e.preventDefault(); });
     el.addEventListener('drop', (e) => {
@@ -127,7 +127,8 @@ const GraphView = (() => {
 
   function refreshMarks() {
     for (const [id, rec] of els) {
-      rec.el.classList.toggle('sel', id === App.state.selected);
+      rec.el.classList.toggle('sel', App.state.multi.has(id) || id === App.state.selected);
+      rec.el.classList.toggle('primary', id === App.state.selected && App.state.multi.size > 1);
       rec.el.querySelector('.badge.out').textContent = id === Graph.state.activeOutput ? '★' : '';
       const err = Engine.errors.get(id);
       const be = rec.el.querySelector('.badge.err');
@@ -210,15 +211,21 @@ const GraphView = (() => {
   function startMove(e, id) {
     if (e.button !== 0) return;
     e.stopPropagation();
-    App.select(id);
-    const n = Graph.nodes.get(id), rec = els.get(id);
-    const sx = e.clientX, sy = e.clientY, ox = n.x, oy = n.y;
+    if (e.ctrlKey || e.metaKey || e.shiftKey) { App.select(id, { toggle: true }); return; }
+    App.select(id, { keep: true });
+    // move the whole selection when the grabbed node belongs to it
+    const ids = App.state.multi.has(id) ? [...App.state.multi] : [id];
+    const group = ids.map((k) => ({ n: Graph.nodes.get(k), rec: els.get(k) })).filter((g) => g.n && g.rec);
+    const start = group.map((g) => [g.n.x, g.n.y]);
+    const sx = e.clientX, sy = e.clientY;
     let moved = false;
     drag(e, (ev) => {
       const dx = (ev.clientX - sx) / view.z, dy = (ev.clientY - sy) / view.z;
       if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
-      n.x = Math.round(ox + dx); n.y = Math.round(oy + dy);
-      rec.el.style.left = n.x + 'px'; rec.el.style.top = n.y + 'px';
+      group.forEach((g, k) => {
+        g.n.x = Math.round(start[k][0] + dx); g.n.y = Math.round(start[k][1] + dy);
+        g.rec.el.style.left = g.n.x + 'px'; g.rec.el.style.top = g.n.y + 'px';
+      });
       drawWires();
     }, () => { if (moved) App.commit(); });
   }
@@ -279,15 +286,47 @@ const GraphView = (() => {
     });
   }
 
+  // Empty space: left drag = selection rectangle (like a desktop), right/middle drag = pan.
   function onBgDown(e) {
     if (e.target.closest('.node') || e.target.closest('#graph-hud')) return;
-    if (e.button !== 0 && e.button !== 1) return;
+    if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
     e.preventDefault();
     root.focus({ preventScroll: true });
-    if (e.button === 0) { App.select(null); App.selectLink(null); }
-    const sx = e.clientX, sy = e.clientY, ox = view.x, oy = view.y;
+    const sx = e.clientX, sy = e.clientY;
+    if (e.button === 0) {
+      const add = e.shiftKey || e.ctrlKey || e.metaKey;
+      const before = add ? [...App.state.multi] : [];
+      const r0 = root.getBoundingClientRect();
+      const box = document.createElement('div');
+      box.id = 'marquee';
+      root.append(box);
+      let active = false, hits = [];
+      drag(e, (ev) => {
+        if (!active && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 4) return;
+        active = true;
+        const x0 = Math.min(sx, ev.clientX), y0 = Math.min(sy, ev.clientY), x1 = Math.max(sx, ev.clientX), y1 = Math.max(sy, ev.clientY);
+        Object.assign(box.style, { left: x0 - r0.left + 'px', top: y0 - r0.top + 'px', width: x1 - x0 + 'px', height: y1 - y0 + 'px', display: 'block' });
+        hits = [];
+        for (const [id, rec] of els) {
+          const b = rec.el.getBoundingClientRect();
+          const hit = b.right > x0 && b.left < x1 && b.bottom > y0 && b.top < y1;
+          rec.el.classList.toggle('sel', hit || before.includes(id));
+          if (hit) hits.push(id);
+        }
+      }, () => {
+        box.remove();
+        if (!active) { if (!add) { App.select(null); App.selectLink(null); } return; }
+        App.selectMany(hits, add);
+      });
+      return;
+    }
+    const ox = view.x, oy = view.y;
     root.classList.add('panning');
-    drag(e, (ev) => { view.x = ox + ev.clientX - sx; view.y = oy + ev.clientY - sy; applyView(); }, () => root.classList.remove('panning'));
+    let panned = false;
+    drag(e, (ev) => { panned = true; view.x = ox + ev.clientX - sx; view.y = oy + ev.clientY - sy; applyView(); }, () => {
+      root.classList.remove('panning');
+      if (e.button === 2 && panned) root.addEventListener('contextmenu', (ce) => ce.preventDefault(), { once: true, capture: true });
+    });
   }
 
   function onWheel(e) {

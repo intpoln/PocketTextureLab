@@ -43,6 +43,7 @@ const ParamsPanel = (() => {
     el.textContent = '';
     rows = [];
     current = node || null;
+    if (App.state.multi.size > 1) { buildMulti(); return; }
     if (!node) { buildProject(); return; }
     const def = NODES[node.type];
     el.append(h('h3', { text: nodeTitle(node) }), h('div', { class: 'sub', text: `id: ${node.id} · ${def.cat}` }));
@@ -193,6 +194,22 @@ const ParamsPanel = (() => {
     });
     row.append(sel, name, save, list.length ? del : '');
     return row;
+  }
+
+  // Several nodes selected: summary and group actions.
+  function buildMulti() {
+    const ids = App.selectedIds();
+    el.append(h('h3', { text: `Выбрано нод: ${ids.length}` }), h('div', { class: 'sub', text: 'Перетащите любую из них за заголовок — сдвинется вся группа.' }));
+    el.append(h('div', { class: 'actions' },
+      h('button', { text: 'Дублировать', title: 'Ctrl+D — копии сохраняют связи между собой', onclick: () => App.duplicateMany(ids) }),
+      h('button', { text: 'Удалить', title: 'Delete', onclick: () => App.removeNodes(ids) }),
+      h('button', { text: 'Снять выделение', title: 'Esc', onclick: () => App.select(null) })));
+    const list = h('div', { class: 'ports-list' });
+    for (const id of ids) {
+      const n = Graph.nodes.get(id);
+      list.append(h('div', { style: 'cursor:pointer', title: 'Показать только эту ноду', text: `${id === App.state.selected ? '▸ ' : '· '}${nodeTitle(n)} (${id})`, onclick: () => App.select(id) }));
+    }
+    el.append(h('div', { class: 'group', text: 'Ноды' }), list);
   }
 
   // Nothing selected: template parameters (exposed) + outputs.

@@ -179,6 +179,8 @@ const PTL = (() => {
       saveTemplate: (name) => { Library.saveTemplate(name, App.projectData()); App.refreshExamplesMenu(); },
       loadTemplate: async (name) => { const t = Library.templates().find((x) => x.name === name); if (!t) throw new Error('PTL: нет шаблона ' + name); await App.loadProjectData(t.project); },
     },
+    selectMany(ids) { ids.forEach(need); App.selectMany(ids); },
+    selected() { return App.selectedIds(); },
     select(id) { if (id != null) need(id); App.select(id || null); },
     setActiveOutput(id) { const n = need(id); if (n.type !== 'output') throw new Error('PTL: активным может быть только узел output'); Graph.state.activeOutput = id; after(); },
     setResolution(r) { App.setResolution(+r); },
