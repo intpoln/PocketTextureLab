@@ -82,8 +82,7 @@ normal maps, упаковка каналов в RGBA, экспорт PNG без 
 `importImage`, `errors`, `undo` и т.д. Руководство (API, описание всех нод, методика и рецепты материалов) встроено в сам HTML
 (`PTL.help()`, `<script type="text/markdown" id="ptl-agent-guide">`, комментарий в начале файла) — агенту,
 открывшему страницу, больше ничего не нужно,
-а также лежит в [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md). Скилл для Claude Code —
-[`.claude/skills/pocket-texture-lab/SKILL.md`](.claude/skills/pocket-texture-lab/SKILL.md).
+а также лежит в [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md).
 
 Новую функциональность можно добавлять нодой «Код (GLSL)»: пишете функцию
 `vec4 process(vec2 uv, ivec2 px)`, читаете входы `in0(px)…in3(px)`, используете ползунки `p1…p4`.
