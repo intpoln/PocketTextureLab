@@ -5,7 +5,7 @@ const App = (() => {
   const $ = (s) => document.querySelector(s);
   const state = { selected: null, selectedLink: null, viewPort: 0, interactive: false, playing: false, displayRes: 512, dirty: false, ready: false };
   let evalRaf = 0, idleTimer = 0, thumbQueue = [], thumbTimer = 0;
-  const CAT_ORDER = ['Источники', 'Шумы', 'Узоры', 'Эффекты', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
+  const CAT_ORDER = ['Источники', 'Узоры', 'Эффекты', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
   const KEYWORDS = {
     image: 'png jpeg jpg файл картинка', constant: 'color цвет value', noise: 'perlin value fbm шум worley white ridged billow облака clouds', voronoi: 'cells worley клетки трещины crackle камни',
     shape: 'circle rect ring круг квадрат кольцо эллипс', gradient: 'ramp linear radial angular', levels: 'уровни контраст',
@@ -35,10 +35,9 @@ const App = (() => {
       GraphView.rebuild();
       requestEval();
     });
-    GraphView.init(); ParamsPanel.init(); Preview.init();
+    GraphView.init(); ParamsPanel.init(); Preview.init(); PresetBrowser.init();
     buildCatalog(); bindToolbar(); bindKeys(); bindSplitters(); bindTimeline();
-    $('#status-gpu').textContent = GPU.precisionNote;
-    $('#status-gpu').title = GPU.precisionNote;
+    setInterval(updateStats, 1000);
     window.addEventListener('beforeunload', (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
     loadGraph(EXAMPLES[0].graph);
     History.reset();
@@ -613,6 +612,7 @@ const App = (() => {
           frameCache.frames.set(k, { tex: t, space: o.space });
         }
       }
+      countFrame();
       Preview.draw();
       return;
     }
@@ -633,9 +633,41 @@ const App = (() => {
       queueThumbs(pres);
     }
     state.lastEvalMs = performance.now() - t0;
+    updateStats();
     GraphView.refreshMarks();
     ParamsPanel.refreshStatus();
     Preview.draw();
+  }
+
+  // ---- status bar statistics (like other node editors)
+  let fpsFrames = 0, fpsT = performance.now(), fps = 0;
+  function countFrame() { fpsFrames++; }
+  function updateStats() {
+    const el = $('#stats');
+    if (!el || GPU.isLost()) return;
+    const now = performance.now();
+    if (now - fpsT >= 1000) { fps = Math.round((fpsFrames * 1000) / (now - fpsT)); fpsFrames = 0; fpsT = now; }
+    const mb = (b) => (b / 1048576).toFixed(b < 10485760 ? 1 : 0);
+    const items = [
+      ['Ноды', `${Graph.nodes.size} · связей ${Graph.links.length}`, 'Количество нод и связей в графе'],
+      ['Проект', `${Graph.state.resolution}² · превью ${state.displayRes}²`, 'Разрешение проекта и текущего предпросмотра'],
+      ['Пересчёт', `${(state.lastEvalMs || 0).toFixed(1)} мс`, 'Время последней отправки пересчёта графа на видеокарту (CPU)'],
+      ['VRAM', `≈${mb(GPU.textureBytes)} МБ · ${GPU.liveTextures} текстур`, 'Промежуточные текстуры графа в видеопамяти (без изображений и 3D-превью)'],
+      ['Формат', GPU.float ? 'RGBA16F' : 'RGBA8', GPU.precisionNote],
+    ];
+    if (state.playing) items.push(['FPS', `${fps} · кадр ${Math.round(Anim.t * Anim.settings().frames) + 1}/${Anim.settings().frames}`, 'Кадров в секунду при воспроизведении анимации']);
+    const gpu = String(GPU.renderer).replace(/^ANGLE \((.*)\)$/, '$1').replace(/,? ?(Direct3D|D3D)\S*.*$/, '');
+    items.push(['GPU', gpu.length > 38 ? gpu.slice(0, 36) + '…' : gpu, GPU.renderer]);
+    el.textContent = '';
+    for (const [k, v, title] of items) {
+      const sp = document.createElement('span');
+      sp.className = 'stat';
+      sp.title = title;
+      sp.innerHTML = '<b></b> ';
+      sp.querySelector('b').textContent = k;
+      sp.append(v);
+      el.append(sp);
+    }
   }
 
   // ---- playback frame cache

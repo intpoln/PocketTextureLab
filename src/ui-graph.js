@@ -304,6 +304,8 @@ const GraphView = (() => {
   function onDrop(e) {
     e.preventDefault();
     const pos = toGraph(e.clientX, e.clientY);
+    const preset = e.dataTransfer.getData('text/ptl-preset');
+    if (preset) { const pr = JSON.parse(preset); App.addNode(pr.type, pos.x - 88, pos.y - 20, pr.params); return; }
     const type = e.dataTransfer.getData('text/ptl-node');
     if (type) {
       const [t, extra] = type.split('#');

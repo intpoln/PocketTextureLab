@@ -164,7 +164,7 @@ const PTL = (() => {
       return { width: r.width, height: r.height, cols: r.cols, rows: r.rows, frames: r.frames, png: await PNG.encodeAsync(r.bytes, r.width, r.height) };
     },
     exportSpriteSheet(id) { return App.exportSpriteSheet(id || App.viewedId()); },
-    noisePresets() { return NOISE_PRESETS.map(([title, type, params, desc]) => ({ title, type, params, desc })); },
+    noisePresets() { return NOISE_PRESETS.map(([title, type, params, desc, group]) => ({ title, type, params, desc, group })); },
     addNoise(title, opts = {}) {
       const pr = NOISE_PRESETS.find((x) => x[0] === title) || NOISE_PRESETS.find((x) => x[0].toLowerCase().includes(String(title).toLowerCase()));
       if (!pr) throw new Error('PTL: нет шума "' + title + '". Есть: ' + NOISE_PRESETS.map((x) => x[0]).join(' | '));

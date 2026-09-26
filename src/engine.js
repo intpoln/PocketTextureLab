@@ -135,6 +135,22 @@ const Engine = (() => {
   }
   function freeStore(store) { for (const m of store.values()) for (const e of m.values()) freeEntry(e); store.clear(); }
 
+  // Render a node that is not part of the graph (catalogue previews). No inputs.
+  function renderStandalone(type, params, size) {
+    const node = { id: '__preview', type, params: { ...defaultParams(type), ...params }, anim: {}, stamp: -1 };
+    const { ctx, temps } = makeCtx(node, NODES[type].inputs.map(() => null), size, Graph.state.resolution, {});
+    let outs = [];
+    try {
+      outs = NODES[type].eval(ctx);
+      const o = outs[0];
+      return ColorUtil.toBytes(GPU.read(o.tex), o.space);
+    } finally {
+      for (const t of temps) GPU.release(t);
+      const seen = new Set();
+      for (const o of outs) if (o && !seen.has(o.tex)) { seen.add(o.tex); GPU.release(o.tex); }
+    }
+  }
+
   function readCachedBytes(id, port, res) {
     const e = get(id, res);
     if (!e) return null;
@@ -142,5 +158,5 @@ const Engine = (() => {
     return { bytes: ColorUtil.toBytes(GPU.read(o.tex), o.space), space: o.space };
   }
 
-  return { evaluate, get, purge, dropGpu, renderBytes, freeStore, readCachedBytes, errors, caches };
+  return { evaluate, get, purge, dropGpu, renderBytes, renderStandalone, freeStore, readCachedBytes, errors, caches };
 })();

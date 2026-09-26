@@ -18,7 +18,7 @@ void main() {
   const st = {
     gl: null, canvas: null, lost: false, float: false, precisionNote: '',
     programs: new Map(), fbo: null, vao: null, samplers: {}, dummy: null,
-    pool: new Map(), live: 0, gen: 0,
+    pool: new Map(), live: 0, bytes: 0, gen: 0, renderer: '',
   };
 
   function init(canvas, opts = {}) {
@@ -39,6 +39,7 @@ void main() {
     st.programs.clear();
     st.pool.clear();
     st.live = 0;
+    st.bytes = 0;
     st.fbo = gl.createFramebuffer();
     st.vao = gl.createVertexArray();
     gl.disable(gl.BLEND);
@@ -148,6 +149,7 @@ void main() {
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texStorage2D(gl.TEXTURE_2D, 1, st.float ? gl.RGBA16F : gl.RGBA8, size, size);
     st.live++;
+    st.bytes += size * size * (st.float ? 8 : 4);
     return { tex, size, fmt: fmtOf(), gen: st.gen };
   }
   function release(t) {
@@ -166,14 +168,16 @@ void main() {
     for (const [key, list] of st.pool) {
       const size = +key.split(':')[0];
       while (list.length && (idle > 12 || size >= 2048)) {
-        st.gl.deleteTexture(list.pop().tex);
+        const t = list.pop();
+        st.gl.deleteTexture(t.tex);
         st.live--;
+        st.bytes -= t.size * t.size * (t.fmt === 'f16' ? 8 : 4);
         idle--;
       }
     }
   }
   function freeAll() {
-    for (const [, list] of st.pool) for (const t of list) { st.gl.deleteTexture(t.tex); st.live--; }
+    for (const [, list] of st.pool) for (const t of list) { st.gl.deleteTexture(t.tex); st.live--; st.bytes -= t.size * t.size * (t.fmt === 'f16' ? 8 : 4); }
     st.pool.clear();
   }
 
@@ -289,6 +293,14 @@ void main() {
     get precisionNote() { return st.precisionNote; },
     get gen() { return st.gen; },
     get liveTextures() { return st.live; },
+    get textureBytes() { return st.bytes; },
+    get renderer() {
+      if (!st.renderer && st.gl) {
+        const ext = st.gl.getExtension('WEBGL_debug_renderer_info');
+        st.renderer = (ext && st.gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) || st.gl.getParameter(st.gl.RENDERER) || 'WebGL2';
+      }
+      return st.renderer;
+    },
     isLost() { return !st.gl || st.gl.isContextLost(); },
   };
 })();

@@ -52,7 +52,20 @@
   <main>
     <aside id="catalog">
       <input id="search" type="search" placeholder="Поиск ноды… (Enter — добавить)">
+      <div class="cat-buttons">
+        <button id="btn-noises" title="Окно готовых шумов с превью">▦ Шумы</button>
+        <button id="btn-effects" title="Окно анимированных эффектов (FX) с превью">✦ Эффекты</button>
+      </div>
       <div class="list" id="catalog-list"></div>
+    </aside>
+    <aside id="noise-drawer">
+      <div class="nd-head">
+        <button data-tab="noise">Шумы</button><button data-tab="fx">Эффекты</button>
+        <input id="nd-search" type="search" placeholder="Поиск…">
+        <button id="nd-close" title="Закрыть (Esc)">✕</button>
+      </div>
+      <div class="nd-hint">Щелчок — добавить в центр графа, или перетащите карточку на граф.</div>
+      <div class="nd-body" id="nd-body"></div>
     </aside>
     <section id="graph" tabindex="0">
       <div id="graph-inner"><svg id="wires"></svg><div id="nodes"></div></div>
@@ -108,7 +121,7 @@
       <section id="params"></section>
     </aside>
   </main>
-  <footer id="status"><span class="msg" id="status-msg"></span><span id="status-gpu"></span></footer>
+  <footer id="status"><span class="msg" id="status-msg"></span><span id="stats"></span></footer>
 </div>
 <div id="toasts"></div>
 <div class="modal-bg" id="modal"><div class="modal"><div class="mh"><h2 id="modal-title"></h2><button id="modal-close">Закрыть</button></div><div class="mb" id="modal-body"></div></div></div>

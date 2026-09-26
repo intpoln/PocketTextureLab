@@ -449,6 +449,26 @@ main { flex: 1; display: flex; min-height: 0; }
 #author-link:hover { color: var(--fg); border-color: var(--acc); }
 #catalog .item.extra { padding-left: 14px; font-size: 12.5px; color: var(--fg2); }
 #catalog .item.extra:hover { color: var(--fg); }
+main { position: relative; }
+#catalog .cat-buttons { display: flex; gap: 6px; margin: 0 8px 6px; }
+#catalog .cat-buttons button { flex: 1; background: var(--acc2); border-color: var(--acc); }
+#noise-drawer { position: absolute; left: var(--cat-w); top: 0; bottom: 0; width: 470px; max-width: calc(100vw - var(--cat-w) - 20px); z-index: 30;
+  background: var(--bg2); border-right: 1px solid var(--line); box-shadow: 8px 0 24px #000a; display: none; flex-direction: column; }
+#noise-drawer.show { display: flex; }
+#noise-drawer .nd-head { display: flex; gap: 6px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+#noise-drawer .nd-head b { margin-right: 4px; }
+#noise-drawer .nd-head input { flex: 1; min-width: 60px; }
+#noise-drawer .nd-hint { font-size: 11px; color: var(--fg3); padding: 4px 10px 0; }
+#noise-drawer .nd-body { overflow: auto; padding: 4px 10px 16px; }
+#noise-drawer h4 { margin: 10px 0 6px; color: var(--fg3); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.nd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
+.nd-card { background: var(--bg3); border: 1px solid var(--line); border-radius: 6px; padding: 5px; cursor: pointer; user-select: none; font-size: 11.5px; text-align: center; color: var(--fg2); }
+.nd-card:hover { border-color: var(--acc); color: var(--fg); }
+.nd-card canvas { width: 100%; aspect-ratio: 1; display: block; border-radius: 3px; background: #000; margin-bottom: 4px; }
+#stats { display: flex; gap: 14px; white-space: nowrap; overflow: hidden; }
+#stats .stat b { color: var(--fg3); font-weight: 600; margin-right: 2px; }
+#stats .stat { color: var(--fg2); }
+#status .msg { min-width: 0; }
 
 </style>
 </head>
@@ -480,7 +500,20 @@ main { flex: 1; display: flex; min-height: 0; }
   <main>
     <aside id="catalog">
       <input id="search" type="search" placeholder="Поиск ноды… (Enter — добавить)">
+      <div class="cat-buttons">
+        <button id="btn-noises" title="Окно готовых шумов с превью">▦ Шумы</button>
+        <button id="btn-effects" title="Окно анимированных эффектов (FX) с превью">✦ Эффекты</button>
+      </div>
       <div class="list" id="catalog-list"></div>
+    </aside>
+    <aside id="noise-drawer">
+      <div class="nd-head">
+        <button data-tab="noise">Шумы</button><button data-tab="fx">Эффекты</button>
+        <input id="nd-search" type="search" placeholder="Поиск…">
+        <button id="nd-close" title="Закрыть (Esc)">✕</button>
+      </div>
+      <div class="nd-hint">Щелчок — добавить в центр графа, или перетащите карточку на граф.</div>
+      <div class="nd-body" id="nd-body"></div>
     </aside>
     <section id="graph" tabindex="0">
       <div id="graph-inner"><svg id="wires"></svg><div id="nodes"></div></div>
@@ -536,7 +569,7 @@ main { flex: 1; display: flex; min-height: 0; }
       <section id="params"></section>
     </aside>
   </main>
-  <footer id="status"><span class="msg" id="status-msg"></span><span id="status-gpu"></span></footer>
+  <footer id="status"><span class="msg" id="status-msg"></span><span id="stats"></span></footer>
 </div>
 <div id="toasts"></div>
 <div class="modal-bg" id="modal"><div class="modal"><div class="mh"><h2 id="modal-title"></h2><button id="modal-close">Закрыть</button></div><div class="mb" id="modal-body"></div></div></div>
@@ -2445,7 +2478,7 @@ void main() {
   const st = {
     gl: null, canvas: null, lost: false, float: false, precisionNote: '',
     programs: new Map(), fbo: null, vao: null, samplers: {}, dummy: null,
-    pool: new Map(), live: 0, gen: 0,
+    pool: new Map(), live: 0, bytes: 0, gen: 0, renderer: '',
   };
 
   function init(canvas, opts = {}) {
@@ -2466,6 +2499,7 @@ void main() {
     st.programs.clear();
     st.pool.clear();
     st.live = 0;
+    st.bytes = 0;
     st.fbo = gl.createFramebuffer();
     st.vao = gl.createVertexArray();
     gl.disable(gl.BLEND);
@@ -2575,6 +2609,7 @@ void main() {
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texStorage2D(gl.TEXTURE_2D, 1, st.float ? gl.RGBA16F : gl.RGBA8, size, size);
     st.live++;
+    st.bytes += size * size * (st.float ? 8 : 4);
     return { tex, size, fmt: fmtOf(), gen: st.gen };
   }
   function release(t) {
@@ -2593,14 +2628,16 @@ void main() {
     for (const [key, list] of st.pool) {
       const size = +key.split(':')[0];
       while (list.length && (idle > 12 || size >= 2048)) {
-        st.gl.deleteTexture(list.pop().tex);
+        const t = list.pop();
+        st.gl.deleteTexture(t.tex);
         st.live--;
+        st.bytes -= t.size * t.size * (t.fmt === 'f16' ? 8 : 4);
         idle--;
       }
     }
   }
   function freeAll() {
-    for (const [, list] of st.pool) for (const t of list) { st.gl.deleteTexture(t.tex); st.live--; }
+    for (const [, list] of st.pool) for (const t of list) { st.gl.deleteTexture(t.tex); st.live--; st.bytes -= t.size * t.size * (t.fmt === 'f16' ? 8 : 4); }
     st.pool.clear();
   }
 
@@ -2716,6 +2753,14 @@ void main() {
     get precisionNote() { return st.precisionNote; },
     get gen() { return st.gen; },
     get liveTextures() { return st.live; },
+    get textureBytes() { return st.bytes; },
+    get renderer() {
+      if (!st.renderer && st.gl) {
+        const ext = st.gl.getExtension('WEBGL_debug_renderer_info');
+        st.renderer = (ext && st.gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) || st.gl.getParameter(st.gl.RENDERER) || 'WebGL2';
+      }
+      return st.renderer;
+    },
     isLost() { return !st.gl || st.gl.isContextLost(); },
   };
 })();
@@ -4167,38 +4212,38 @@ const CATALOG_EXTRA = [
 
 // Ready-made noises for the «Шумы» catalog section (regular nodes with tuned parameters).
 const NOISE_PRESETS = [
-  ['Облака (Clouds)', 'noise', { type: 'perlin', scale: 4, octaves: 7, persistence: 0.55, contrast: 1.35 }, 'Классический fBM Perlin: облака, пятна, вариации цвета.'],
-  ['Мягкий Perlin', 'noise', { type: 'perlin', scale: 3, octaves: 3, persistence: 0.4 }, 'Крупные плавные пятна без мелкой детали.'],
-  ['Мелкий Perlin', 'noise', { type: 'perlin', scale: 24, octaves: 4 }, 'Мелкая детализация поверхности, микрорельеф.'],
-  ['Value Noise', 'noise', { type: 'value', scale: 8, octaves: 5 }, 'Более «квадратный» шум значений.'],
-  ['Горы / гребни (Ridged)', 'noise', { type: 'perlin', fractal: 'ridged', scale: 3, octaves: 8, persistence: 0.55 }, 'Острые хребты: горы, скалы, прожилки.'],
-  ['Прожилки / вены', 'noise', { type: 'perlin', fractal: 'ridged', scale: 4, octaves: 5, persistence: 0.35, contrast: 1.6 }, 'Тонкие ветвящиеся линии: вены, молнии, трещины льда.'],
-  ['Клубы (Billow)', 'noise', { type: 'perlin', fractal: 'billow', scale: 4, octaves: 6 }, 'Округлые «клубы»: камни, дым, кучевые облака.'],
-  ['Турбулентность', 'noise', { type: 'perlin', fractal: 'billow', scale: 6, octaves: 7, persistence: 0.6, contrast: 1.4 }, 'Бурлящий шум: огонь, вода, энергия.'],
-  ['Мрамор', 'noise', { type: 'perlin', fractal: 'ridged', scale: 2, octaves: 6, warp: 0.7, warpScale: 2, contrast: 1.3 }, 'Искажённые прожилки мрамора.'],
-  ['Текучий (Domain Warp)', 'noise', { type: 'perlin', scale: 3, octaves: 6, warp: 0.6, warpScale: 3 }, 'Органичные «перетекающие» формы: жидкости, туманности.'],
-  ['Туман / дым', 'noise', { type: 'perlin', fractal: 'billow', scale: 2, octaves: 7, warp: 0.4, warpScale: 2, contrast: 0.8 }, 'Мягкий клубящийся туман.'],
-  ['Грязь / гранж', 'noise', { type: 'perlin', scale: 6, octaves: 8, persistence: 0.6, contrast: 2.4, warp: 0.25 }, 'Контрастные пятна для грязи, износа, ржавчины.'],
-  ['Пятна', 'noise', { type: 'worley', scale: 5, octaves: 2, invert: true, contrast: 2 }, 'Круглые пятна: капли, лишайник, плесень.'],
-  ['Шум Ворли (Worley)', 'noise', { type: 'worley', scale: 6, octaves: 1 }, 'Клеточный шум расстояний.'],
-  ['Клеточный fBM', 'noise', { type: 'worley', scale: 4, octaves: 4, persistence: 0.5 }, 'Многоуровневые клетки: кожа, губка, пена.'],
-  ['Белый шум', 'noise', { type: 'white', grain: 1, octaves: 1 }, 'Случайное значение на пиксель.'],
-  ['Зерно / плёнка', 'noise', { type: 'white', grain: 1, octaves: 3, contrast: 0.6 }, 'Мелкое зерно: песок, штукатурка, плёнка.'],
-  ['Пиксельный шум', 'noise', { type: 'white', grain: 16, octaves: 1 }, 'Крупные случайные квадраты.'],
-  ['Шлифованный металл', 'noise', { type: 'value', scale: 2, stretch: 8, octaves: 5, persistence: 0.6 }, 'Длинные горизонтальные волокна.'],
-  ['Волокна дерева', 'noise', { type: 'perlin', scale: 2, stretch: 6, octaves: 6, warp: 0.2 }, 'Вытянутые волнистые волокна.'],
-  ['Штрихи / дождь', 'noise', { type: 'value', scale: 32, stretch: 0.125, octaves: 3, contrast: 1.8 }, 'Вертикальные штрихи: дождь, потёки.'],
-  ['Дюны / песок', 'noise', { type: 'perlin', fractal: 'ridged', scale: 2, stretch: 3, octaves: 5, warp: 0.35 }, 'Песчаные гряды.'],
-  ['Ячейки (F1)', 'voronoi', { mode: 'f1', scale: 8 }, 'Расстояние до ближайшей точки.'],
-  ['Трещины (F2−F1)', 'voronoi', { mode: 'crackle', scale: 6 }, 'Сеть трещин, высохшая земля.'],
-  ['Камни / плитняк', 'voronoi', { mode: 'border', scale: 6, randomness: 0.85 }, 'Выпуклые ячейки с швами.'],
-  ['Мозаика', 'voronoi', { mode: 'cell', scale: 10 }, 'Случайное значение в каждой ячейке.'],
-  ['Кристаллы (Чебышёв)', 'voronoi', { mode: 'f1', metric: 'chebyshev', scale: 7 }, 'Квадратные грани.'],
-  ['Ромбы (Манхэттен)', 'voronoi', { mode: 'f2', metric: 'manhattan', scale: 6 }, 'Ромбовидные ячейки.'],
-  ['Полосы (синус)', 'waves', { shape: 'sine', countX: 8, countY: 0 }, 'Плавные полосы.'],
-  ['Волны с искажением', 'waves', { shape: 'sine', countX: 0, countY: 12, distort: 3 }, 'Полосы, изогнутые шумом (подключите шум ко входу).'],
+  ['Облака (Clouds)', 'noise', { type: 'perlin', scale: 4, octaves: 7, persistence: 0.55, contrast: 1.35 }, 'Классический fBM Perlin: облака, пятна, вариации цвета.', 'Мягкие'],
+  ['Мягкий Perlin', 'noise', { type: 'perlin', scale: 3, octaves: 3, persistence: 0.4 }, 'Крупные плавные пятна без мелкой детали.', 'Мягкие'],
+  ['Мелкий Perlin', 'noise', { type: 'perlin', scale: 24, octaves: 4 }, 'Мелкая детализация поверхности, микрорельеф.', 'Мягкие'],
+  ['Value Noise', 'noise', { type: 'value', scale: 8, octaves: 5 }, 'Более «квадратный» шум значений.', 'Мягкие'],
+  ['Горы / гребни (Ridged)', 'noise', { type: 'perlin', fractal: 'ridged', scale: 3, octaves: 8, persistence: 0.55 }, 'Острые хребты: горы, скалы, прожилки.', 'Рельеф'],
+  ['Прожилки / вены', 'noise', { type: 'perlin', fractal: 'ridged', scale: 4, octaves: 5, persistence: 0.35, contrast: 1.6 }, 'Тонкие ветвящиеся линии: вены, молнии, трещины льда.', 'Рельеф'],
+  ['Клубы (Billow)', 'noise', { type: 'perlin', fractal: 'billow', scale: 4, octaves: 6 }, 'Округлые «клубы»: камни, дым, кучевые облака.', 'Рельеф'],
+  ['Турбулентность', 'noise', { type: 'perlin', fractal: 'billow', scale: 6, octaves: 7, persistence: 0.6, contrast: 1.4 }, 'Бурлящий шум: огонь, вода, энергия.', 'Рельеф'],
+  ['Мрамор', 'noise', { type: 'perlin', fractal: 'ridged', scale: 2, octaves: 6, warp: 0.7, warpScale: 2, contrast: 1.3 }, 'Искажённые прожилки мрамора.', 'Органика'],
+  ['Текучий (Domain Warp)', 'noise', { type: 'perlin', scale: 3, octaves: 6, warp: 0.6, warpScale: 3 }, 'Органичные «перетекающие» формы: жидкости, туманности.', 'Органика'],
+  ['Туман / дым', 'noise', { type: 'perlin', fractal: 'billow', scale: 2, octaves: 7, warp: 0.4, warpScale: 2, contrast: 0.8 }, 'Мягкий клубящийся туман.', 'Органика'],
+  ['Грязь / гранж', 'noise', { type: 'perlin', scale: 6, octaves: 8, persistence: 0.6, contrast: 2.4, warp: 0.25 }, 'Контрастные пятна для грязи, износа, ржавчины.', 'Органика'],
+  ['Пятна', 'noise', { type: 'worley', scale: 5, octaves: 2, invert: true, contrast: 2 }, 'Круглые пятна: капли, лишайник, плесень.', 'Органика'],
+  ['Шум Ворли (Worley)', 'noise', { type: 'worley', scale: 6, octaves: 1 }, 'Клеточный шум расстояний.', 'Клетки'],
+  ['Клеточный fBM', 'noise', { type: 'worley', scale: 4, octaves: 4, persistence: 0.5 }, 'Многоуровневые клетки: кожа, губка, пена.', 'Клетки'],
+  ['Белый шум', 'noise', { type: 'white', grain: 1, octaves: 1 }, 'Случайное значение на пиксель.', 'Зерно'],
+  ['Зерно / плёнка', 'noise', { type: 'white', grain: 1, octaves: 3, contrast: 0.6 }, 'Мелкое зерно: песок, штукатурка, плёнка.', 'Зерно'],
+  ['Пиксельный шум', 'noise', { type: 'white', grain: 16, octaves: 1 }, 'Крупные случайные квадраты.', 'Зерно'],
+  ['Шлифованный металл', 'noise', { type: 'value', scale: 2, stretch: 8, octaves: 5, persistence: 0.6 }, 'Длинные горизонтальные волокна.', 'Вытянутые'],
+  ['Волокна дерева', 'noise', { type: 'perlin', scale: 2, stretch: 6, octaves: 6, warp: 0.2 }, 'Вытянутые волнистые волокна.', 'Вытянутые'],
+  ['Штрихи / дождь', 'noise', { type: 'value', scale: 32, stretch: 0.125, octaves: 3, contrast: 1.8 }, 'Вертикальные штрихи: дождь, потёки.', 'Вытянутые'],
+  ['Дюны / песок', 'noise', { type: 'perlin', fractal: 'ridged', scale: 2, stretch: 3, octaves: 5, warp: 0.35 }, 'Песчаные гряды.', 'Рельеф'],
+  ['Ячейки (F1)', 'voronoi', { mode: 'f1', scale: 8 }, 'Расстояние до ближайшей точки.', 'Клетки'],
+  ['Трещины (F2−F1)', 'voronoi', { mode: 'crackle', scale: 6 }, 'Сеть трещин, высохшая земля.', 'Клетки'],
+  ['Камни / плитняк', 'voronoi', { mode: 'border', scale: 6, randomness: 0.85 }, 'Выпуклые ячейки с швами.', 'Клетки'],
+  ['Мозаика', 'voronoi', { mode: 'cell', scale: 10 }, 'Случайное значение в каждой ячейке.', 'Клетки'],
+  ['Кристаллы (Чебышёв)', 'voronoi', { mode: 'f1', metric: 'chebyshev', scale: 7 }, 'Квадратные грани.', 'Клетки'],
+  ['Ромбы (Манхэттен)', 'voronoi', { mode: 'f2', metric: 'manhattan', scale: 6 }, 'Ромбовидные ячейки.', 'Клетки'],
+  ['Полосы (синус)', 'waves', { shape: 'sine', countX: 8, countY: 0 }, 'Плавные полосы.', 'Полосы'],
+  ['Волны с искажением', 'waves', { shape: 'sine', countX: 0, countY: 12, distort: 3 }, 'Полосы, изогнутые шумом (подключите шум ко входу).', 'Полосы'],
 ];
-for (const [title, type, params, desc] of NOISE_PRESETS) CATALOG_EXTRA.push({ type, title, params, desc, cat: 'Шумы' });
+const NOISE_GROUPS = ['Мягкие', 'Рельеф', 'Органика', 'Клетки', 'Зерно', 'Вытянутые', 'Полосы'];
 
 
 // ===== graph.js =====
@@ -4577,6 +4622,22 @@ const Engine = (() => {
   }
   function freeStore(store) { for (const m of store.values()) for (const e of m.values()) freeEntry(e); store.clear(); }
 
+  // Render a node that is not part of the graph (catalogue previews). No inputs.
+  function renderStandalone(type, params, size) {
+    const node = { id: '__preview', type, params: { ...defaultParams(type), ...params }, anim: {}, stamp: -1 };
+    const { ctx, temps } = makeCtx(node, NODES[type].inputs.map(() => null), size, Graph.state.resolution, {});
+    let outs = [];
+    try {
+      outs = NODES[type].eval(ctx);
+      const o = outs[0];
+      return ColorUtil.toBytes(GPU.read(o.tex), o.space);
+    } finally {
+      for (const t of temps) GPU.release(t);
+      const seen = new Set();
+      for (const o of outs) if (o && !seen.has(o.tex)) { seen.add(o.tex); GPU.release(o.tex); }
+    }
+  }
+
   function readCachedBytes(id, port, res) {
     const e = get(id, res);
     if (!e) return null;
@@ -4584,7 +4645,7 @@ const Engine = (() => {
     return { bytes: ColorUtil.toBytes(GPU.read(o.tex), o.space), space: o.space };
   }
 
-  return { evaluate, get, purge, dropGpu, renderBytes, freeStore, readCachedBytes, errors, caches };
+  return { evaluate, get, purge, dropGpu, renderBytes, renderStandalone, freeStore, readCachedBytes, errors, caches };
 })();
 
 
@@ -4678,6 +4739,110 @@ const Library = (() => {
   }
 
   return { available, nodePresets, saveNodePreset, deleteNodePreset, templates, saveTemplate, deleteTemplate, exportAll, importAll, usedBytes };
+})();
+
+
+// ===== ui-browser.js =====
+// ---------------------------------------------------------------------------
+// Preset browser: a side window with preview thumbnails of ready-made noises
+// and effects. Click adds the node to the graph centre, or drag it onto the
+// graph. Thumbnails are rendered once on the GPU (small, off-graph) and kept.
+// ---------------------------------------------------------------------------
+const PresetBrowser = (() => {
+  const $ = (s) => document.querySelector(s);
+  const TH = 88;
+  const thumbs = new Map();   // key -> ImageData
+  let tab = 'noise', queue = [], timer = 0, gen = -1;
+
+  function items() {
+    if (tab === 'noise') {
+      return NOISE_PRESETS.map(([title, type, params, desc, group], k) => ({ key: 'n' + k, title, type, params, desc, group }));
+    }
+    return FX_LIST.map((fx) => ({
+      key: 'fx:' + fx.id, title: fx.title, type: 'fx', desc: fx.note, group: fx.oneShot ? 'Однократные' : 'Петли',
+      params: { effect: fx.id, stops: fxStops(fx.palette), ...fx.defaults },
+    }));
+  }
+
+  function init() {
+    $('#btn-noises').onclick = () => open('noise');
+    $('#btn-effects').onclick = () => open('fx');
+    $('#nd-close').onclick = close;
+    $('#nd-search').addEventListener('input', render);
+    document.querySelectorAll('#noise-drawer [data-tab]').forEach((b) => b.addEventListener('click', () => { tab = b.dataset.tab; render(); }));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('#noise-drawer').classList.contains('show')) close(); });
+  }
+
+  function open(t) {
+    tab = t || tab;
+    $('#noise-drawer').classList.add('show');
+    render();
+    $('#nd-search').focus();
+  }
+  function close() { $('#noise-drawer').classList.remove('show'); clearTimeout(timer); }
+  const isOpen = () => $('#noise-drawer').classList.contains('show');
+
+  function add(it, pos) {
+    const c = pos || GraphView.center();
+    const n = App.addNode(it.type, c.x - 88 + (pos ? 0 : Math.random() * 60 - 30), c.y - 50 + (pos ? 0 : Math.random() * 60 - 30), JSON.parse(JSON.stringify(it.params)));
+    App.toast(`Добавлено: ${it.title}`);
+    return n;
+  }
+
+  function render() {
+    if (gen !== GPU.gen) { thumbs.clear(); gen = GPU.gen; }
+    document.querySelectorAll('#noise-drawer [data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    const q = $('#nd-search').value.trim().toLowerCase();
+    const body = $('#nd-body');
+    body.textContent = '';
+    queue = [];
+    const list = items().filter((it) => !q || (it.title + ' ' + it.desc + ' ' + it.group).toLowerCase().includes(q));
+    const groups = [...new Set(list.map((it) => it.group))];
+    for (const g of groups) {
+      const h = document.createElement('h4'); h.textContent = g; body.append(h);
+      const grid = document.createElement('div'); grid.className = 'nd-grid'; body.append(grid);
+      for (const it of list.filter((x) => x.group === g)) {
+        const card = document.createElement('div');
+        card.className = 'nd-card';
+        card.title = it.desc + '\n\nЩелчок — добавить в граф, или перетащите на граф';
+        card.draggable = true;
+        const cv = document.createElement('canvas'); cv.width = cv.height = TH;
+        const lbl = document.createElement('div'); lbl.textContent = it.title;
+        card.append(cv, lbl);
+        card.addEventListener('click', () => add(it));
+        card.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/ptl-preset', JSON.stringify({ type: it.type, params: it.params, title: it.title })); e.dataTransfer.effectAllowed = 'copy'; });
+        grid.append(card);
+        if (thumbs.has(it.key)) cv.getContext('2d').putImageData(thumbs.get(it.key), 0, 0);
+        else queue.push({ it, cv });
+      }
+    }
+    if (!list.length) body.textContent = 'Ничего не найдено.';
+    clearTimeout(timer);
+    timer = setTimeout(pump, 20);
+  }
+
+  // Render a few thumbnails per tick so the UI stays responsive.
+  function pump() {
+    if (!isOpen() || GPU.isLost()) return;
+    const t0 = performance.now();
+    while (queue.length && performance.now() - t0 < 40) {
+      const { it, cv } = queue.shift();
+      let img;
+      try {
+        const saved = Anim.t;
+        if (it.type === 'fx') Anim.t = 0.3;
+        const px = Engine.renderStandalone(it.type, { ...it.params, ...(it.type === 'fx' ? { background: 'black' } : {}) }, TH);
+        Anim.t = saved;
+        img = new ImageData(new Uint8ClampedArray(px.buffer, px.byteOffset, TH * TH * 4), TH, TH);
+        if (it.type !== 'fx') for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255;
+      } catch (e) { console.warn(e); continue; }
+      thumbs.set(it.key, img);
+      cv.getContext('2d').putImageData(img, 0, 0);
+    }
+    if (queue.length) timer = setTimeout(pump, 16);
+  }
+
+  return { init, open, close, items: () => items() };
 })();
 
 
@@ -4988,6 +5153,8 @@ const GraphView = (() => {
   function onDrop(e) {
     e.preventDefault();
     const pos = toGraph(e.clientX, e.clientY);
+    const preset = e.dataTransfer.getData('text/ptl-preset');
+    if (preset) { const pr = JSON.parse(preset); App.addNode(pr.type, pos.x - 88, pos.y - 20, pr.params); return; }
     const type = e.dataTransfer.getData('text/ptl-node');
     if (type) {
       const [t, extra] = type.split('#');
@@ -6169,7 +6336,7 @@ const App = (() => {
   const $ = (s) => document.querySelector(s);
   const state = { selected: null, selectedLink: null, viewPort: 0, interactive: false, playing: false, displayRes: 512, dirty: false, ready: false };
   let evalRaf = 0, idleTimer = 0, thumbQueue = [], thumbTimer = 0;
-  const CAT_ORDER = ['Источники', 'Шумы', 'Узоры', 'Эффекты', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
+  const CAT_ORDER = ['Источники', 'Узоры', 'Эффекты', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
   const KEYWORDS = {
     image: 'png jpeg jpg файл картинка', constant: 'color цвет value', noise: 'perlin value fbm шум worley white ridged billow облака clouds', voronoi: 'cells worley клетки трещины crackle камни',
     shape: 'circle rect ring круг квадрат кольцо эллипс', gradient: 'ramp linear radial angular', levels: 'уровни контраст',
@@ -6199,10 +6366,9 @@ const App = (() => {
       GraphView.rebuild();
       requestEval();
     });
-    GraphView.init(); ParamsPanel.init(); Preview.init();
+    GraphView.init(); ParamsPanel.init(); Preview.init(); PresetBrowser.init();
     buildCatalog(); bindToolbar(); bindKeys(); bindSplitters(); bindTimeline();
-    $('#status-gpu').textContent = GPU.precisionNote;
-    $('#status-gpu').title = GPU.precisionNote;
+    setInterval(updateStats, 1000);
     window.addEventListener('beforeunload', (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
     loadGraph(EXAMPLES[0].graph);
     History.reset();
@@ -6777,6 +6943,7 @@ const App = (() => {
           frameCache.frames.set(k, { tex: t, space: o.space });
         }
       }
+      countFrame();
       Preview.draw();
       return;
     }
@@ -6797,9 +6964,41 @@ const App = (() => {
       queueThumbs(pres);
     }
     state.lastEvalMs = performance.now() - t0;
+    updateStats();
     GraphView.refreshMarks();
     ParamsPanel.refreshStatus();
     Preview.draw();
+  }
+
+  // ---- status bar statistics (like other node editors)
+  let fpsFrames = 0, fpsT = performance.now(), fps = 0;
+  function countFrame() { fpsFrames++; }
+  function updateStats() {
+    const el = $('#stats');
+    if (!el || GPU.isLost()) return;
+    const now = performance.now();
+    if (now - fpsT >= 1000) { fps = Math.round((fpsFrames * 1000) / (now - fpsT)); fpsFrames = 0; fpsT = now; }
+    const mb = (b) => (b / 1048576).toFixed(b < 10485760 ? 1 : 0);
+    const items = [
+      ['Ноды', `${Graph.nodes.size} · связей ${Graph.links.length}`, 'Количество нод и связей в графе'],
+      ['Проект', `${Graph.state.resolution}² · превью ${state.displayRes}²`, 'Разрешение проекта и текущего предпросмотра'],
+      ['Пересчёт', `${(state.lastEvalMs || 0).toFixed(1)} мс`, 'Время последней отправки пересчёта графа на видеокарту (CPU)'],
+      ['VRAM', `≈${mb(GPU.textureBytes)} МБ · ${GPU.liveTextures} текстур`, 'Промежуточные текстуры графа в видеопамяти (без изображений и 3D-превью)'],
+      ['Формат', GPU.float ? 'RGBA16F' : 'RGBA8', GPU.precisionNote],
+    ];
+    if (state.playing) items.push(['FPS', `${fps} · кадр ${Math.round(Anim.t * Anim.settings().frames) + 1}/${Anim.settings().frames}`, 'Кадров в секунду при воспроизведении анимации']);
+    const gpu = String(GPU.renderer).replace(/^ANGLE \((.*)\)$/, '$1').replace(/,? ?(Direct3D|D3D)\S*.*$/, '');
+    items.push(['GPU', gpu.length > 38 ? gpu.slice(0, 36) + '…' : gpu, GPU.renderer]);
+    el.textContent = '';
+    for (const [k, v, title] of items) {
+      const sp = document.createElement('span');
+      sp.className = 'stat';
+      sp.title = title;
+      sp.innerHTML = '<b></b> ';
+      sp.querySelector('b').textContent = k;
+      sp.append(v);
+      el.append(sp);
+    }
   }
 
   // ---- playback frame cache
@@ -7190,7 +7389,7 @@ const PTL = (() => {
       return { width: r.width, height: r.height, cols: r.cols, rows: r.rows, frames: r.frames, png: await PNG.encodeAsync(r.bytes, r.width, r.height) };
     },
     exportSpriteSheet(id) { return App.exportSpriteSheet(id || App.viewedId()); },
-    noisePresets() { return NOISE_PRESETS.map(([title, type, params, desc]) => ({ title, type, params, desc })); },
+    noisePresets() { return NOISE_PRESETS.map(([title, type, params, desc, group]) => ({ title, type, params, desc, group })); },
     addNoise(title, opts = {}) {
       const pr = NOISE_PRESETS.find((x) => x[0] === title) || NOISE_PRESETS.find((x) => x[0].toLowerCase().includes(String(title).toLowerCase()));
       if (!pr) throw new Error('PTL: нет шума "' + title + '". Есть: ' + NOISE_PRESETS.map((x) => x[0]).join(' | '));

@@ -907,17 +907,28 @@ await test('Нода «Эффект (FX)»: все эффекты, бесшов�
   await page.context().close();
 });
 
-await test('Раздел «Шумы», кэш кадров воспроизведения, ленивые вторые выходы', async () => {
+await test('Окно «Шумы/Эффекты» с превью, статистика, кэш кадров воспроизведения, ленивые вторые выходы', async () => {
   const page = await openPage();
-  const cat = await page.evaluate(() => {
-    const hs = [...document.querySelectorAll('#catalog h4')].map((h) => h.textContent);
-    const items = [...document.querySelectorAll('#catalog .item.extra')].map((i) => i.textContent);
-    return { hs, items };
+  await page.click('#btn-noises');
+  await page.waitForFunction(() => document.querySelectorAll('#nd-body .nd-card').length >= 25);
+  await page.waitForTimeout(1500);
+  const drawer = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll('#nd-body .nd-card')];
+    const cv = cards[0].querySelector('canvas').getContext('2d').getImageData(0, 0, 88, 88).data;
+    let mn = 255, mx = 0; for (let i = 0; i < cv.length; i += 4) { mn = Math.min(mn, cv[i]); mx = Math.max(mx, cv[i]); }
+    return { count: cards.length, names: cards.map((c) => c.textContent), spread: mx - mn, inCatalog: [...document.querySelectorAll('#catalog .item')].some((i) => i.textContent === 'Мрамор') };
   });
-  ok(cat.hs.some((h) => /Шумы/.test(h)) && cat.items.length >= 25 && cat.items.includes('Мрамор'), 'в каталоге есть раздел «Шумы» с готовыми шумами', cat.items.length);
-  await page.click('#catalog .item.extra:has-text("Мрамор")');
+  ok(drawer.count === 30 && drawer.names.includes('Мрамор') && !drawer.inCatalog, 'шумы вынесены в отдельное окно (30 карточек), список нод не загромождён', drawer.count);
+  ok(drawer.spread > 50, 'у карточек есть превью-миниатюры', drawer.spread);
+  await page.click('#nd-body .nd-card:has-text("Мрамор")');
   const added = await page.evaluate(() => { const n = PTL.getGraph().nodes.at(-1); return { type: n.type, warp: n.params.warp, fractal: n.params.fractal }; });
-  ok(added.type === 'noise' && added.warp === 0.7 && added.fractal === 'ridged', 'щелчок по шуму добавляет ноду с его настройками', added);
+  ok(added.type === 'noise' && added.warp === 0.7 && added.fractal === 'ridged', 'щелчок по карточке добавляет ноду с настройками шума', added);
+  await page.click('#noise-drawer [data-tab="fx"]');
+  await page.waitForTimeout(500);
+  const fxCards = await page.evaluate(() => document.querySelectorAll('#nd-body .nd-card').length);
+  ok(fxCards === 19, 'вкладка «Эффекты» с превью всех 19 эффектов', fxCards);
+  const stats = await page.evaluate(() => document.getElementById('stats').textContent);
+  ok(/Ноды/.test(stats) && /VRAM/.test(stats) && /Пересчёт/.test(stats) && !/Промежуточные результаты/.test(stats), 'строка статистики внизу (ноды, разрешение, пересчёт, VRAM, формат, GPU)', stats.slice(0, 120));
   const r = await page.evaluate(async () => {
     const all = PTL.noisePresets();
     PTL.newProject(); PTL.setResolution(256);
