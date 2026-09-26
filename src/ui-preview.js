@@ -231,7 +231,13 @@ const Preview = (() => {
       if (st.layout === '3d') return;
     }
     if (!cur) { info.textContent = 'Нет выбранной ноды и основного Output.'; return; }
-    add(nodeTitle(cur.node) + (cur.id === App.state.selected ? '' : ' (основной выход)'));
+    if (cur.id === App.pinnedId()) {
+      const b = document.createElement('button');
+      b.className = 'pin-badge'; b.textContent = '📌 ' + nodeTitle(cur.node) + ' ✕';
+      b.title = 'Превью закреплено за этой нодой: можно выбирать и настраивать другие ноды, а смотреть на неё. Щелчок — открепить (или двойной щелчок по ноде).';
+      b.onclick = () => App.pinPreview(null);
+      info.append(b);
+    } else add(nodeTitle(cur.node) + (cur.id === App.state.selected ? '' : ' (основной выход)'), 'Двойной щелчок по ноде закрепляет её в превью.');
     if (!cur.out) return;
     const res = cur.out.tex.size;
     add(`${res}×${res}` + (res !== Graph.state.resolution ? ` (проект ${Graph.state.resolution})` : ''));

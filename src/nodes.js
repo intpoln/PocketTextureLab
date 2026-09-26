@@ -742,18 +742,18 @@ const NODES = {
 
   flare: {
     title: 'Оптический блик (Optical Flare)', cat: 'Эффекты', outputs: ['Цвет', 'Интенсивность'], inputs: [], timeDependent: true,
-    desc: 'Генератор бликов объектива для VFX: сияние и ядро, лучи-звезда, мерцающие лучи, анаморфные полосы, кольцо с радужной каймой, отражения (ghosts / multi-iris) вдоль оптической оси — круги или многоугольники диафрагмы, искры и грязь на линзе. Свет аддитивный, яркость может быть больше 1 (HDR).',
+    desc: 'Вспышка-блик для игровых VFX: спрайт, который спавнят на несколько кадров при взрыве, выстреле, вспышке гранаты. Сияние и яркое ядро, лучи-звезда, мерцающие лучи, анаморфные полосы, кольцо с радужной каймой. Свет аддитивный, может быть ярче 1 (HDR).',
     params: [
-      f('posX', 'Источник: X', -1.5, 1.5, -0.3, { help: 'Положение источника света: −1…1 — от левого до правого края кадра. Анимируйте ⏱ — отражения поедут навстречу.' }),
-      f('posY', 'Источник: Y', -1.5, 1.5, 0.25, { help: '−1 — низ, 1 — верх кадра.' }),
+      f('posX', 'Источник: X', -1, 1, 0, { help: 'Положение вспышки в кадре: 0 — центр, −1…1 — от левого до правого края.' }),
+      f('posY', 'Источник: Y', -1, 1, 0, { help: '0 — центр, −1 — низ, 1 — верх кадра.' }),
       f('brightness', 'Общая яркость', 0, 4, 1),
       f('scale', 'Размер', 0.1, 3, 1, { help: 'Масштаб всех элементов вокруг источника.' }),
       { key: 'tint', label: 'Общий оттенок', type: 'color', def: [1, 1, 1, 1] },
-      f('rotation', 'Поворот (°)', -180, 180, 0, { help: 'Поворачивает лучи, полосы и многоугольники отражений.' }),
-      f('anamorph', 'Анаморфность (растяжение по X)', 1, 4, 1, { help: 'Растягивает сияние, кольцо и отражения по горизонтали, как анаморфный объектив.' }),
+      f('rotation', 'Поворот (°)', -180, 180, 0, { help: 'Поворачивает лучи и полосы.' }),
+      f('anamorph', 'Анаморфность (растяжение по X)', 1, 4, 1, { help: 'Растягивает сияние и кольцо по горизонтали, как анаморфный объектив.' }),
       f('flicker', 'Мерцание яркости', 0, 1, 0, { help: 'Случайное дрожание яркости по кадрам (бесшовная петля).' }),
       i('loops', 'Циклов за анимацию', 1, 8, 1),
-      i('seed', 'Seed', 0, 99999, 1, { help: 'Случайные длины лучей, размеры и цвета отражений, позиции искр.' }),
+      i('seed', 'Seed', 0, 99999, 1, { help: 'Случайные длины и яркость лучей, рисунок мерцания.' }),
       e('background', 'Фон', [['black', 'Чёрный (аддитивное смешивание, как в VFX)'], ['transparent', 'Прозрачный (альфа = яркость)']], 'black'),
       b('edgeFade', 'Гасить к краям кадра (спрайты)', true),
 
@@ -780,7 +780,7 @@ const NODES = {
       i('shimSpeed', 'Скорость (0 — неподвижно)', 0, 8, 1, { section: 'Мерцание (Shimmer)' }),
 
       f('streakI', 'Сила полосы', 0, 4, 0, { section: 'Полоса (Streak)' }),
-      f('streakLen', 'Длина', 0, 4, 1.8, { section: 'Полоса (Streak)' }),
+      f('streakLen', 'Длина', 0, 2, 0.95, { section: 'Полоса (Streak)' }),
       f('streakThick', 'Толщина', 0.001, 0.1, 0.01, { step: 0.001, section: 'Полоса (Streak)' }),
       f('streakHaze', 'Дымка вокруг полосы', 0, 1, 0.3, { section: 'Полоса (Streak)' }),
       i('streakCount', 'Число полос (крест, звезда)', 1, 4, 1, { section: 'Полоса (Streak)' }),
@@ -792,52 +792,20 @@ const NODES = {
       f('ringWidth', 'Ширина', 0.002, 0.4, 0.03, { step: 0.001, section: 'Кольцо (Ring)' }),
       f('ringChroma', 'Радужная кайма', 0, 1, 0.7, { section: 'Кольцо (Ring)' }),
       { key: 'ringColor', label: 'Цвет кольца', type: 'color', def: [1, 1, 1, 1], section: 'Кольцо (Ring)' },
-
-      f('ghostI', 'Сила отражений', 0, 4, 0.35, { section: 'Отражения (Ghosts / Iris)' }),
-      i('ghostCount', 'Количество', 0, 16, 7, { section: 'Отражения (Ghosts / Iris)' }),
-      f('ghostStart', 'Начало на оси', -1, 2, 0.25, { section: 'Отражения (Ghosts / Iris)', help: 'Ось идёт от источника (0) через центр объектива (1) и дальше (2 — зеркально по другую сторону).' }),
-      f('ghostSpread', 'Конец на оси', -1, 3, 2, { section: 'Отражения (Ghosts / Iris)' }),
-      f('axisX', 'Центр объектива: X', -1, 1, 0, { section: 'Отражения (Ghosts / Iris)' }),
-      f('axisY', 'Центр объектива: Y', -1, 1, 0, { section: 'Отражения (Ghosts / Iris)' }),
-      f('ghostSize', 'Размер', 0.005, 0.6, 0.08, { step: 0.001, section: 'Отражения (Ghosts / Iris)' }),
-      f('ghostSizeRand', 'Разброс размеров', 0, 1, 0.6, { section: 'Отражения (Ghosts / Iris)' }),
-      e('ghostShape', 'Форма', [['circle', 'Круг'], ['poly', 'Многоугольник (диафрагма)']], 'poly', { section: 'Отражения (Ghosts / Iris)' }),
-      i('ghostBlades', 'Лепестков диафрагмы (углов)', 3, 12, 6, { section: 'Отражения (Ghosts / Iris)', visible: (p) => p.ghostShape === 'poly' }),
-      f('ghostRound', 'Скругление углов', 0, 1, 0.15, { section: 'Отражения (Ghosts / Iris)', visible: (p) => p.ghostShape === 'poly' }),
-      f('ghostSoft', 'Мягкость края', 0, 1, 0.3, { section: 'Отражения (Ghosts / Iris)' }),
-      f('ghostRim', 'Только контур (кольцо)', 0, 1, 0.3, { section: 'Отражения (Ghosts / Iris)' }),
-      e('ghostColorMode', 'Окраска', [['tint', 'Один цвет'], ['rainbow', 'Радуга по порядку'], ['random', 'Случайные оттенки']], 'rainbow', { section: 'Отражения (Ghosts / Iris)' }),
-      { key: 'ghostColor', label: 'Цвет отражений', type: 'color', def: [1, 0.92, 0.82, 1], section: 'Отражения (Ghosts / Iris)' },
-      f('ghostChroma', 'Хроматическая аберрация', 0, 1, 0.3, { section: 'Отражения (Ghosts / Iris)' }),
-
-      f('sparkI', 'Сила искр', 0, 4, 0, { section: 'Искры (Sparkles)' }),
-      i('sparkCount', 'Количество', 1, 64, 24, { section: 'Искры (Sparkles)' }),
-      f('sparkSpread', 'Разлёт вокруг источника', 0, 1.5, 0.5, { section: 'Искры (Sparkles)' }),
-      f('sparkSize', 'Размер', 0.003, 0.15, 0.02, { step: 0.001, section: 'Искры (Sparkles)' }),
-      f('sparkTwinkle', 'Мигание', 0, 1, 0.8, { section: 'Искры (Sparkles)' }),
-
-      f('dirtI', 'Сила грязи на линзе', 0, 2, 0, { section: 'Грязь на линзе (Lens dirt)' }),
-      f('dirtScale', 'Масштаб пятен', 1, 20, 6, { section: 'Грязь на линзе (Lens dirt)' }),
-      f('dirtRadius', 'Радиус подсветки', 0.1, 3, 0.9, { section: 'Грязь на линзе (Lens dirt)' }),
     ],
     presets: FLARE_PRESETS.map(([label, , set]) => ({ label, get apply() { return flarePreset(set); } })),
-    help: 'Каждый элемент включается своей силой (0 — выключен). Свет считается в линейном пространстве и может быть ярче 1: на прозрачном фоне альфа = яркость, на чёрном — удобно для аддитивного смешивания в движке. Анимация (мерцание, вращение лучей, искры) — бесшовная петля; экспорт — «Спрайт-шит PNG».',
+    help: 'Каждый элемент включается своей силой (0 — выключен). Вспышка по центру кадра и гаснет к краям — готовый спрайт. Свет считается в линейном пространстве и может быть ярче 1: чёрный фон — для аддитивного материала в движке, прозрачный — альфа = яркость. Анимация (мерцание, вращение лучей) — бесшовная петля; экспорт — «Спрайт-шит PNG».',
     seamFn: () => 'Блик привязан к точке кадра и не предназначен для повторения как тайл.',
     eval(ctx) {
       const p = ctx.params, lin = (c) => c.slice(0, 3).map(ColorUtil.toLin), deg = Math.PI / 180;
       const u = {
         u_t: Anim.t, u_loops: p.loops, u_seed: p.seed, u_int: p.brightness, u_scale: p.scale, u_blackBg: p.background === 'black', u_edgeFade: p.edgeFade,
-        u_light: [p.posX, p.posY], u_axis: [p.axisX, p.axisY], u_tint: lin(p.tint), u_rot: p.rotation * deg, u_anam: p.anamorph, u_flicker: p.flicker,
+        u_light: [p.posX, p.posY], u_tint: lin(p.tint), u_rot: p.rotation * deg, u_anam: p.anamorph, u_flicker: p.flicker,
         u_glowI: p.glowI, u_glowSize: p.glowSize, u_glowFall: p.glowFall, u_glowCol: lin(p.glowColor), u_coreI: p.coreI, u_coreSize: p.coreSize,
         u_raysI: p.raysI, u_raysN: p.raysCount, u_raysLen: p.raysLen, u_raysSharp: p.raysSharp, u_raysRand: p.raysRandom, u_raysAng: p.raysAngle * deg, u_raysSpin: p.raysSpin, u_raysCol: lin(p.raysColor),
         u_shimI: p.shimI, u_shimN: p.shimCount, u_shimLen: p.shimLen, u_shimSharp: p.shimSharp, u_shimSpeed: p.shimSpeed,
         u_strI: p.streakI, u_strLen: p.streakLen, u_strThick: p.streakThick, u_strHaze: p.streakHaze, u_strN: p.streakCount, u_strAng: p.streakAngle * deg, u_strCol: lin(p.streakColor),
         u_ringI: p.ringI, u_ringR: p.ringRadius, u_ringW: p.ringWidth, u_ringChroma: p.ringChroma, u_ringCol: lin(p.ringColor),
-        u_ghI: p.ghostI, u_ghN: p.ghostCount, u_ghStart: p.ghostStart, u_ghSpread: p.ghostSpread, u_ghSize: p.ghostSize, u_ghSizeRand: p.ghostSizeRand,
-        u_ghPoly: p.ghostShape === 'poly', u_ghBlades: p.ghostBlades, u_ghRound: p.ghostRound, u_ghSoft: p.ghostSoft, u_ghRim: p.ghostRim,
-        u_ghColMode: { tint: 0, rainbow: 1, random: 2 }[p.ghostColorMode] ?? 1, u_ghCol: lin(p.ghostColor), u_ghChroma: p.ghostChroma,
-        u_spI: p.sparkI, u_spN: p.sparkCount, u_spSpread: p.sparkSpread, u_spSize: p.sparkSize, u_spTw: p.sparkTwinkle,
-        u_dirtI: p.dirtI, u_dirtScale: p.dirtScale, u_dirtR: p.dirtRadius,
       };
       const col = ctx.alloc();
       ctx.pass('flare', col, { ...u, u_outMode: 0 });

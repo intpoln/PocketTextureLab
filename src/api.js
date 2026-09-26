@@ -77,6 +77,8 @@ const PTL = (() => {
         params: d.params.map(paramInfo), presets: (d.presets || []).map((p) => p.label), help: d.help || '',
       }));
     },
+    /** Pin the preview to a node (as a double click in the graph); null unpins. */
+    pinPreview(id) { if (id) need(id); App.pinPreview(id || null); return App.pinnedId(); },
     getGraph() { return JSON.parse(JSON.stringify(Graph.toJSON())); },
     getNode(id) { const n = need(id); return { id: n.id, type: n.type, x: n.x, y: n.y, params: JSON.parse(JSON.stringify(n.params)), error: Engine.errors.get(id) || null }; },
     getParams(id) { return JSON.parse(JSON.stringify(need(id).params)); },
@@ -114,7 +116,7 @@ const PTL = (() => {
     },
     applyPreset(id, label) {
       const n = need(id), list = NODES[n.type].presets || [], q = String(label).toLowerCase();
-      const pr = list.find((p) => p.label === label) || list.find((p) => p.label.toLowerCase().includes(q));
+      const pr = list.find((p) => p.label === label) || list.find((p) => (p.label + ' ' + (p.ru || '')).toLowerCase().includes(q));
       if (!pr) throw new Error(`PTL: пресет "${label}" не найден. Есть: ${(NODES[n.type].presets || []).map((p) => p.label).join(' | ')}`);
       Object.assign(n.params, pr.apply); Graph.touch(n); after();
     },
@@ -166,7 +168,7 @@ const PTL = (() => {
     exportSpriteSheet(id) { return App.exportSpriteSheet(id || App.viewedId()); },
     noisePresets() { return NOISE_PRESETS.map(([title, type, params, desc, group]) => ({ title, type, params, desc, group })); },
     addNoise(title, opts = {}) {
-      const pr = NOISE_PRESETS.find((x) => x[0] === title) || NOISE_PRESETS.find((x) => x[0].toLowerCase().includes(String(title).toLowerCase()));
+      const pr = NOISE_PRESETS.find((x) => x[0] === title || x[5] === title) || NOISE_PRESETS.find((x) => (x[0] + ' ' + (x[5] || '')).toLowerCase().includes(String(title).toLowerCase()));
       if (!pr) throw new Error('PTL: нет шума "' + title + '". Есть: ' + NOISE_PRESETS.map((x) => x[0]).join(' | '));
       return api.addNode(pr[1], { ...opts, params: { ...pr[2], ...(opts.params || {}) } });
     },

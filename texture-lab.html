@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Pocket Texture Lab v0.2.0 — offline procedural texture editor in one HTML file.
+  Pocket Texture Lab v0.3.0 — offline procedural texture editor in one HTML file.
   Author: intpoln — https://github.com/intpoln/PocketTextureLab
   FOR AI AGENTS / AUTOMATION: this page exposes a full JavaScript API as
   `window.PTL`. Call `PTL.help()` for the manual (it is also embedded below in
@@ -17,11 +17,17 @@
 <meta name="author" content="intpoln — https://github.com/intpoln/PocketTextureLab">
 <title>Pocket Texture Lab</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232d6fb8'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%2358c27d'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%23e0b04d'/%3E%3C/svg%3E">
-<meta name="version" content="0.2.0">
+<meta name="version" content="0.3.0">
 <script type="text/markdown" id="ptl-changelog">
 # История версий
 
 Пока версия начинается с 0 — программа в активной разработке и может содержать ошибки.
+
+## 0.3.0
+- Названия нод, входов/выходов, параметров и режимов — на английском, как в Substance Designer, Houdini, After Effects и Photoshop: Levels, Blend (Multiply, Screen, Add…), Hue / Saturation (Lightness), Gradient Map, Transform 2D, Gaussian Blur, Tile Sampler и т.д. Русское название — во всплывающей подсказке; поиск понимает оба языка (blur / размытие, multiply / умножение). Старые проекты открываются как раньше.
+- Быстрое добавление ноды: потяните провод из выхода или входа и отпустите в пустом месте — появится меню нод с поиском; выбранная нода встаёт в это место уже подключённой (одно Ctrl+Z отменяет всё). Tab над графом открывает то же меню.
+- Превью больше не привязано к выбору: двойной щелчок по ноде закрепляет её в превью (📌), а одиночным щелчком выбирается нода для настройки параметров. Повторный двойной щелчок или значок 📌 под превью — открепить. `PTL.pinPreview(id)`.
+- Optical Flare переделан под игровые VFX-вспышки: всегда по центру кадра, без отражений, искр и грязи на линзе; оставлены пресеты Sun, Anamorphic, Spotlight, Welding и Soft orb.
 
 ## 0.2.0
 - Новая нода «Оптический блик (Optical Flare)» в разделе «Эффекты» — генератор бликов объектива для VFX. Элементы: сияние и ядро, лучи-звезда (число, длина, острота, случайность, вращение), мерцающие лучи (shimmer), анаморфные полосы (1–4, крест/звезда), кольцо с радужной каймой, отражения вдоль оптической оси (ghosts / multi-iris: круги или многоугольники диафрагмы 3–12 углов, скругление, мягкость, контур, радужная/случайная окраска, хроматическая аберрация), искры и грязь на линзе. Общие: положение источника и центра объектива, яркость, размер, оттенок, поворот, анаморфность, мерцание.
@@ -155,6 +161,8 @@ Editing (all validated; unknown params/enum values throw with the list of valid 
 - `PTL.connect(fromId, fromPort, toId, toPort)` — an input takes one link (replaces the old one); outputs fan out; cycles throw.
 - `PTL.disconnect(toId, toPort)`, `PTL.removeNode(id)`, `PTL.duplicate(id)`.
 - `PTL.setActiveOutput(outputId)`, `PTL.setResolution(256|512|1024|2048)`, `PTL.select(id)`.
+- `PTL.pinPreview(id)` pins the preview to a node (like a double click in the graph; `null` unpins). UI titles of nodes and
+  parameters are English (Levels, Blend, Gradient Map, Transform 2D…); node types and parameter keys are unchanged.
 - `PTL.batch(fn)` — several edits as one undo step. `PTL.undo()`, `PTL.redo()`, `PTL.autoLayout()`.
 - `PTL.newProject()`, `PTL.examples()`, `PTL.getExample(i)` (graph JSON to study), `PTL.loadExample(i)`.
 - Template parameters (a few knobs shown at project level when nothing is selected):
@@ -231,7 +239,7 @@ Pin kinds (also coloured in the UI): **gray** = one value per pixel (mask/height
 | `normal` | height gray → color | Height → normal map; `strength` (% of width), `convention` gl/dx, `blur`. |
 | `split` / `combine` | any → 4 gray / 4 gray → color | Channel (un)packing; combine presets `orm`, `hdrp`, `custom`. |
 | `fx` | — → color (RGBA, alpha from palette), intensity (gray) | Animated particle/VFX sprites, always looping over the frame cycle: `effect` = flame · fire · explosion · smoke · smokeloop · sparks · sparkloop · lightning · electric · flare · star · shockwave · magic · orb · vortex · laser · slash · cloud · caustics; `stops` palette (gradient with alpha; presets incl. Magma, Fire, Energy, Magic, Electric, Smoke, Sun), `intensity`, `scale`, `loops`, `detail`, `count`, `thick`, `distort`, `twist`, `seed`, `background` transparent/black. One-shot effects (explosion, smoke, sparks, shockwave, slash) play once per cycle. |
-| `flare` | — → color (additive linear HDR light), intensity (gray) | Optical lens flare generator. Global: `posX`,`posY` (light, −1…1, y up), `brightness`, `scale`, `tint`, `rotation`°, `anamorph` (x-stretch), `flicker`, `loops`, `seed`, `background` black (default, additive)/transparent (alpha = brightness), `edgeFade`. Elements (each off at intensity 0): glow `glowI`,`glowSize`,`glowFall`,`glowColor`,`coreI`,`coreSize`; rays `raysI`,`raysCount`,`raysLen`,`raysSharp`,`raysRandom`,`raysAngle`,`raysSpin`,`raysColor`; shimmer `shimI`,`shimCount`,`shimLen`,`shimSharp`,`shimSpeed`; streak `streakI`,`streakLen`,`streakThick`,`streakHaze`,`streakCount`,`streakAngle`,`streakColor`; ring `ringI`,`ringRadius`,`ringWidth`,`ringChroma`,`ringColor`; ghosts along light→`axisX/axisY`→beyond: `ghostI`,`ghostCount`,`ghostStart`,`ghostSpread`,`ghostSize`,`ghostSizeRand`,`ghostShape` circle/poly,`ghostBlades`,`ghostRound`,`ghostSoft`,`ghostRim`,`ghostColorMode` tint/rainbow/random,`ghostColor`,`ghostChroma`; sparkles `sparkI`,`sparkCount`,`sparkSpread`,`sparkSize`,`sparkTwinkle`; lens dirt `dirtI`,`dirtScale`,`dirtRadius`. 12 presets (Sun, Anamorphic, Star glint, Star 6, Spotlight, Sci-Fi, Warm lamp, Welding, Magic, Dirty lens, Cinematic, Soft orb): `PTL.applyPreset(id, 'sun')` (substring match), list in `PTL.nodeTypes()`, or the Effects window. Animate `posX`/`posY` with ⏱ to move the light (ghosts travel against it). |
+| `flare` | — → color (additive linear HDR light), intensity (gray) | Game-VFX flash sprite (explosions, grenades, muzzle flashes), centred in the frame. Global: `posX`,`posY` (0 = centre), `brightness`, `scale`, `tint`, `rotation`°, `anamorph` (x-stretch), `flicker`, `loops`, `seed`, `background` black (default, additive)/transparent (alpha = brightness), `edgeFade`. Elements (off at intensity 0): glow `glowI`,`glowSize`,`glowFall`,`glowColor`,`coreI`,`coreSize`; rays `raysI`,`raysCount`,`raysLen`,`raysSharp`,`raysRandom`,`raysAngle`,`raysSpin`,`raysColor`; shimmer `shimI`,`shimCount`,`shimLen`,`shimSharp`,`shimSpeed`; streak `streakI`,`streakLen`,`streakThick`,`streakHaze`,`streakCount`,`streakAngle`,`streakColor`; ring `ringI`,`ringRadius`,`ringWidth`,`ringChroma`,`ringColor`. Presets: Sun, Anamorphic, Spotlight, Welding, Soft orb — `PTL.applyPreset(id, 'sun')`. |
 | `glow` | any → any (image+glow), any (glow only) | Bloom: `threshold`, `knee`, `radius` (σ, 3 scales σ/2σ/4σ), `intensity`, `tint`, `alpha` (glow extends sprite alpha). Use after fx/emissive masks. |
 | `polar` | any → any | Strip → circle (`toPolar`, `turns` integer) or circle → strip; e.g. waves → rings for magic circles/portals. |
 | `code` | 4 any → any | Your GLSL per-pixel function (see below). |
@@ -537,6 +545,22 @@ main { position: relative; }
 .node.sel.primary { box-shadow: 0 0 0 2px var(--acc), 0 2px 10px #000a; }
 #graph { cursor: default; }
 
+/* preview pinned to a node (double click) */
+.node.pinned { outline: 2px solid #58c27d; outline-offset: 2px; }
+.node.pinned .head::after { content: '📌'; margin-left: auto; font-size: 11px; }
+#pinfo .pin-badge { background: #1f3a2a; border: 1px solid #58c27d; color: #bdf0cf; padding: 1px 8px; border-radius: 10px; font-size: 12px; cursor: pointer; }
+
+/* quick add menu (wire dropped on empty space, Tab) */
+#quickadd { position: fixed; z-index: 60; width: 260px; background: var(--bg2); border: 1px solid var(--acc); border-radius: 6px; box-shadow: 0 8px 28px #000c; display: flex; flex-direction: column; }
+#quickadd input { margin: 6px; font-size: 13px; }
+#quickadd .qa-list { max-height: 300px; overflow-y: auto; padding: 0 0 6px; }
+#quickadd .qa-cat { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--fg3); padding: 6px 10px 2px; }
+#quickadd .qa-item { padding: 4px 10px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+#quickadd .qa-item small { color: var(--fg3); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#quickadd .qa-item.on { background: var(--acc); color: #fff; }
+#quickadd .qa-item.on small { color: #e8f0ff; }
+#quickadd .qa-empty { padding: 8px 10px; color: var(--fg3); }
+
 /* collapsible parameter sections */
 .group.psec { cursor: pointer; user-select: none; }
 .group.psec::before { content: '▾ '; }
@@ -603,7 +627,7 @@ main { position: relative; }
 <div id="agent-note" class="sr-only">Note for AI agents and screen readers: this is Pocket Texture Lab, a procedural texture editor. It is fully scriptable through the JavaScript object window.PTL. Run PTL.help() in the page for the complete manual (also embedded in this document as script#ptl-agent-guide), PTL.examples() for ready texture templates (brick, asphalt, cobblestone, wood, painted metal) and PTL.exportAll() to download the PNG maps.</div>
 <div id="app">
   <header id="toolbar">
-    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.2.0</button></span>
+    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.3.0</button></span>
     <button id="btn-mmenu" title="Меню">☰</button>
     <select id="examples" title="Встроенные примеры, шаблоны текстур и ваши шаблоны"></select>
     <button id="btn-lib" title="Мои пресеты и шаблоны (хранятся в браузере), экспорт/импорт">Библиотека</button>
@@ -3429,22 +3453,19 @@ function fxStops(name) {
 
 // ===== flare.js =====
 // ---------------------------------------------------------------------------
-// Optical flare generator ("Оптический блик (Optical Flare)" node).
-// Built from the classic lens-flare elements (as in Optical Flares / Knoll
-// Light Factory): glow and hot core, rays (starburst), shimmer (fine animated
-// rays), anamorphic streaks, ring with chromatic fringes, ghosts / multi-iris
-// along the optical axis (circles or aperture polygons), sparkles and lens
-// dirt. Light is additive, computed in linear space and may exceed 1 (HDR).
-// Animation (shimmer, flicker, sparkles, ray spin) is periodic in the loop
-// phase, so sprite sheets loop seamlessly; the light position can be animated
-// with ⏱ like any parameter — ghosts then travel against it.
+// Optical flare sprite generator ("Optical Flare" node) for game VFX: the
+// blinding flash spawned for a few frames on explosions, grenades, muzzle
+// flashes, sparks. Only the flare itself (no lens ghosts or dirt): glow and
+// hot core, rays (starburst), shimmer (fine animated rays), anamorphic
+// streaks and a halo ring with chromatic fringes. Light is additive, computed
+// in linear space and may exceed 1 (HDR). Animation (shimmer, flicker, ray
+// spin) is periodic in the loop phase, so sprite sheets loop seamlessly.
 // ---------------------------------------------------------------------------
 SHADERS.define('flare', {
   nin: 0,
   body: FX_HELPERS + `
 uniform bool u_edgeFade;
 uniform vec2 u_light;
-uniform vec2 u_axis;
 uniform vec3 u_tint;
 uniform float u_rot, u_anam, u_flicker;
 uniform float u_glowI, u_glowSize, u_glowFall, u_coreI, u_coreSize;
@@ -3459,32 +3480,8 @@ uniform int u_strN;
 uniform vec3 u_strCol;
 uniform float u_ringI, u_ringR, u_ringW, u_ringChroma;
 uniform vec3 u_ringCol;
-uniform float u_ghI, u_ghStart, u_ghSpread, u_ghSize, u_ghSizeRand, u_ghRound, u_ghSoft, u_ghRim, u_ghChroma;
-uniform int u_ghN, u_ghBlades, u_ghColMode;
-uniform bool u_ghPoly;
-uniform vec3 u_ghCol;
-uniform float u_spI, u_spSpread, u_spSize, u_spTw;
-uniform int u_spN;
-uniform float u_dirtI, u_dirtScale, u_dirtR;
 
 vec3 hue(float h) { return clamp(abs(fract(h + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0, 0.0, 1.0); }
-// normalized radius of a regular n-gon (vertices at radius 1), blended to a circle by 'rnd'
-float polyR(vec2 q, int n, float rnd) {
-  float r = length(q), fn = float(max(n, 3)), sec = TAU / fn;
-  float a = atan(q.y, abs(q.x) < 1e-7 ? 1e-7 : q.x);
-  float m = a - sec * floor(a / sec) - sec * 0.5;
-  return mix(r * cos(m) / cos(PI / fn), r, rnd);
-}
-float ghostShape(float nr) {
-  float fill = 1.0 - smoothstep(0.98 - u_ghSoft * 0.7, 1.0, nr);
-  float edge = exp(-pow((nr - 0.97) / (0.035 + u_ghSoft * 0.15), 2.0));
-  return mix(fill, max(fill * 0.2, edge), u_ghRim);
-}
-float star4(vec2 q, float s) {
-  float r = length(q);
-  return exp(-r / (s * 0.35)) + 0.6 * (exp(-abs(q.x) / (s * 0.06)) * exp(-abs(q.y) / (s * 1.4)) + exp(-abs(q.y) / (s * 0.06)) * exp(-abs(q.x) / (s * 1.4)));
-}
-
 void main() {
   vec2 uv = pixUV();
   vec2 p = vec2(uv.x - 0.5, 0.5 - uv.y) * 2.0;
@@ -3546,53 +3543,6 @@ void main() {
     col += u_ringCol * u_ringI * ring;
   }
 
-  // ghosts / multi-iris along the optical axis (light -> lens centre -> beyond)
-  if (u_ghI > 0.0 && u_ghN > 0) {
-    vec2 dir = u_axis - u_light;
-    for (int k = 0; k < 16; k++) {
-      if (k >= u_ghN) break;
-      float fk = (float(k) + 0.15 + 0.7 * hsh1(k, 1)) / float(u_ghN);
-      float t = mix(u_ghStart, u_ghSpread, fk);
-      vec2 G = u_light + dir * t;
-      float sz = u_ghSize * S * mix(1.0, 0.25 + 1.5 * hsh1(k, 2), u_ghSizeRand);
-      vec3 gc = u_ghColMode == 0 ? u_ghCol : u_ghColMode == 1 ? mix(hue(float(k) / float(u_ghN) * 0.85), vec3(1.0), 0.25) * u_ghCol : mix(hue(hsh1(k, 3)), vec3(1.0), 0.3) * u_ghCol;
-      float br = mix(0.35, 1.0, hsh1(k, 4)) * clamp(0.08 / max(sz / S, 1e-3), 0.25, 1.6);   // small ghosts are brighter
-      vec2 q = rot(vec2((p.x - G.x) / max(u_anam, 1e-3), p.y - G.y) / max(sz, 1e-4), -u_rot);
-      vec2 q0 = q * (1.0 - u_ghChroma * 0.18), q2 = q * (1.0 + u_ghChroma * 0.18);   // chromatic aberration: R, G, B at slightly different scales
-      vec3 g = u_ghPoly
-        ? vec3(ghostShape(polyR(q0, u_ghBlades, u_ghRound)), ghostShape(polyR(q, u_ghBlades, u_ghRound)), ghostShape(polyR(q2, u_ghBlades, u_ghRound)))
-        : vec3(ghostShape(length(q0)), ghostShape(length(q)), ghostShape(length(q2)));
-      col += gc * g * br * u_ghI;
-    }
-  }
-
-  // sparkles: small twinkling glints around the light
-  if (u_spI > 0.0 && u_spN > 0) {
-    vec3 sc = mix(u_glowCol, vec3(1.0), 0.5);
-    for (int k = 0; k < 64; k++) {
-      if (k >= u_spN) break;
-      float rr = u_spSpread * sqrt(hsh1(k, 21)) * S;
-      vec2 pos = u_light + rot(vec2(rr, 0.0), hsh1(k, 22) * TAU);
-      float sz = u_spSize * S * (0.4 + 1.2 * hsh1(k, 23));
-      float tw = mix(1.0, max(sin(TAU * (T * float(1 + int(hsh1(k, 24) * 3.0)) + hsh1(k, 25))), 0.0), u_spTw);
-      col += sc * u_spI * tw * star4(p - pos, sz);
-    }
-  }
-
-  // lens dirt lit by the light: soft round smudges (dust, drops) + faint smeared fbm film
-  if (u_dirtI > 0.0) {
-    float sp = 0.0;
-    for (int k = 0; k < 40; k++) {
-      vec2 c = vec2(hsh1(k, 31), hsh1(k, 32)) * 2.2 - 1.1;
-      float rad = (0.03 + 0.12 * hsh1(k, 33) * hsh1(k, 34)) * 6.0 / u_dirtScale;
-      float b = 1.0 - smoothstep(rad * (0.3 + 0.5 * hsh1(k, 35)), rad, length(p - c));
-      sp += b * (0.3 + 0.7 * hsh1(k, 36));
-    }
-    vec2 pr = rot(p, 0.6) * vec2(u_dirtScale * 0.35, u_dirtScale * 1.1);
-    sp += 0.5 * smoothstep(0.45, 0.8, fbm3(vec3(pr, 3.0), ivec3(0), 4));
-    col += mix(u_glowCol, vec3(1.0), 0.4) * u_dirtI * sp * exp(-length(p - u_light) / max(u_dirtR, 1e-3));
-  }
-
   float fl = 1.0 - u_flicker * (0.7 * vn3(vec3(T * 16.0, 3.5, 0.5), ivec3(16, 0, 0)) + 0.3 * vn3(vec3(T * 48.0, 8.5, 0.5), ivec3(48, 0, 0)));
   col *= u_tint * u_int * fl;
   if (u_edgeFade) col *= 1.0 - smoothstep(0.82, 0.98, max(abs(p.x), abs(p.y)));
@@ -3606,72 +3556,31 @@ void main() {
 });
 
 // Element intensities switched off: presets start from here, so a preset only lists what it uses.
-const FLARE_OFF = { glowI: 0, coreI: 0, raysI: 0, shimI: 0, streakI: 0, ringI: 0, ghostI: 0, sparkI: 0, dirtI: 0, flicker: 0, raysSpin: 0 };
+const FLARE_OFF = { glowI: 0, coreI: 0, raysI: 0, shimI: 0, streakI: 0, ringI: 0, flicker: 0, raysSpin: 0 };
 
 const FLARE_PRESETS = [
-  ['Солнце (Sun)', 'Тёплое солнце: сияние, лучи, мерцание, шестиугольные отражения и радужное кольцо.', {
+  ['Солнце (Sun)', 'Тёплая яркая вспышка: сияние, лучи, мерцающие лучики и лёгкое радужное кольцо.', {
     glowI: 1, glowSize: 0.7, glowFall: 3, glowColor: [1, 0.78, 0.5, 1], coreI: 1.2, coreSize: 0.05,
     raysI: 0.5, raysCount: 8, raysLen: 0.9, raysSharp: 20, raysRandom: 0.5, raysColor: [1, 0.85, 0.6, 1],
     shimI: 0.35, shimCount: 90, shimLen: 0.7, shimSharp: 5, shimSpeed: 1,
     ringI: 0.08, ringRadius: 0.45, ringWidth: 0.025, ringChroma: 0.8, ringColor: [1, 1, 1, 1],
-    ghostI: 0.4, ghostCount: 7, posX: -0.45, posY: 0.35, ghostShape: 'poly', ghostBlades: 6, ghostRound: 0.15, ghostColorMode: 'rainbow', ghostColor: [1, 0.9, 0.8, 1],
   }],
-  ['Анаморфный синий (Anamorphic)', 'Киношный анаморфный блик: длинная синяя полоса, овальные отражения.', {
+  ['Анаморфный синий (Anamorphic)', 'Киношная вспышка: длинная синяя горизонтальная полоса и яркое ядро.', {
     anamorph: 1.8, glowI: 0.8, glowSize: 0.35, glowFall: 3, glowColor: [0.55, 0.75, 1, 1], coreI: 1.5, coreSize: 0.03,
-    streakI: 1.2, streakLen: 2.2, streakThick: 0.008, streakHaze: 0.35, streakCount: 1, streakColor: [0.35, 0.6, 1, 1],
-    ghostI: 0.3, ghostCount: 6, ghostShape: 'circle', ghostSoft: 0.5, ghostRim: 0.5, ghostColorMode: 'tint', ghostColor: [0.4, 0.65, 1, 1],
+    streakI: 1.2, streakLen: 0.95, streakThick: 0.008, streakHaze: 0.35, streakCount: 1, streakColor: [0.35, 0.6, 1, 1],
   }],
-  ['Звезда-блик (Star glint)', 'Острая четырёхлучевая звезда — блик на металле, стекле, воде.', {
-    glowI: 0.6, glowSize: 0.25, glowFall: 4, glowColor: [1, 1, 1, 1], coreI: 1.8, coreSize: 0.025,
-    raysI: 1.2, raysCount: 4, raysLen: 0.9, raysSharp: 60, raysRandom: 0, raysAngle: 0, raysColor: [1, 1, 1, 1],
-    edgeFade: true,
-  }],
-  ['Звезда 6 лучей (Star 6)', 'Шестилучевая звезда с кольцом — «дифракция» от диафрагмы из 6 лепестков.', {
-    glowI: 0.7, glowSize: 0.3, glowFall: 3, glowColor: [0.85, 0.92, 1, 1], coreI: 1.4, coreSize: 0.03,
-    raysI: 1, raysCount: 6, raysLen: 0.8, raysSharp: 40, raysRandom: 0.2, raysColor: [0.9, 0.95, 1, 1],
-    ringI: 0.2, ringRadius: 0.25, ringWidth: 0.02, ringChroma: 0.6,
-  }],
-  ['Прожектор (Spotlight)', 'Белая фара/прожектор: широкое сияние, мягкая полоса и кольцо.', {
+  ['Прожектор (Spotlight)', 'Белая вспышка прожектора/фары: широкое сияние, мягкая полоса и кольцо.', {
     glowI: 1.2, glowSize: 0.9, glowFall: 2.5, glowColor: [0.95, 0.97, 1, 1], coreI: 1.5, coreSize: 0.06,
-    streakI: 0.5, streakLen: 1.5, streakThick: 0.02, streakHaze: 0.5, streakColor: [0.8, 0.9, 1, 1],
+    streakI: 0.5, streakLen: 0.95, streakThick: 0.02, streakHaze: 0.5, streakColor: [0.8, 0.9, 1, 1],
     ringI: 0.2, ringRadius: 0.55, ringWidth: 0.06, ringChroma: 0.3,
     shimI: 0.2, shimCount: 60, shimLen: 0.6, shimSharp: 4, shimSpeed: 1,
   }],
-  ['Научная фантастика (Sci-Fi)', 'Фиолетово-голубой блик: двойная полоса, много многоугольных отражений.', {
-    glowI: 0.9, glowSize: 0.45, glowFall: 3, glowColor: [0.7, 0.5, 1, 1], coreI: 1.4, coreSize: 0.03,
-    streakI: 0.9, streakLen: 1.8, streakThick: 0.006, streakHaze: 0.3, streakCount: 2, streakAngle: 0, streakColor: [0.4, 0.8, 1, 1],
-    ghostI: 0.45, ghostCount: 12, ghostShape: 'poly', ghostBlades: 8, ghostRound: 0.1, ghostSoft: 0.2, ghostRim: 0.6, ghostColorMode: 'random', ghostColor: [1, 1, 1, 1], ghostChroma: 0.6,
-    ringI: 0.3, ringRadius: 0.3, ringWidth: 0.015, ringChroma: 1, ringColor: [0.8, 0.7, 1, 1],
-  }],
-  ['Тёплая лампа (Warm lamp)', 'Мягкий оранжевый свет лампы или свечи с лёгким мерцанием.', {
-    glowI: 1.1, glowSize: 0.6, glowFall: 2.2, glowColor: [1, 0.6, 0.25, 1], coreI: 1, coreSize: 0.05,
-    shimI: 0.25, shimCount: 40, shimLen: 0.45, shimSharp: 3, shimSpeed: 2,
-    ringI: 0.12, ringRadius: 0.38, ringWidth: 0.08, ringChroma: 0.2, ringColor: [1, 0.7, 0.4, 1], flicker: 0.25,
-  }],
-  ['Сварка / вспышка (Welding)', 'Слепящая бело-голубая вспышка: сильное мерцание, искры, дрожание яркости.', {
+  ['Сварка / вспышка (Welding)', 'Слепящая бело-голубая вспышка с сильным мерцанием — взрыв гранаты, сварка, дульная вспышка.', {
     glowI: 1.3, glowSize: 0.55, glowFall: 3.5, glowColor: [0.75, 0.88, 1, 1], coreI: 2.5, coreSize: 0.04,
-    shimI: 0.8, shimCount: 140, shimLen: 0.9, shimSharp: 6, shimSpeed: 4,
-    sparkI: 0.5, sparkCount: 30, sparkSpread: 0.45, sparkSize: 0.02, sparkTwinkle: 1, flicker: 0.5,
-  }],
-  ['Магия (Magic)', 'Розово-фиолетовое сияние с блёстками и радужным кольцом.', {
-    glowI: 1, glowSize: 0.5, glowFall: 3, glowColor: [1, 0.45, 0.95, 1], coreI: 1.2, coreSize: 0.04,
-    raysI: 0.4, raysCount: 5, raysLen: 0.6, raysSharp: 25, raysRandom: 0.3, raysSpin: 1, raysColor: [1, 0.7, 1, 1],
-    ringI: 0.35, ringRadius: 0.35, ringWidth: 0.02, ringChroma: 1, ringColor: [1, 0.8, 1, 1],
-    sparkI: 0.6, sparkCount: 36, sparkSpread: 0.7, sparkSize: 0.025, sparkTwinkle: 0.9,
-  }],
-  ['Объектив с грязью (Dirty lens)', 'Солнце за грязным стеклом: пятна и разводы на линзе подсвечиваются.', {
-    glowI: 0.9, glowSize: 0.6, glowFall: 3, glowColor: [1, 0.85, 0.65, 1], coreI: 1.3, coreSize: 0.04,
-    shimI: 0.3, shimCount: 80, shimLen: 0.6, shimSharp: 5, shimSpeed: 1,
-    ghostI: 0.25, ghostCount: 5, ghostShape: 'poly', ghostBlades: 7, ghostRound: 0.3, ghostColorMode: 'rainbow',
-    dirtI: 0.3, dirtScale: 5, dirtRadius: 0.8,
-  }],
-  ['Кинообъектив (Cinematic)', 'Сдержанный блик: слабое сияние, цепочка семиугольных отражений через кадр.', {
-    posX: -0.55, posY: 0.45, glowI: 0.7, glowSize: 0.35, glowFall: 3, glowColor: [1, 0.92, 0.8, 1], coreI: 1, coreSize: 0.03,
-    ghostI: 0.4, ghostCount: 9, ghostStart: 0.3, ghostSpread: 2.2, ghostSize: 0.07, ghostSizeRand: 0.8, ghostShape: 'poly', ghostBlades: 7, ghostRound: 0.25, ghostSoft: 0.35, ghostRim: 0.35,
-    ghostColorMode: 'rainbow', ghostColor: [1, 0.95, 0.85, 1], ghostChroma: 0.5, edgeFade: false,
+    shimI: 0.8, shimCount: 140, shimLen: 0.9, shimSharp: 6, shimSpeed: 4, flicker: 0.5,
   }],
   ['Мягкий огонёк (Soft orb)', 'Простая светящаяся точка — для частиц, огоньков, светлячков.', {
-    glowI: 1.2, glowSize: 0.5, glowFall: 2.5, glowColor: [1, 0.9, 0.5, 1], coreI: 1.2, coreSize: 0.06, posX: 0, posY: 0,
+    glowI: 1.2, glowSize: 0.5, glowFall: 2.5, glowColor: [1, 0.9, 0.5, 1], coreI: 1.2, coreSize: 0.06,
   }],
 ];
 
@@ -4421,18 +4330,18 @@ const NODES = {
 
   flare: {
     title: 'Оптический блик (Optical Flare)', cat: 'Эффекты', outputs: ['Цвет', 'Интенсивность'], inputs: [], timeDependent: true,
-    desc: 'Генератор бликов объектива для VFX: сияние и ядро, лучи-звезда, мерцающие лучи, анаморфные полосы, кольцо с радужной каймой, отражения (ghosts / multi-iris) вдоль оптической оси — круги или многоугольники диафрагмы, искры и грязь на линзе. Свет аддитивный, яркость может быть больше 1 (HDR).',
+    desc: 'Вспышка-блик для игровых VFX: спрайт, который спавнят на несколько кадров при взрыве, выстреле, вспышке гранаты. Сияние и яркое ядро, лучи-звезда, мерцающие лучи, анаморфные полосы, кольцо с радужной каймой. Свет аддитивный, может быть ярче 1 (HDR).',
     params: [
-      f('posX', 'Источник: X', -1.5, 1.5, -0.3, { help: 'Положение источника света: −1…1 — от левого до правого края кадра. Анимируйте ⏱ — отражения поедут навстречу.' }),
-      f('posY', 'Источник: Y', -1.5, 1.5, 0.25, { help: '−1 — низ, 1 — верх кадра.' }),
+      f('posX', 'Источник: X', -1, 1, 0, { help: 'Положение вспышки в кадре: 0 — центр, −1…1 — от левого до правого края.' }),
+      f('posY', 'Источник: Y', -1, 1, 0, { help: '0 — центр, −1 — низ, 1 — верх кадра.' }),
       f('brightness', 'Общая яркость', 0, 4, 1),
       f('scale', 'Размер', 0.1, 3, 1, { help: 'Масштаб всех элементов вокруг источника.' }),
       { key: 'tint', label: 'Общий оттенок', type: 'color', def: [1, 1, 1, 1] },
-      f('rotation', 'Поворот (°)', -180, 180, 0, { help: 'Поворачивает лучи, полосы и многоугольники отражений.' }),
-      f('anamorph', 'Анаморфность (растяжение по X)', 1, 4, 1, { help: 'Растягивает сияние, кольцо и отражения по горизонтали, как анаморфный объектив.' }),
+      f('rotation', 'Поворот (°)', -180, 180, 0, { help: 'Поворачивает лучи и полосы.' }),
+      f('anamorph', 'Анаморфность (растяжение по X)', 1, 4, 1, { help: 'Растягивает сияние и кольцо по горизонтали, как анаморфный объектив.' }),
       f('flicker', 'Мерцание яркости', 0, 1, 0, { help: 'Случайное дрожание яркости по кадрам (бесшовная петля).' }),
       i('loops', 'Циклов за анимацию', 1, 8, 1),
-      i('seed', 'Seed', 0, 99999, 1, { help: 'Случайные длины лучей, размеры и цвета отражений, позиции искр.' }),
+      i('seed', 'Seed', 0, 99999, 1, { help: 'Случайные длины и яркость лучей, рисунок мерцания.' }),
       e('background', 'Фон', [['black', 'Чёрный (аддитивное смешивание, как в VFX)'], ['transparent', 'Прозрачный (альфа = яркость)']], 'black'),
       b('edgeFade', 'Гасить к краям кадра (спрайты)', true),
 
@@ -4459,7 +4368,7 @@ const NODES = {
       i('shimSpeed', 'Скорость (0 — неподвижно)', 0, 8, 1, { section: 'Мерцание (Shimmer)' }),
 
       f('streakI', 'Сила полосы', 0, 4, 0, { section: 'Полоса (Streak)' }),
-      f('streakLen', 'Длина', 0, 4, 1.8, { section: 'Полоса (Streak)' }),
+      f('streakLen', 'Длина', 0, 2, 0.95, { section: 'Полоса (Streak)' }),
       f('streakThick', 'Толщина', 0.001, 0.1, 0.01, { step: 0.001, section: 'Полоса (Streak)' }),
       f('streakHaze', 'Дымка вокруг полосы', 0, 1, 0.3, { section: 'Полоса (Streak)' }),
       i('streakCount', 'Число полос (крест, звезда)', 1, 4, 1, { section: 'Полоса (Streak)' }),
@@ -4471,52 +4380,20 @@ const NODES = {
       f('ringWidth', 'Ширина', 0.002, 0.4, 0.03, { step: 0.001, section: 'Кольцо (Ring)' }),
       f('ringChroma', 'Радужная кайма', 0, 1, 0.7, { section: 'Кольцо (Ring)' }),
       { key: 'ringColor', label: 'Цвет кольца', type: 'color', def: [1, 1, 1, 1], section: 'Кольцо (Ring)' },
-
-      f('ghostI', 'Сила отражений', 0, 4, 0.35, { section: 'Отражения (Ghosts / Iris)' }),
-      i('ghostCount', 'Количество', 0, 16, 7, { section: 'Отражения (Ghosts / Iris)' }),
-      f('ghostStart', 'Начало на оси', -1, 2, 0.25, { section: 'Отражения (Ghosts / Iris)', help: 'Ось идёт от источника (0) через центр объектива (1) и дальше (2 — зеркально по другую сторону).' }),
-      f('ghostSpread', 'Конец на оси', -1, 3, 2, { section: 'Отражения (Ghosts / Iris)' }),
-      f('axisX', 'Центр объектива: X', -1, 1, 0, { section: 'Отражения (Ghosts / Iris)' }),
-      f('axisY', 'Центр объектива: Y', -1, 1, 0, { section: 'Отражения (Ghosts / Iris)' }),
-      f('ghostSize', 'Размер', 0.005, 0.6, 0.08, { step: 0.001, section: 'Отражения (Ghosts / Iris)' }),
-      f('ghostSizeRand', 'Разброс размеров', 0, 1, 0.6, { section: 'Отражения (Ghosts / Iris)' }),
-      e('ghostShape', 'Форма', [['circle', 'Круг'], ['poly', 'Многоугольник (диафрагма)']], 'poly', { section: 'Отражения (Ghosts / Iris)' }),
-      i('ghostBlades', 'Лепестков диафрагмы (углов)', 3, 12, 6, { section: 'Отражения (Ghosts / Iris)', visible: (p) => p.ghostShape === 'poly' }),
-      f('ghostRound', 'Скругление углов', 0, 1, 0.15, { section: 'Отражения (Ghosts / Iris)', visible: (p) => p.ghostShape === 'poly' }),
-      f('ghostSoft', 'Мягкость края', 0, 1, 0.3, { section: 'Отражения (Ghosts / Iris)' }),
-      f('ghostRim', 'Только контур (кольцо)', 0, 1, 0.3, { section: 'Отражения (Ghosts / Iris)' }),
-      e('ghostColorMode', 'Окраска', [['tint', 'Один цвет'], ['rainbow', 'Радуга по порядку'], ['random', 'Случайные оттенки']], 'rainbow', { section: 'Отражения (Ghosts / Iris)' }),
-      { key: 'ghostColor', label: 'Цвет отражений', type: 'color', def: [1, 0.92, 0.82, 1], section: 'Отражения (Ghosts / Iris)' },
-      f('ghostChroma', 'Хроматическая аберрация', 0, 1, 0.3, { section: 'Отражения (Ghosts / Iris)' }),
-
-      f('sparkI', 'Сила искр', 0, 4, 0, { section: 'Искры (Sparkles)' }),
-      i('sparkCount', 'Количество', 1, 64, 24, { section: 'Искры (Sparkles)' }),
-      f('sparkSpread', 'Разлёт вокруг источника', 0, 1.5, 0.5, { section: 'Искры (Sparkles)' }),
-      f('sparkSize', 'Размер', 0.003, 0.15, 0.02, { step: 0.001, section: 'Искры (Sparkles)' }),
-      f('sparkTwinkle', 'Мигание', 0, 1, 0.8, { section: 'Искры (Sparkles)' }),
-
-      f('dirtI', 'Сила грязи на линзе', 0, 2, 0, { section: 'Грязь на линзе (Lens dirt)' }),
-      f('dirtScale', 'Масштаб пятен', 1, 20, 6, { section: 'Грязь на линзе (Lens dirt)' }),
-      f('dirtRadius', 'Радиус подсветки', 0.1, 3, 0.9, { section: 'Грязь на линзе (Lens dirt)' }),
     ],
     presets: FLARE_PRESETS.map(([label, , set]) => ({ label, get apply() { return flarePreset(set); } })),
-    help: 'Каждый элемент включается своей силой (0 — выключен). Свет считается в линейном пространстве и может быть ярче 1: на прозрачном фоне альфа = яркость, на чёрном — удобно для аддитивного смешивания в движке. Анимация (мерцание, вращение лучей, искры) — бесшовная петля; экспорт — «Спрайт-шит PNG».',
+    help: 'Каждый элемент включается своей силой (0 — выключен). Вспышка по центру кадра и гаснет к краям — готовый спрайт. Свет считается в линейном пространстве и может быть ярче 1: чёрный фон — для аддитивного материала в движке, прозрачный — альфа = яркость. Анимация (мерцание, вращение лучей) — бесшовная петля; экспорт — «Спрайт-шит PNG».',
     seamFn: () => 'Блик привязан к точке кадра и не предназначен для повторения как тайл.',
     eval(ctx) {
       const p = ctx.params, lin = (c) => c.slice(0, 3).map(ColorUtil.toLin), deg = Math.PI / 180;
       const u = {
         u_t: Anim.t, u_loops: p.loops, u_seed: p.seed, u_int: p.brightness, u_scale: p.scale, u_blackBg: p.background === 'black', u_edgeFade: p.edgeFade,
-        u_light: [p.posX, p.posY], u_axis: [p.axisX, p.axisY], u_tint: lin(p.tint), u_rot: p.rotation * deg, u_anam: p.anamorph, u_flicker: p.flicker,
+        u_light: [p.posX, p.posY], u_tint: lin(p.tint), u_rot: p.rotation * deg, u_anam: p.anamorph, u_flicker: p.flicker,
         u_glowI: p.glowI, u_glowSize: p.glowSize, u_glowFall: p.glowFall, u_glowCol: lin(p.glowColor), u_coreI: p.coreI, u_coreSize: p.coreSize,
         u_raysI: p.raysI, u_raysN: p.raysCount, u_raysLen: p.raysLen, u_raysSharp: p.raysSharp, u_raysRand: p.raysRandom, u_raysAng: p.raysAngle * deg, u_raysSpin: p.raysSpin, u_raysCol: lin(p.raysColor),
         u_shimI: p.shimI, u_shimN: p.shimCount, u_shimLen: p.shimLen, u_shimSharp: p.shimSharp, u_shimSpeed: p.shimSpeed,
         u_strI: p.streakI, u_strLen: p.streakLen, u_strThick: p.streakThick, u_strHaze: p.streakHaze, u_strN: p.streakCount, u_strAng: p.streakAngle * deg, u_strCol: lin(p.streakColor),
         u_ringI: p.ringI, u_ringR: p.ringRadius, u_ringW: p.ringWidth, u_ringChroma: p.ringChroma, u_ringCol: lin(p.ringColor),
-        u_ghI: p.ghostI, u_ghN: p.ghostCount, u_ghStart: p.ghostStart, u_ghSpread: p.ghostSpread, u_ghSize: p.ghostSize, u_ghSizeRand: p.ghostSizeRand,
-        u_ghPoly: p.ghostShape === 'poly', u_ghBlades: p.ghostBlades, u_ghRound: p.ghostRound, u_ghSoft: p.ghostSoft, u_ghRim: p.ghostRim,
-        u_ghColMode: { tint: 0, rainbow: 1, random: 2 }[p.ghostColorMode] ?? 1, u_ghCol: lin(p.ghostColor), u_ghChroma: p.ghostChroma,
-        u_spI: p.sparkI, u_spN: p.sparkCount, u_spSpread: p.sparkSpread, u_spSize: p.sparkSize, u_spTw: p.sparkTwinkle,
-        u_dirtI: p.dirtI, u_dirtScale: p.dirtScale, u_dirtR: p.dirtRadius,
       };
       const col = ctx.alloc();
       ctx.pass('flare', col, { ...u, u_outMode: 0 });
@@ -4752,6 +4629,152 @@ const NOISE_PRESETS = [
   ['Волны с искажением', 'waves', { shape: 'sine', countX: 0, countY: 12, distort: 3 }, 'Полосы, изогнутые шумом (подключите шум ко входу).', 'Полосы'],
 ];
 const NOISE_GROUPS = ['Мягкие', 'Рельеф', 'Органика', 'Клетки', 'Зерно', 'Вытянутые', 'Полосы'];
+
+
+// ===== i18n.js =====
+// ---------------------------------------------------------------------------
+// Industry-standard English names for nodes, ports, parameters, options and
+// presets (as in Substance Designer, Houdini, After Effects, Photoshop).
+// Applied once at load: the English name becomes the display name, the
+// Russian one is kept in `.ru` and is shown as a tooltip and matched by
+// search, so both «размытие» and «blur» find Gaussian Blur. Stored projects
+// only hold node types, parameter keys and option values, so nothing changes
+// for existing files. The UI chrome and help texts stay in Russian.
+// ---------------------------------------------------------------------------
+const I18N = (() => {
+  const TITLE = {
+    image: 'Image', constant: 'Uniform Color', noise: 'Noise', voronoi: 'Voronoi', shape: 'Shape', gradient: 'Gradient',
+    waves: 'Waves', tiler: 'Tile Sampler', splatter: 'Splatter', levels: 'Levels', invert: 'Invert', grayscale: 'Grayscale',
+    ramp: 'Gradient Map', hsv: 'Hue / Saturation', blend: 'Blend', transform: 'Transform 2D', warp: 'Warp',
+    gaussian: 'Gaussian Blur', dirblur: 'Directional Blur', radialblur: 'Radial Blur', glow: 'Glow', normal: 'Height to Normal',
+    split: 'Split RGBA', combine: 'Combine RGBA', code: 'GLSL Code', fx: 'FX Effect', flare: 'Optical Flare', polar: 'Polar Coordinates', output: 'Output',
+  };
+  const CAT = {
+    'Источники': 'Generators', 'Узоры': 'Patterns', 'Эффекты': 'Effects', 'Обработка': 'Adjustments', 'Размытие': 'Blur & Glow',
+    'Нормали': 'Normal', 'Каналы': 'Channels', 'Код': 'Code', 'Выход': 'Output',
+  };
+  const PORT = {
+    'Цвет': 'Color', 'Значение': 'Value', 'Шум': 'Noise', 'Ячейки': 'Cells', 'Маска': 'Mask', 'Градиент': 'Gradient', 'Волны': 'Waves',
+    'Узор': 'Pattern', 'Случайное': 'Random', 'Выход': 'Output', 'Серый': 'Gray', 'Только свечение': 'Glow Only', 'Интенсивность': 'Intensity',
+    'Искажение': 'Warp Map', 'Вход': 'Input', 'A (фон)': 'Background (A)', 'B (слой)': 'Foreground (B)', 'Карта': 'Map', 'Высота': 'Height',
+  };
+  const LABEL = {
+    'Файл': 'File', 'Интерпретация': 'Color Space', 'Приведение к размеру проекта': 'Fit to Project Size', 'Края при фильтрации': 'Filter Edges',
+    'Режим': 'Mode', 'Значение': 'Value', 'Цвет': 'Color', 'Тип': 'Type', 'Фрактал': 'Fractal', 'Бесшовный (Tileable)': 'Tileable',
+    'Масштаб (Scale)': 'Scale', 'Размер зерна (px проекта)': 'Grain Size (px)', 'Растяжение по Y (×)': 'Stretch Y', 'Seed': 'Seed',
+    'Детализация (Detail, октавы)': 'Octaves', 'Шероховатость шума (Persistence)': 'Roughness', 'Лакунарность (×частота на октаву)': 'Lacunarity',
+    'Искажение (Domain Warp)': 'Domain Warp', 'Масштаб искажения': 'Warp Scale', 'Эволюция (анимация)': 'Evolution', 'Контраст (Contrast)': 'Contrast',
+    'Инвертировать': 'Invert', 'Метрика расстояния': 'Distance Metric', 'Случайность (Randomness)': 'Disorder', 'Фигура': 'Shape',
+    'Размер X': 'Size X', 'Размер Y': 'Size Y', 'Позиция X': 'Position X', 'Позиция Y (вниз)': 'Position Y', 'Поворот, °': 'Rotation',
+    'Мягкость края': 'Edge Softness', 'Толщина кольца': 'Ring Thickness', 'Переносить через края (Repeat)': 'Wrap Around',
+    'Центр X': 'Center X', 'Центр Y (вниз)': 'Center Y', 'Повторение': 'Repeat', 'Инвертировать (Invert)': 'Invert', 'Форма': 'Shape',
+    'Раскладка': 'Layout', 'Периодов по X': 'Frequency X', 'Периодов по Y': 'Frequency Y', 'Колец': 'Rings', 'Фаза': 'Phase',
+    'Заполнение меандра': 'Duty Cycle', 'Сила искажения': 'Distortion', 'Копий по X': 'X Amount', 'Копий по Y': 'Y Amount',
+    'Сдвиг чётных рядов (доля ячейки)': 'Row Offset', 'Размер X (доля ячейки)': 'Scale X', 'Размер Y (доля ячейки)': 'Scale Y',
+    'Фаска (Bevel)': 'Bevel', 'Случайная позиция': 'Position Random', 'Случайный размер': 'Size Random', 'Случайный поворот, ±°': 'Rotation Random',
+    'Поворот только на 90°': 'Rotation Snap 90°', 'Случайная яркость': 'Luminance Random', 'Заполненность': 'Density',
+    'Наложение копий': 'Blending Mode', 'Количество': 'Amount', 'Размер (доля текстуры)': 'Size', 'Вытянутость (Y/X)': 'Aspect Ratio',
+    'Фаска / мягкость': 'Bevel / Softness', 'Вход: чёрная точка': 'Input Black', 'Вход: белая точка': 'Input White', 'Гамма (Gamma)': 'Gamma',
+    'Выход: чёрный': 'Output Black', 'Выход: белый': 'Output White', 'Применять к альфе': 'Affect Alpha', 'Источник': 'Source',
+    'Сохранить альфу': 'Keep Alpha', 'Точки': 'Gradient Stops', 'Интерполяция': 'Interpolation', 'Входное значение': 'Input Space',
+    'Выход': 'Output Space', 'Тон (Hue), °': 'Hue', 'Насыщенность (Saturation) ×': 'Saturation', 'Яркость (Value) ×': 'Lightness',
+    'Сила (Opacity)': 'Opacity', 'Альфа': 'Alpha Blending', 'Смещение X': 'Offset X', 'Смещение Y (вниз)': 'Offset Y', 'Масштаб X': 'Scale X',
+    'Масштаб Y': 'Scale Y', 'Края': 'Tiling Mode', 'Сила': 'Intensity', 'Угол, °': 'Angle', 'Радиус (σ, px проекта)': 'Radius (σ, px)',
+    'С учётом альфы (для цветных изображений с прозрачностью)': 'Alpha Aware', 'Длина (px проекта)': 'Length (px)', 'С учётом альфы': 'Alpha Aware',
+    'Качество (выборок)': 'Quality (Samples)', 'Порог яркости': 'Threshold', 'Мягкость порога': 'Threshold Knee', 'Оттенок свечения': 'Glow Tint',
+    'Свечение расширяет альфу (спрайты)': 'Extend Alpha', 'Источник высоты': 'Height Source', 'Сила (Strength)': 'Intensity',
+    'Предв. сглаживание (σ, px проекта)': 'Pre-Blur (σ, px)', 'Инвертировать высоту': 'Invert Height', 'Соглашение Y': 'Normal Format',
+    'Дополнительно инвертировать X (красный)': 'Invert X (Red)', 'Пресет': 'Preset',
+    'R: источник': 'R Source', 'R: константа / по умолчанию': 'R Default', 'R: инвертировать (1−x)': 'R Invert',
+    'G: источник': 'G Source', 'G: константа / по умолчанию': 'G Default', 'G: инвертировать (1−x)': 'G Invert',
+    'B: источник': 'B Source', 'B: константа / по умолчанию': 'B Default', 'B: инвертировать (1−x)': 'B Invert',
+    'A: источник': 'A Source', 'A: константа / по умолчанию': 'A Default', 'A: инвертировать (1−x)': 'A Invert',
+    'GLSL-код': 'GLSL Code', 'Эффект': 'Effect', 'Палитра (интенсивность → цвет и альфа)': 'Color Gradient', 'Яркость': 'Brightness',
+    'Размер': 'Size', 'Циклов за анимацию': 'Loops', 'Детализация (октавы)': 'Octaves', 'Количество (искры, лучи, рукава, смены формы)': 'Count',
+    'Толщина': 'Thickness', 'Искажение': 'Distortion', 'Закрутка / поворот': 'Twist', 'Фон': 'Background',
+    'Источник: X': 'Light Position X', 'Источник: Y': 'Light Position Y', 'Общая яркость': 'Brightness', 'Общий оттенок': 'Global Tint',
+    'Поворот (°)': 'Rotation', 'Анаморфность (растяжение по X)': 'Anamorphic', 'Мерцание яркости': 'Flicker', 'Гасить к краям кадра (спрайты)': 'Edge Fade',
+    'Сила свечения': 'Glow Intensity', 'Радиус свечения': 'Glow Radius', 'Спад (больше — плотнее к центру)': 'Glow Falloff', 'Цвет свечения': 'Glow Color',
+    'Яркость ядра': 'Hotspot Intensity', 'Размер ядра': 'Hotspot Size', 'Сила лучей': 'Rays Intensity', 'Число лучей': 'Rays Count', 'Длина': 'Length',
+    'Острота': 'Sharpness', 'Случайность длины и яркости': 'Randomness', 'Угол (°)': 'Angle', 'Вращение (шагов за цикл)': 'Spin (steps per loop)',
+    'Цвет лучей': 'Rays Color', 'Сила мерцающих лучей': 'Shimmer Intensity', 'Плотность лучиков': 'Shimmer Density', 'Резкость': 'Sharpness',
+    'Скорость (0 — неподвижно)': 'Speed', 'Сила полосы': 'Streak Intensity', 'Дымка вокруг полосы': 'Haze', 'Число полос (крест, звезда)': 'Streak Count',
+    'Цвет полосы': 'Streak Color', 'Сила кольца': 'Ring Intensity', 'Радиус': 'Radius', 'Ширина': 'Width', 'Радужная кайма': 'Chromatic Fringe',
+    'Цвет кольца': 'Ring Color', 'Сила отражений': 'Ghosts Intensity', 'Начало на оси': 'Axis Start', 'Конец на оси': 'Axis End',
+    'Центр объектива: X': 'Lens Center X', 'Центр объектива: Y': 'Lens Center Y', 'Разброс размеров': 'Size Random',
+    'Лепестков диафрагмы (углов)': 'Aperture Blades', 'Скругление углов': 'Roundness', 'Только контур (кольцо)': 'Outline',
+    'Окраска': 'Coloring', 'Цвет отражений': 'Ghosts Color', 'Хроматическая аберрация': 'Chromatic Aberration', 'Сила искр': 'Sparkles Intensity',
+    'Разлёт вокруг источника': 'Spread', 'Мигание': 'Twinkle', 'Сила грязи на линзе': 'Lens Dirt Intensity', 'Масштаб пятен': 'Dirt Scale',
+    'Радиус подсветки': 'Illumination Radius', 'Повторов по кругу': 'Repeat Around', 'Назначение': 'Usage', 'Соглашение нормали для 3D': 'Normal Format (3D)',
+    'Имя файла': 'File Name',
+  };
+  const OPT = {
+    'Цвет sRGB (Color)': 'Color (sRGB)', 'Данные каналов (Data)': 'Data (linear)', 'Растянуть (Stretch)': 'Stretch', 'Заполнить с обрезкой (Cover)': 'Cover (crop)',
+    '1:1 без масштаба, повтор (Tile)': 'Tile 1:1', 'Повтор (Repeat)': 'Repeat', 'Край (Clamp)': 'Clamp', 'Серое значение (данные)': 'Grayscale',
+    'Цвет RGBA (sRGB)': 'Color RGBA', 'Градиентный (Perlin)': 'Perlin', 'Клеточный (Worley)': 'Worley', 'Белый шум (White)': 'White Noise',
+    'Обычный (fBM) — облака': 'fBM', 'Гребни (Ridged) — горы, трещины': 'Ridged', 'Клубы (Billow) — камни, дым': 'Billow',
+    'Расстояние до точки (F1)': 'F1 Distance', 'До второй точки (F2)': 'F2 Distance', 'Трещины (F2 − F1)': 'Crackle (F2 − F1)',
+    'Границы ячеек (Borders)': 'Borders', 'Значение ячейки (Cell)': 'Cell Value', 'Евклидова — круглые': 'Euclidean', 'Манхэттен — ромбы': 'Manhattan',
+    'Чебышёв — квадраты': 'Chebyshev', 'Круг / эллипс': 'Disc', 'Прямоугольник': 'Square', 'Кольцо': 'Ring', 'Линейный (Linear)': 'Linear',
+    'Радиальный (Radial)': 'Radial', 'Угловой (Angular)': 'Angular', 'Нет (Clamp)': 'Clamp', 'Зеркально (Mirror)': 'Mirror', 'Синус': 'Sine',
+    'Треугольник': 'Triangle', 'Пила': 'Sawtooth', 'Меандр (Square)': 'Square', 'Линейные (бесшовно)': 'Linear (tileable)', 'Кольца от центра': 'Concentric',
+    'Круг': 'Disc', 'Мягкое пятно': 'Gaussian', 'Со входа «Узор»': 'From Pattern Input', 'Максимум (Max)': 'Max (Lighten)', 'Сложение (Add)': 'Add (Linear Dodge)',
+    'Сверху — случайный порядок': 'Copy (random order)', 'Яркость (Luminance)': 'Luminance', 'Линейная (Linear)': 'Linear', 'Плавная (Smooth)': 'Smooth',
+    'Ступенчатая (Constant)': 'Constant', 'Канал R': 'R Channel', 'Цвет sRGB': 'Color (sRGB)', 'Данные': 'Data (linear)', 'Замена (Mix)': 'Normal (Copy)',
+    'Умножение (Multiply)': 'Multiply', 'Экран (Screen)': 'Screen', 'Минимум (Min)': 'Min (Darken)', 'Та же формула, что для RGB': 'Blend Like RGB',
+    'Взять из A': 'Keep Background', 'Направленный (Directional)': 'Directional', 'По градиенту карты (Warp)': 'Gradient (Slope)', 'Приближение (Zoom)': 'Zoom',
+    'Вращение (Spin)': 'Spin', 'OpenGL (+Y, зелёный вверх)': 'OpenGL (Y+)', 'DirectX (−Y, зелёный вниз)': 'DirectX (Y−)',
+    'ORM (R=AO, G=Roughness, B=Metallic, A=1)': 'ORM (AO, Roughness, Metallic)', 'Unity HDRP Mask (R=Metallic, G=AO, B=Detail, A=Smoothness)': 'Unity HDRP Mask Map',
+    'Свой (Custom RGBA)': 'Custom', 'R входа': 'Input R', 'G входа': 'Input G', 'B входа': 'Input B', 'A входа': 'Input A', 'Яркость входа': 'Input Luminance',
+    'Константа': 'Constant', 'Данные (числа каналов)': 'Data (linear)',
+    'Пламя (свеча)': 'Candle Flame', 'Огонь (стена)': 'Fire Wall', 'Взрыв (однократно)': 'Explosion', 'Дым (клуб, однократно)': 'Smoke Puff',
+    'Дым (столб, петля)': 'Smoke Column', 'Искры (разлёт)': 'Sparks Burst', 'Искры (фонтан, петля)': 'Sparks Fountain', 'Молния': 'Lightning',
+    'Электрические дуги': 'Electric Arcs', 'Вспышка / солнце': 'Sun Flash', 'Блик-звезда (мерцание)': 'Twinkle Star', 'Ударная волна (однократно)': 'Shockwave',
+    'Магический круг': 'Magic Circle', 'Энергетическая сфера': 'Energy Orb', 'Портал / вихрь': 'Portal Vortex', 'Лазерный луч': 'Laser Beam',
+    'Удар / слэш (однократно)': 'Slash', 'Облако': 'Cloud', 'Каустика (вода)': 'Caustics',
+    'Прозрачный (альфа из палитры)': 'Transparent', 'Чёрный (для аддитивного смешивания)': 'Black (additive)',
+    'Чёрный (аддитивное смешивание, как в VFX)': 'Black (additive)', 'Прозрачный (альфа = яркость)': 'Transparent (alpha = luminance)',
+    'Многоугольник (диафрагма)': 'Polygon (aperture)', 'Один цвет': 'Single Color', 'Радуга по порядку': 'Rainbow', 'Случайные оттенки': 'Random Hue',
+    'Полоса → круг': 'Rectangular to Polar', 'Круг → полоса': 'Polar to Rectangular', 'Обычная карта': 'Generic', 'Base Color (альбедо)': 'Base Color',
+    'Авто (по ноде Height to Normal)': 'Auto (from Height to Normal)',
+  };
+  const GROUP = {
+    'Зацикленные': 'Looping', 'Однократные': 'One-shot', 'Оптические блики (Optical Flares)': 'Optical Flares',
+    'Мягкие': 'Soft', 'Рельеф': 'Ridges & Relief', 'Органика': 'Organic', 'Клетки': 'Cells', 'Зерно': 'Grain', 'Вытянутые': 'Anisotropic',
+  };
+  const NOISE = {
+    'Мягкий Perlin': 'Soft Perlin', 'Мелкий Perlin': 'Fine Perlin', 'Прожилки / вены': 'Veins', 'Турбулентность': 'Turbulence', 'Мрамор': 'Marble',
+    'Туман / дым': 'Fog', 'Грязь / гранж': 'Grunge', 'Пятна': 'Spots', 'Клеточный fBM': 'Cellular fBM', 'Белый шум': 'White Noise',
+    'Зерно / плёнка': 'Film Grain', 'Пиксельный шум': 'Pixel Noise', 'Шлифованный металл': 'Brushed Metal', 'Волокна дерева': 'Wood Fibers',
+    'Штрихи / дождь': 'Streaks / Rain', 'Дюны / песок': 'Dunes', 'Ячейки (F1)': 'Cells (F1)', 'Трещины (F2−F1)': 'Crackle', 'Камни / плитняк': 'Flagstones',
+    'Мозаика': 'Mosaic', 'Кристаллы (Чебышёв)': 'Crystals', 'Полосы': 'Stripes',
+  };
+  // «Русское (English)» -> English
+  const paren = (s) => { const m = /^(.*?)\s*\(([^()]*[A-Za-z][^()]*)\)\s*$/.exec(s); return m ? m[2] : null; };
+  const tr = (map, s) => map[s] || paren(s) || s;
+  const ruOnly = (s) => s.replace(/\s*\(([^()]*[A-Za-z][^()]*)\)\s*$/, '');   // «Размытие по Гауссу (Gaussian Blur)» -> «Размытие по Гауссу»
+
+  for (const [type, d] of Object.entries(NODES)) {
+    d.ru = ruOnly(d.title);
+    d.title = TITLE[type] || tr({}, d.title);
+    d.outputsRu = d.outputs;
+    d.outputs = d.outputs.map((o) => PORT[o] || o);
+    for (const inp of d.inputs) { if (PORT[inp.label]) { inp.ru = inp.label; inp.label = PORT[inp.label]; } }
+    for (const q of d.params) {
+      if (LABEL[q.label]) { q.ru = ruOnly(q.label); q.label = LABEL[q.label]; }
+      if (q.options) q.options = q.options.map(([v, l]) => [v, OPT[l] || l]);
+      if (q.section) q.section = paren(q.section) || q.section;
+    }
+  }
+  NODES.output.titleFn = (p) => ({ basecolor: 'Output: Base Color', normal: 'Output: Normal', orm: 'Output: ORM' })[p.usage] || 'Output';
+  for (const x of CATALOG_EXTRA) x.title = x.title.replace('Выход:', 'Output:');
+  for (const fx of FX_LIST) { fx.ru = fx.title; fx.title = OPT[fx.title] || fx.title; }
+  for (const n of NOISE_PRESETS) { n[5] = ruOnly(n[0]); n[0] = NOISE[n[0]] || paren(n[0]) || n[0]; n[4] = GROUP[n[4]] || n[4]; }
+  for (const f of FLARE_PRESETS) { f[3] = ruOnly(f[0]); f[0] = paren(f[0]) || f[0]; }
+  NODES.flare.presets.forEach((pr, k) => { pr.ru = FLARE_PRESETS[k][3]; pr.label = FLARE_PRESETS[k][0]; });
+
+  return { cat: (c) => CAT[c] || c, group: (g) => GROUP[g] || g };
+})();
 
 
 // ===== graph.js =====
@@ -5268,12 +5291,12 @@ const PresetBrowser = (() => {
 
   function items() {
     if (tab === 'noise') {
-      return NOISE_PRESETS.map(([title, type, params, desc, group], k) => ({ key: 'n' + k, title, type, params, desc, group }));
+      return NOISE_PRESETS.map(([title, type, params, desc, group, ru], k) => ({ key: 'n' + k, title, type, params, desc, group, ru }));
     }
     return [
-      ...FLARE_PRESETS.map(([title, desc, set], k) => ({ key: 'fl' + k, title, type: 'flare', desc, group: 'Оптические блики (Optical Flares)', params: flarePreset(set) })),
+      ...FLARE_PRESETS.map(([title, desc, set, ru], k) => ({ key: 'fl' + k, title, ru, type: 'flare', desc, group: I18N.group('Оптические блики (Optical Flares)'), params: flarePreset(set) })),
       ...FX_LIST.map((fx) => ({
-        key: 'fx:' + fx.id, title: fx.title, type: 'fx', desc: fx.note, group: fx.oneShot ? 'Однократные' : 'Зацикленные',
+        key: 'fx:' + fx.id, title: fx.title, ru: fx.ru, type: 'fx', desc: fx.note, group: I18N.group(fx.oneShot ? 'Однократные' : 'Зацикленные'),
         params: { effect: fx.id, stops: fxStops(fx.palette), ...fx.defaults },
       })),
     ];
@@ -5311,7 +5334,7 @@ const PresetBrowser = (() => {
     const body = $('#nd-body');
     body.textContent = '';
     queue = [];
-    const list = items().filter((it) => !q || (it.title + ' ' + it.desc + ' ' + it.group).toLowerCase().includes(q));
+    const list = items().filter((it) => !q || (it.title + ' ' + (it.ru || '') + ' ' + it.desc + ' ' + it.group).toLowerCase().includes(q));
     const groups = [...new Set(list.map((it) => it.group))];
     for (const g of groups) {
       const h = document.createElement('h4'); h.textContent = g; body.append(h);
@@ -5319,7 +5342,7 @@ const PresetBrowser = (() => {
       for (const it of list.filter((x) => x.group === g)) {
         const card = document.createElement('div');
         card.className = 'nd-card';
-        card.title = it.desc + '\n\nЩелчок — добавить в граф, или перетащите на граф';
+        card.title = (it.ru ? it.ru + ' — ' : '') + it.desc + '\n\nЩелчок — добавить в граф, или перетащите на граф';
         card.draggable = true;
         const cv = document.createElement('canvas'); cv.width = cv.height = TH;
         const lbl = document.createElement('div'); lbl.textContent = it.title;
@@ -5491,8 +5514,8 @@ const GraphView = (() => {
       e.stopPropagation();
       if (!e.target.classList.contains('dot')) App.select(n.id, { toggle: e.ctrlKey || e.metaKey || e.shiftKey, keep: true });
     });
-    // phone: double tap on a node opens its parameters
-    el.addEventListener('dblclick', (e) => { if (!e.target.classList.contains('dot') && App.isMobile()) App.mtab('params'); });
+    // double click: pin this node to the preview (again: unpin); single click only selects for editing
+    el.addEventListener('dblclick', (e) => { if (!e.target.classList.contains('dot')) App.pinPreview(n.id); });
     el.addEventListener('dragover', (e) => { if (n.type === 'image') e.preventDefault(); });
     el.addEventListener('drop', (e) => {
       if (n.type !== 'image') return;
@@ -5528,6 +5551,7 @@ const GraphView = (() => {
     for (const [id, rec] of els) {
       rec.el.classList.toggle('sel', App.state.multi.has(id) || id === App.state.selected);
       rec.el.classList.toggle('primary', id === App.state.selected && App.state.multi.size > 1);
+      rec.el.classList.toggle('pinned', id === App.pinnedId());
       rec.el.querySelector('.badge.out').textContent = id === Graph.state.activeOutput ? '★' : '';
       const err = Engine.errors.get(id);
       const be = rec.el.querySelector('.badge.err');
@@ -5648,10 +5672,11 @@ const GraphView = (() => {
     tempWire = { a: portPos(id, 'out', port), b: toGraph(e.clientX, e.clientY) };
     drawWires();
     drag(e, (ev) => { tempWire.b = toGraph(ev.clientX, ev.clientY); highlight(portUnder(ev.clientX, ev.clientY, 'in')); drawWires(); }, (ev) => {
-      tempWire = null; highlight(null);
+      highlight(null);
       const hit = portUnder(ev.clientX, ev.clientY, 'in');
-      if (hit) App.tryConnect(id, port, hit.id, hit.port);
-      else drawWires();
+      if (hit) { tempWire = null; App.tryConnect(id, port, hit.id, hit.port); return; }
+      if (overEmptyGraph(ev)) { QuickAdd.open(ev.clientX, ev.clientY, { ...toGraph(ev.clientX, ev.clientY), from: { id, port } }); return; }   // wire stays until a node is picked
+      tempWire = null; drawWires();
     });
   }
 
@@ -5678,12 +5703,19 @@ const GraphView = (() => {
     }
     tempWire = { a: toGraph(e.clientX, e.clientY), b: portPos(id, 'in', port) };
     drag(e, (ev) => { tempWire.a = toGraph(ev.clientX, ev.clientY); highlight(portUnder(ev.clientX, ev.clientY, 'out')); drawWires(); }, (ev) => {
-      tempWire = null; highlight(null);
+      highlight(null);
       const hit = portUnder(ev.clientX, ev.clientY, 'out');
-      if (hit) App.tryConnect(hit.id, hit.port, id, port);
-      else drawWires();
+      if (hit) { tempWire = null; App.tryConnect(hit.id, hit.port, id, port); return; }
+      if (overEmptyGraph(ev)) { QuickAdd.open(ev.clientX, ev.clientY, { ...toGraph(ev.clientX, ev.clientY), to: { id, port } }); return; }
+      tempWire = null; drawWires();
     });
   }
+
+  function overEmptyGraph(ev) {
+    const el = document.elementFromPoint(ev.clientX, ev.clientY);
+    return !!(el && el.closest('#graph') && !el.closest('.node') && !el.closest('#graph-hud'));
+  }
+  function clearTempWire() { tempWire = null; drawWires(); }
 
   // Empty space: left drag = selection rectangle (like a desktop), right/middle drag = pan.
   // Touch: one finger on empty space pans, two fingers pinch-zoom.
@@ -5820,7 +5852,132 @@ const GraphView = (() => {
   }
   function thumbKey(id) { const r = els.get(id); return r ? r.thumbKey : null; }
 
-  return { init, rebuild, drawWires, refreshMarks, updateLabels, measure, center, fit, setThumb, thumbKey, view, applyView };
+  return { init, rebuild, drawWires, clearTempWire, toGraph, refreshMarks, updateLabels, measure, center, fit, setThumb, thumbKey, view, applyView };
+})();
+
+
+// ===== ui-quickadd.js =====
+// ---------------------------------------------------------------------------
+// Quick add: drop a wire on empty graph space (or press Tab over the graph)
+// and a small searchable node menu opens right there. Type a name (English
+// or Russian), pick with ↑/↓ + Enter or a click: the node is created at that
+// spot with the wire already plugged into its first compatible port.
+// ---------------------------------------------------------------------------
+const QuickAdd = (() => {
+  let box = null, input = null, listEl = null, ctx = null, items = [], sel = 0;
+
+  const kindOk = (a, b) => a === 'any' || b === 'any' || a === b;
+
+  function candidates() {
+    const all = [];
+    for (const [type, d] of Object.entries(NODES)) {
+      if (ctx.from && !d.inputs.length) continue;
+      if (ctx.to && !d.outputs.length) continue;
+      if (type === 'output') continue;   // added below together with the typed Output entries
+      all.push({ type, title: d.title, ru: d.ru, cat: d.cat, text: App.nodeSearchText(type) });
+    }
+    if (!ctx.to) {
+      all.push({ type: 'output', title: 'Output', ru: 'Выход', cat: 'Выход', text: App.nodeSearchText('output') });
+      CATALOG_EXTRA.forEach((x) => all.push({ type: x.type, title: x.title, ru: x.desc, cat: NODES[x.type].cat, params: x.params, text: (x.title + ' ' + x.desc + ' ' + App.nodeSearchText(x.type)).toLowerCase() }));
+    }
+    return all;
+  }
+
+  function filter() {
+    const q = input.value.trim().toLowerCase();
+    const all = candidates();
+    if (!q) {
+      const order = ['Источники', 'Узоры', 'Эффекты', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
+      items = all.sort((a, b) => order.indexOf(a.cat) - order.indexOf(b.cat));
+    } else {
+      const score = (it) => {
+        const t = it.title.toLowerCase(), r = (it.ru || '').toLowerCase();
+        if (t.startsWith(q) || r.startsWith(q)) return 0;
+        if (t.split(/[\s/:]+/).some((w) => w.startsWith(q)) || r.split(/[\s/:()]+/).some((w) => w.startsWith(q))) return 1;
+        if (t.includes(q) || r.includes(q)) return 2;
+        return it.text.includes(q) ? 3 : 9;
+      };
+      items = all.map((it) => ({ it, s: score(it) })).filter((x) => x.s < 9).sort((a, b) => a.s - b.s).map((x) => x.it);
+    }
+    sel = 0;
+    render();
+  }
+
+  function render() {
+    listEl.textContent = '';
+    let cat = null;
+    const q = input.value.trim();
+    items.forEach((it, k) => {
+      if (!q && it.cat !== cat) {
+        cat = it.cat;
+        const h = document.createElement('div'); h.className = 'qa-cat'; h.textContent = I18N.cat(cat); listEl.append(h);
+      }
+      const row = document.createElement('div');
+      row.className = 'qa-item' + (k === sel ? ' on' : '');
+      row.innerHTML = '<span></span><small></small>';
+      row.firstChild.textContent = it.title;
+      row.lastChild.textContent = it.ru && it.ru.length < 40 ? it.ru : '';
+      row.addEventListener('pointerdown', (e) => { e.preventDefault(); pick(k); });
+      row.addEventListener('pointermove', () => { if (sel !== k) { sel = k; mark(); } });
+      listEl.append(row);
+    });
+    if (!items.length) { const e = document.createElement('div'); e.className = 'qa-empty'; e.textContent = 'Ничего не найдено'; listEl.append(e); }
+  }
+  function mark() {
+    const rows = listEl.querySelectorAll('.qa-item');
+    rows.forEach((r, k) => r.classList.toggle('on', k === sel));
+    if (rows[sel]) rows[sel].scrollIntoView({ block: 'nearest' });
+  }
+
+  function pick(k) {
+    const it = items[k];
+    if (!it) return;
+    const c = ctx;
+    close();
+    App.quickAddNode(it.type, it.params, c);
+  }
+
+  // ctx: { x, y (graph coords of the drop), from?: {id, port}, to?: {id, port} }
+  function open(clientX, clientY, context) {
+    close();
+    ctx = context;
+    box = document.createElement('div');
+    box.id = 'quickadd';
+    box.innerHTML = '<input type="search" placeholder="Нода… (Enter — добавить, Esc — отмена)"><div class="qa-list"></div>';
+    document.body.append(box);
+    input = box.querySelector('input'); listEl = box.querySelector('.qa-list');
+    const w = 260, h = 340;
+    box.style.left = Math.max(4, Math.min(clientX, innerWidth - w - 4)) + 'px';
+    box.style.top = Math.max(4, Math.min(clientY, innerHeight - h - 4)) + 'px';
+    input.addEventListener('input', filter);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(items.length - 1, sel + 1); mark(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(0, sel - 1); mark(); }
+      else if (e.key === 'Enter') { e.preventDefault(); pick(sel); }
+      else if (e.key === 'Escape') { e.preventDefault(); close(); }
+      e.stopPropagation();
+    });
+    setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
+    filter();
+    input.focus();
+  }
+  function outside(e) { if (box && !box.contains(e.target)) close(); }
+  function close() {
+    document.removeEventListener('pointerdown', outside, true);
+    if (box) box.remove();
+    box = null; ctx = null;
+    GraphView.clearTempWire();
+  }
+  const isOpen = () => !!box;
+
+  // First port of the new node that accepts / produces the dragged wire's kind.
+  function matchPort(node, dir, kind) {
+    const n = (dir === 'in' ? NODES[node.type].inputs : NODES[node.type].outputs).length;
+    for (let k = 0; k < n; k++) if (kindOk(portKind(node, dir, k), kind)) return k;
+    return n ? 0 : -1;
+  }
+
+  return { open, close, isOpen, matchPort };
 })();
 
 
@@ -5833,7 +5990,7 @@ const GraphView = (() => {
 const ParamsPanel = (() => {
   const $ = (s) => document.querySelector(s);
   let lastPreset = null;
-  const closedSections = new Set(['flare/Искры (Sparkles)', 'flare/Грязь на линзе (Lens dirt)']);
+  const closedSections = new Set();
   let el, current = null, rows = [], seamEl = null, errEl = null, portsEl = null;
 
   function init() { el = $('#params'); }
@@ -5874,7 +6031,7 @@ const ParamsPanel = (() => {
     if (App.state.multi.size > 1) { buildMulti(); return; }
     if (!node) { buildProject(); return; }
     const def = NODES[node.type];
-    el.append(h('h3', { text: nodeTitle(node) }), h('div', { class: 'sub', text: `id: ${node.id} · ${def.cat}` }));
+    el.append(h('h3', { text: nodeTitle(node) }), h('div', { class: 'sub', text: `id: ${node.id} · ${I18N.cat(def.cat)} · ${def.ru || ''}` }));
     const actions = h('div', { class: 'actions' },
       h('button', { text: 'Дублировать', title: 'Ctrl+D', onclick: () => App.duplicate(node.id) }),
       h('button', { text: 'Удалить', title: 'Delete', onclick: () => App.removeNode(node.id) }),
@@ -5940,6 +6097,7 @@ const ParamsPanel = (() => {
 
   function labelEl(d, node, text) {
     const l = h('label', { text: text || d.label });
+    if (d.ru && !text) l.title = d.ru;
     if (d.help) l.append(h('span', { class: 'q', title: d.help, text: '?' }));
     if (node && d.type !== 'image') {
       const on = Graph.isExposed(node.id, d.key);
@@ -6882,7 +7040,13 @@ const Preview = (() => {
       if (st.layout === '3d') return;
     }
     if (!cur) { info.textContent = 'Нет выбранной ноды и основного Output.'; return; }
-    add(nodeTitle(cur.node) + (cur.id === App.state.selected ? '' : ' (основной выход)'));
+    if (cur.id === App.pinnedId()) {
+      const b = document.createElement('button');
+      b.className = 'pin-badge'; b.textContent = '📌 ' + nodeTitle(cur.node) + ' ✕';
+      b.title = 'Превью закреплено за этой нодой: можно выбирать и настраивать другие ноды, а смотреть на неё. Щелчок — открепить (или двойной щелчок по ноде).';
+      b.onclick = () => App.pinPreview(null);
+      info.append(b);
+    } else add(nodeTitle(cur.node) + (cur.id === App.state.selected ? '' : ' (основной выход)'), 'Двойной щелчок по ноде закрепляет её в превью.');
     if (!cur.out) return;
     const res = cur.out.tex.size;
     add(`${res}×${res}` + (res !== Graph.state.resolution ? ` (проект ${Graph.state.resolution})` : ''));
@@ -7013,14 +7177,39 @@ const App = (() => {
   const state = { multi: new Set(), selected: null, selectedLink: null, viewPort: 0, interactive: false, playing: false, displayRes: 512, dirty: false, ready: false };
   let evalRaf = 0, idleTimer = 0, thumbQueue = [], thumbTimer = 0;
   const CAT_ORDER = ['Источники', 'Узоры', 'Эффекты', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
+  // Search synonyms (English industry terms + Russian), matched together with the English and Russian titles.
   const KEYWORDS = {
-    image: 'png jpeg jpg файл картинка', constant: 'color цвет value', noise: 'perlin value fbm шум worley white ridged billow облака clouds', voronoi: 'cells worley клетки трещины crackle камни',
-    shape: 'circle rect ring круг квадрат кольцо эллипс', gradient: 'ramp linear radial angular', levels: 'уровни контраст',
-    invert: 'инверсия negative', grayscale: 'desaturate luminance канал channel', ramp: 'colorize градиент палитра gradient map',
-    hsv: 'hue saturation value оттенок', blend: 'mix add multiply screen смешать', transform: 'move scale rotate offset сдвиг поворот',
-    gaussian: 'blur размытие', dirblur: 'blur motion размытие', radialblur: 'blur zoom spin размытие', normal: 'normal map bump высота',
-    split: 'channels каналы', fx: 'effect vfx particle flipbook sprite огонь пламя взрыв искры молния дым магия портал лазер вспышка каустика эффект частицы', polar: 'polar круг кольцо радиальный', glow: 'glow bloom свечение ореол неон сияние', waves: 'stripes sine полосы дерево мрамор wood marble', tiler: 'tile sampler bricks кирпичи плитка паркет сетка', splatter: 'scatter разброс камни гравий пятна листья царапины stones', warp: 'distort искажение деформация', combine: 'pack orm hdrp mask упаковка', code: 'glsl shader шейдер custom скрипт', output: 'export экспорт',
+    image: 'png jpeg jpg bitmap file texture input файл картинка изображение текстура',
+    constant: 'uniform color solid fill value flat константа цвет заливка значение',
+    noise: 'perlin value fbm worley white ridged billow clouds fractal simplex turbulence шум облака фрактал',
+    voronoi: 'cells cellular worley crackle stones cells клетки ячейки трещины камни',
+    shape: 'circle disc square rect ring ellipse polygon фигура круг квадрат кольцо эллипс',
+    gradient: 'linear radial angular ramp градиент линейный радиальный',
+    levels: 'brightness contrast gamma histogram curves exposure black white point уровни яркость контраст гамма',
+    invert: 'negative inverse one minus инверсия негатив',
+    grayscale: 'desaturate luminance black and white channel монохром обесцветить яркость оттенки серого',
+    ramp: 'colorize gradient map color ramp lut palette градиент палитра раскрасить цветовая шкала',
+    hsv: 'hue saturation lightness brightness value colorize hsl тон насыщенность яркость оттенок',
+    blend: 'mix composite layer multiply screen add linear dodge lighten darken max min overlay opacity смешивание наложение слой умножение экран',
+    transform: 'move offset translate scale rotate tile трансформация сдвиг поворот масштаб',
+    warp: 'distort displace deform directional warp искажение деформация смещение',
+    gaussian: 'blur soften smooth размытие гаусс',
+    dirblur: 'blur motion directional смазывание размытие движение',
+    radialblur: 'blur zoom spin radial размытие радиальное',
+    glow: 'bloom glow halo neon emission свечение ореол неон сияние блум',
+    normal: 'normal map bump height tangent нормаль высота рельеф',
+    split: 'channels separate extract каналы разделить',
+    combine: 'pack channels merge orm hdrp mask упаковка каналы собрать',
+    code: 'glsl shader custom script pixel processor код шейдер',
+    fx: 'effect vfx particle flipbook sprite fire flame explosion sparks lightning smoke magic portal laser эффект огонь пламя взрыв искры молния дым магия портал лазер частицы',
+    flare: 'lens flare optical flares light leak glint sun star streak anamorphic ghosts iris блик солнце звезда вспышка линза объектив',
+    polar: 'polar coordinates circle ring radial полярные круг кольцо',
+    waves: 'stripes sine lines wood marble полосы волны дерево мрамор',
+    tiler: 'tile sampler bricks tiles pattern grid кирпичи плитка паркет сетка раскладка',
+    splatter: 'scatter splatter stones gravel leaves scratches разброс камни гравий листья царапины',
+    output: 'output export save выход экспорт',
   };
+  const searchText = (t) => [NODES[t].title, NODES[t].ru, t, KEYWORDS[t] || '', I18N.cat(NODES[t].cat), NODES[t].cat].join(' ').toLowerCase();
 
   // ---------------------------------------------------------------- init
   function init() {
@@ -7193,11 +7382,11 @@ const App = (() => {
       let first = true;
       for (const cat of CAT_ORDER) {
         const items = Object.keys(NODES).filter((t) => NODES[t].cat === cat &&
-          (!q || (NODES[t].title + ' ' + t + ' ' + (KEYWORDS[t] || '')).toLowerCase().includes(q)));
+          (!q || searchText(t).includes(q)));
         const extras = CATALOG_EXTRA.map((x, k) => ({ ...x, k })).filter((x) => (x.cat || NODES[x.type].cat) === cat &&
           (!q || (x.title + ' ' + x.type + ' ' + (x.desc || '') + ' ' + (x.cat ? 'шум noise' : 'basecolor albedo normal orm material материал')).toLowerCase().includes(q)));
         if (!items.length && !extras.length) continue;
-        const h = document.createElement('h4'); h.textContent = (collapsed.has(cat) && !q ? '▸ ' : '▾ ') + cat; list.append(h);
+        const h = document.createElement('h4'); h.textContent = (collapsed.has(cat) && !q ? '▸ ' : '▾ ') + I18N.cat(cat); list.append(h);
         h.style.cursor = 'pointer';
         h.title = 'Свернуть / развернуть раздел';
         h.onclick = () => { collapsed.has(cat) ? collapsed.delete(cat) : collapsed.add(cat); saveCollapsed(); render(); };
@@ -7220,7 +7409,7 @@ const App = (() => {
           first = false;
           it.textContent = NODES[t].title;
           it.dataset.type = t;
-          it.title = (NODES[t].desc ? NODES[t].desc + '\n\n' : '') + 'Щелчок — добавить в центр графа, или перетащите на граф';
+          it.title = NODES[t].ru + (NODES[t].desc ? '\n' + NODES[t].desc + '\n\n' : '\n\n') + 'Щелчок — добавить в центр графа, или перетащите на граф';
           it.draggable = true;
           it.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/ptl-node', t); e.dataTransfer.effectAllowed = 'copy'; });
           it.addEventListener('click', () => { const c = GraphView.center(); addNode(t, c.x - 88 + (Math.random() * 40 - 20), c.y - 50 + (Math.random() * 40 - 20)); });
@@ -7287,13 +7476,13 @@ const App = (() => {
   // (Russian ЙЦУКЕН included): Ctrl+Z is the same key as Ctrl+Я.
   const HOTKEYS = [
     ['Ctrl+Z', 'Отменить'], ['Ctrl+Shift+Z / Ctrl+Y', 'Повторить'], ['Ctrl+D', 'Дублировать выбранные ноды (со связями между ними)'], ['Ctrl+A', 'Выделить все ноды'],
-    ['Delete / Backspace', 'Удалить выбранные ноды или связь'], ['Ctrl+S', 'Сохранить проект'], ['Ctrl+Shift+S', 'Скачать программу (HTML) для офлайн-работы'], ['Ctrl+O', 'Открыть проект'],
+    ['Delete / Backspace', 'Удалить выбранные ноды или связь'], ['Tab', 'Быстрое добавление ноды под курсором (поиск)'], ['Ctrl+S', 'Сохранить проект'], ['Ctrl+Shift+S', 'Скачать программу (HTML) для офлайн-работы'], ['Ctrl+O', 'Открыть проект'],
     ['Ctrl+E', 'Экспорт PNG основного выхода'], ['F', 'Показать весь граф'], ['Пробел', 'Анимация: воспроизвести / пауза'],
     ['← / →', 'Анимация: предыдущий / следующий кадр'], ['N', 'Окно «Шумы»'], ['E', 'Окно «Эффекты»'],
     ['Ctrl+Enter', 'Применить код в ноде «Код (GLSL)»'], ['Esc', 'Закрыть окно / справку'], ['? (Shift+/)', 'Эта справка по клавишам'],
     ['Колесо мыши', 'Масштаб графа / предпросмотра'], ['Перетаскивание по пустому месту', 'Рамка выделения (Shift / Ctrl — добавить к выделенному)'],
     ['Ctrl / Shift + щелчок по ноде', 'Добавить ноду к выделению или убрать из него'], ['Правая или средняя кнопка + перетаскивание', 'Сдвиг графа'],
-    ['Shift+мышь в 3D', 'Двигать свет'], ['Двойной щелчок по проводу', 'Удалить связь'],
+    ['Shift+мышь в 3D', 'Двигать свет'], ['Двойной щелчок по проводу', 'Удалить связь'], ['Двойной щелчок по ноде', 'Закрепить превью на ноде (ещё раз — открепить)'], ['Провод → пустое место', 'Меню нод с поиском: новая нода сразу подключена'],
   ];
   function showHotkeys() {
     const rows = HOTKEYS.map(([k, v]) => `<tr><td style="padding:3px 14px 3px 0;white-space:nowrap">${k.split(' / ').map((x) => x.split('+').map((y) => `<kbd>${y}</kbd>`).join('+')).join(' / ')}</td><td>${v}</td></tr>`).join('');
@@ -7301,6 +7490,9 @@ const App = (() => {
   }
 
   function bindKeys() {
+    let overGraph = null;   // last pointer position over the graph, for Tab (quick add)
+    $('#graph').addEventListener('pointermove', (e) => { overGraph = { x: e.clientX, y: e.clientY }; });
+    $('#graph').addEventListener('pointerleave', () => { overGraph = null; });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && $('#modal').classList.contains('show')) { $('#modal').classList.remove('show'); return; }
       if (e.key === 'Escape' && !isTyping(e.target) && state.multi.size) { select(null); return; }
@@ -7325,6 +7517,12 @@ const App = (() => {
       }
       if (mod || e.altKey) return;
       if (code === 'Slash' && e.shiftKey) { e.preventDefault(); showHotkeys(); return; }
+      if (code === 'Tab' && !e.shiftKey) {
+        e.preventDefault();
+        const r = $('#graph').getBoundingClientRect(), pt = overGraph || { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        QuickAdd.open(pt.x, pt.y, GraphView.toGraph(pt.x, pt.y));
+        return;
+      }
       if (code === 'KeyF') { GraphView.fit(); return; }
       if (code === 'KeyN') { PresetBrowser.open('noise'); return; }
       if (code === 'KeyE') { PresetBrowser.open('fx'); return; }
@@ -7377,8 +7575,10 @@ const App = (() => {
     modal('Справка', `
       <h3>Граф</h3>
       <ul>
-      <li><b>На телефоне</b>: внизу переключатель панелей «Граф / Ноды / Превью / Параметры»; граф двигается пальцем, масштаб — двумя пальцами; двойное касание ноды открывает её параметры; остальные команды — в меню <b>☰</b>.</li>
-      <li><b>Добавить ноду</b>: щелчок по пункту каталога слева (или перетаскивание на граф). Поиск + <kbd>Enter</kbd> добавляет первую найденную.</li>
+      <li><b>На телефоне</b>: внизу переключатель панелей «Граф / Ноды / Превью / Параметры»; граф двигается пальцем, масштаб — двумя пальцами; двойное касание ноды закрепляет её в превью; остальные команды — в меню <b>☰</b>.</li>
+      <li><b>Добавить ноду</b>: щелчок по пункту каталога слева (или перетаскивание на граф). Поиск + <kbd>Enter</kbd> добавляет первую найденную. Поиск понимает английские и русские названия (blur / размытие, multiply / умножение).</li>
+      <li><b>Быстрое добавление</b>: потяните провод из выхода (или входа) и отпустите в пустом месте — откроется меню нод с поиском; выбранная нода появится там же, уже подключённой. <kbd>Tab</kbd> над графом открывает то же меню.</li>
+      <li><b>Закрепить превью</b>: двойной щелчок по ноде (например, по финальному Output) — превью показывает её, а одиночным щелчком выбирайте и настраивайте любые другие ноды. Повторный двойной щелчок или значок 📌 под превью — открепить.</li>
       <li><b>Соединить</b>: потяните от кружка выхода (справа у ноды) к кружку входа (слева). Можно и наоборот. Один выход может идти в несколько входов; циклы запрещены.</li>
       <li><b>Разорвать связь</b>: потяните за подключённый вход и отпустите в пустом месте; или щёлкните провод и нажмите <kbd>Delete</kbd>; или двойной щелчок / правая кнопка по проводу.</li>
       <li><b>Переместить</b> ноду — за заголовок. <b>Удалить</b> — <kbd>Delete</kbd>, <b>дублировать</b> — <kbd>Ctrl+D</kbd>.</li>
@@ -7552,6 +7752,28 @@ const App = (() => {
     return null;
   }
 
+  // Quick add (wire dropped on empty space / Tab): one undo step for the node and its connection.
+  function quickAddNode(type, params, c) {
+    const W = 176;
+    const x = c.to ? c.x - W - 30 : c.from ? c.x + 20 : c.x - W / 2, y = c.y - 34;
+    const n = Graph.addNode(type, Math.round(x), Math.round(y), params ? JSON.parse(JSON.stringify(params)) : undefined);
+    let err = null;
+    if (c.from) {
+      const src = Graph.nodes.get(c.from.id);
+      const k = QuickAdd.matchPort(n, 'in', portKind(src, 'out', c.from.port));
+      if (k >= 0) err = Graph.connect(c.from.id, c.from.port, n.id, k);
+    } else if (c.to) {
+      const dst = Graph.nodes.get(c.to.id);
+      const k = QuickAdd.matchPort(n, 'out', portKind(dst, 'in', c.to.port));
+      if (k >= 0) err = Graph.connect(n.id, k, c.to.id, c.to.port);
+    }
+    if (err) toast(err, 'err');
+    GraphView.rebuild();
+    select(n.id);
+    changed({ commit: true, structure: true });
+    return n;
+  }
+
   function addNode(type, x, y, params) {
     const n = Graph.addNode(type, x, y, params);
     GraphView.rebuild();
@@ -7610,7 +7832,7 @@ const App = (() => {
     } else {
       state.multi = new Set(id ? [id] : []);
     }
-    if (state.selected !== id) { state.viewPort = 0; if (id) mobileMarkParams(); }
+    if (state.selected !== id) { if (!pinnedId()) state.viewPort = 0; if (id) mobileMarkParams(); }
     state.selected = id;
     if (id) state.selectedLink = null;
     GraphView.refreshMarks();
@@ -7623,7 +7845,7 @@ const App = (() => {
     const set = add ? new Set([...state.multi, ...ids]) : new Set(ids);
     state.multi = set;
     state.selected = ids.length ? ids[ids.length - 1] : (add ? state.selected : null);
-    state.viewPort = 0;
+    if (!pinnedId()) state.viewPort = 0;
     state.selectedLink = null;
     GraphView.refreshMarks();
     GraphView.drawWires();
@@ -7643,7 +7865,21 @@ const App = (() => {
     GraphView.drawWires();
   }
 
+  // Preview pin: double-click a node to keep watching it (e.g. the final result) while
+  // single clicks select other nodes to tweak. Double-click the pinned node again to unpin.
+  function pinnedId() { return state.previewPin && Graph.nodes.has(state.previewPin) ? state.previewPin : null; }
+  function pinPreview(id) {
+    const unpin = !id || id === pinnedId();
+    state.previewPin = unpin ? null : id;
+    state.viewPort = 0;
+    if (!unpin) select(id, { keep: true });
+    GraphView.refreshMarks();
+    requestEval();
+    if (!unpin && isMobile()) mtab('preview');
+  }
   function viewedId() {
+    const pin = pinnedId();
+    if (pin) return pin;
     if (state.selected && Graph.nodes.has(state.selected)) return state.selected;
     return Graph.state.activeOutput && Graph.nodes.has(Graph.state.activeOutput) ? Graph.state.activeOutput : null;
   }
@@ -7651,6 +7887,7 @@ const App = (() => {
   function afterLoad() {
     if (frameCache.frames.size) clearFrameCache();
     if (state.selected && !Graph.nodes.has(state.selected)) state.selected = null;
+    if (state.previewPin && !Graph.nodes.has(state.previewPin)) state.previewPin = null;
     state.multi = new Set([...state.multi].filter((id) => Graph.nodes.has(id)));
     if (state.selected) state.multi.add(state.selected);
     state.selectedLink = null;
@@ -8033,8 +8270,8 @@ const App = (() => {
   }
 
   return {
-    init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId,
-    undo, redo, flush, mtab, isMobile, downloadApp, removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId, pinPreview, pinnedId,
+    undo, redo, flush, mtab, isMobile, downloadApp, quickAddNode, nodeSearchText: (t) => searchText(t), removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };
@@ -8121,6 +8358,8 @@ const PTL = (() => {
         params: d.params.map(paramInfo), presets: (d.presets || []).map((p) => p.label), help: d.help || '',
       }));
     },
+    /** Pin the preview to a node (as a double click in the graph); null unpins. */
+    pinPreview(id) { if (id) need(id); App.pinPreview(id || null); return App.pinnedId(); },
     getGraph() { return JSON.parse(JSON.stringify(Graph.toJSON())); },
     getNode(id) { const n = need(id); return { id: n.id, type: n.type, x: n.x, y: n.y, params: JSON.parse(JSON.stringify(n.params)), error: Engine.errors.get(id) || null }; },
     getParams(id) { return JSON.parse(JSON.stringify(need(id).params)); },
@@ -8158,7 +8397,7 @@ const PTL = (() => {
     },
     applyPreset(id, label) {
       const n = need(id), list = NODES[n.type].presets || [], q = String(label).toLowerCase();
-      const pr = list.find((p) => p.label === label) || list.find((p) => p.label.toLowerCase().includes(q));
+      const pr = list.find((p) => p.label === label) || list.find((p) => (p.label + ' ' + (p.ru || '')).toLowerCase().includes(q));
       if (!pr) throw new Error(`PTL: пресет "${label}" не найден. Есть: ${(NODES[n.type].presets || []).map((p) => p.label).join(' | ')}`);
       Object.assign(n.params, pr.apply); Graph.touch(n); after();
     },
@@ -8210,7 +8449,7 @@ const PTL = (() => {
     exportSpriteSheet(id) { return App.exportSpriteSheet(id || App.viewedId()); },
     noisePresets() { return NOISE_PRESETS.map(([title, type, params, desc, group]) => ({ title, type, params, desc, group })); },
     addNoise(title, opts = {}) {
-      const pr = NOISE_PRESETS.find((x) => x[0] === title) || NOISE_PRESETS.find((x) => x[0].toLowerCase().includes(String(title).toLowerCase()));
+      const pr = NOISE_PRESETS.find((x) => x[0] === title || x[5] === title) || NOISE_PRESETS.find((x) => (x[0] + ' ' + (x[5] || '')).toLowerCase().includes(String(title).toLowerCase()));
       if (!pr) throw new Error('PTL: нет шума "' + title + '". Есть: ' + NOISE_PRESETS.map((x) => x[0]).join(' | '));
       return api.addNode(pr[1], { ...opts, params: { ...pr[2], ...(opts.params || {}) } });
     },
@@ -8315,7 +8554,7 @@ window.PTL = PTL;
 
 // ===== main.js =====
 // Entry point.
-const PTL_VERSION = '0.2.0';
+const PTL_VERSION = '0.3.0';
 (() => {
   const start = () => {
     try {

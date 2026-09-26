@@ -6,14 +6,39 @@ const App = (() => {
   const state = { multi: new Set(), selected: null, selectedLink: null, viewPort: 0, interactive: false, playing: false, displayRes: 512, dirty: false, ready: false };
   let evalRaf = 0, idleTimer = 0, thumbQueue = [], thumbTimer = 0;
   const CAT_ORDER = ['Источники', 'Узоры', 'Эффекты', 'Обработка', 'Размытие', 'Нормали', 'Каналы', 'Код', 'Выход'];
+  // Search synonyms (English industry terms + Russian), matched together with the English and Russian titles.
   const KEYWORDS = {
-    image: 'png jpeg jpg файл картинка', constant: 'color цвет value', noise: 'perlin value fbm шум worley white ridged billow облака clouds', voronoi: 'cells worley клетки трещины crackle камни',
-    shape: 'circle rect ring круг квадрат кольцо эллипс', gradient: 'ramp linear radial angular', levels: 'уровни контраст',
-    invert: 'инверсия negative', grayscale: 'desaturate luminance канал channel', ramp: 'colorize градиент палитра gradient map',
-    hsv: 'hue saturation value оттенок', blend: 'mix add multiply screen смешать', transform: 'move scale rotate offset сдвиг поворот',
-    gaussian: 'blur размытие', dirblur: 'blur motion размытие', radialblur: 'blur zoom spin размытие', normal: 'normal map bump высота',
-    split: 'channels каналы', fx: 'effect vfx particle flipbook sprite огонь пламя взрыв искры молния дым магия портал лазер вспышка каустика эффект частицы', polar: 'polar круг кольцо радиальный', glow: 'glow bloom свечение ореол неон сияние', waves: 'stripes sine полосы дерево мрамор wood marble', tiler: 'tile sampler bricks кирпичи плитка паркет сетка', splatter: 'scatter разброс камни гравий пятна листья царапины stones', warp: 'distort искажение деформация', combine: 'pack orm hdrp mask упаковка', code: 'glsl shader шейдер custom скрипт', output: 'export экспорт',
+    image: 'png jpeg jpg bitmap file texture input файл картинка изображение текстура',
+    constant: 'uniform color solid fill value flat константа цвет заливка значение',
+    noise: 'perlin value fbm worley white ridged billow clouds fractal simplex turbulence шум облака фрактал',
+    voronoi: 'cells cellular worley crackle stones cells клетки ячейки трещины камни',
+    shape: 'circle disc square rect ring ellipse polygon фигура круг квадрат кольцо эллипс',
+    gradient: 'linear radial angular ramp градиент линейный радиальный',
+    levels: 'brightness contrast gamma histogram curves exposure black white point уровни яркость контраст гамма',
+    invert: 'negative inverse one minus инверсия негатив',
+    grayscale: 'desaturate luminance black and white channel монохром обесцветить яркость оттенки серого',
+    ramp: 'colorize gradient map color ramp lut palette градиент палитра раскрасить цветовая шкала',
+    hsv: 'hue saturation lightness brightness value colorize hsl тон насыщенность яркость оттенок',
+    blend: 'mix composite layer multiply screen add linear dodge lighten darken max min overlay opacity смешивание наложение слой умножение экран',
+    transform: 'move offset translate scale rotate tile трансформация сдвиг поворот масштаб',
+    warp: 'distort displace deform directional warp искажение деформация смещение',
+    gaussian: 'blur soften smooth размытие гаусс',
+    dirblur: 'blur motion directional смазывание размытие движение',
+    radialblur: 'blur zoom spin radial размытие радиальное',
+    glow: 'bloom glow halo neon emission свечение ореол неон сияние блум',
+    normal: 'normal map bump height tangent нормаль высота рельеф',
+    split: 'channels separate extract каналы разделить',
+    combine: 'pack channels merge orm hdrp mask упаковка каналы собрать',
+    code: 'glsl shader custom script pixel processor код шейдер',
+    fx: 'effect vfx particle flipbook sprite fire flame explosion sparks lightning smoke magic portal laser эффект огонь пламя взрыв искры молния дым магия портал лазер частицы',
+    flare: 'lens flare optical flares light leak glint sun star streak anamorphic ghosts iris блик солнце звезда вспышка линза объектив',
+    polar: 'polar coordinates circle ring radial полярные круг кольцо',
+    waves: 'stripes sine lines wood marble полосы волны дерево мрамор',
+    tiler: 'tile sampler bricks tiles pattern grid кирпичи плитка паркет сетка раскладка',
+    splatter: 'scatter splatter stones gravel leaves scratches разброс камни гравий листья царапины',
+    output: 'output export save выход экспорт',
   };
+  const searchText = (t) => [NODES[t].title, NODES[t].ru, t, KEYWORDS[t] || '', I18N.cat(NODES[t].cat), NODES[t].cat].join(' ').toLowerCase();
 
   // ---------------------------------------------------------------- init
   function init() {
@@ -186,11 +211,11 @@ const App = (() => {
       let first = true;
       for (const cat of CAT_ORDER) {
         const items = Object.keys(NODES).filter((t) => NODES[t].cat === cat &&
-          (!q || (NODES[t].title + ' ' + t + ' ' + (KEYWORDS[t] || '')).toLowerCase().includes(q)));
+          (!q || searchText(t).includes(q)));
         const extras = CATALOG_EXTRA.map((x, k) => ({ ...x, k })).filter((x) => (x.cat || NODES[x.type].cat) === cat &&
           (!q || (x.title + ' ' + x.type + ' ' + (x.desc || '') + ' ' + (x.cat ? 'шум noise' : 'basecolor albedo normal orm material материал')).toLowerCase().includes(q)));
         if (!items.length && !extras.length) continue;
-        const h = document.createElement('h4'); h.textContent = (collapsed.has(cat) && !q ? '▸ ' : '▾ ') + cat; list.append(h);
+        const h = document.createElement('h4'); h.textContent = (collapsed.has(cat) && !q ? '▸ ' : '▾ ') + I18N.cat(cat); list.append(h);
         h.style.cursor = 'pointer';
         h.title = 'Свернуть / развернуть раздел';
         h.onclick = () => { collapsed.has(cat) ? collapsed.delete(cat) : collapsed.add(cat); saveCollapsed(); render(); };
@@ -213,7 +238,7 @@ const App = (() => {
           first = false;
           it.textContent = NODES[t].title;
           it.dataset.type = t;
-          it.title = (NODES[t].desc ? NODES[t].desc + '\n\n' : '') + 'Щелчок — добавить в центр графа, или перетащите на граф';
+          it.title = NODES[t].ru + (NODES[t].desc ? '\n' + NODES[t].desc + '\n\n' : '\n\n') + 'Щелчок — добавить в центр графа, или перетащите на граф';
           it.draggable = true;
           it.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/ptl-node', t); e.dataTransfer.effectAllowed = 'copy'; });
           it.addEventListener('click', () => { const c = GraphView.center(); addNode(t, c.x - 88 + (Math.random() * 40 - 20), c.y - 50 + (Math.random() * 40 - 20)); });
@@ -280,13 +305,13 @@ const App = (() => {
   // (Russian ЙЦУКЕН included): Ctrl+Z is the same key as Ctrl+Я.
   const HOTKEYS = [
     ['Ctrl+Z', 'Отменить'], ['Ctrl+Shift+Z / Ctrl+Y', 'Повторить'], ['Ctrl+D', 'Дублировать выбранные ноды (со связями между ними)'], ['Ctrl+A', 'Выделить все ноды'],
-    ['Delete / Backspace', 'Удалить выбранные ноды или связь'], ['Ctrl+S', 'Сохранить проект'], ['Ctrl+Shift+S', 'Скачать программу (HTML) для офлайн-работы'], ['Ctrl+O', 'Открыть проект'],
+    ['Delete / Backspace', 'Удалить выбранные ноды или связь'], ['Tab', 'Быстрое добавление ноды под курсором (поиск)'], ['Ctrl+S', 'Сохранить проект'], ['Ctrl+Shift+S', 'Скачать программу (HTML) для офлайн-работы'], ['Ctrl+O', 'Открыть проект'],
     ['Ctrl+E', 'Экспорт PNG основного выхода'], ['F', 'Показать весь граф'], ['Пробел', 'Анимация: воспроизвести / пауза'],
     ['← / →', 'Анимация: предыдущий / следующий кадр'], ['N', 'Окно «Шумы»'], ['E', 'Окно «Эффекты»'],
     ['Ctrl+Enter', 'Применить код в ноде «Код (GLSL)»'], ['Esc', 'Закрыть окно / справку'], ['? (Shift+/)', 'Эта справка по клавишам'],
     ['Колесо мыши', 'Масштаб графа / предпросмотра'], ['Перетаскивание по пустому месту', 'Рамка выделения (Shift / Ctrl — добавить к выделенному)'],
     ['Ctrl / Shift + щелчок по ноде', 'Добавить ноду к выделению или убрать из него'], ['Правая или средняя кнопка + перетаскивание', 'Сдвиг графа'],
-    ['Shift+мышь в 3D', 'Двигать свет'], ['Двойной щелчок по проводу', 'Удалить связь'],
+    ['Shift+мышь в 3D', 'Двигать свет'], ['Двойной щелчок по проводу', 'Удалить связь'], ['Двойной щелчок по ноде', 'Закрепить превью на ноде (ещё раз — открепить)'], ['Провод → пустое место', 'Меню нод с поиском: новая нода сразу подключена'],
   ];
   function showHotkeys() {
     const rows = HOTKEYS.map(([k, v]) => `<tr><td style="padding:3px 14px 3px 0;white-space:nowrap">${k.split(' / ').map((x) => x.split('+').map((y) => `<kbd>${y}</kbd>`).join('+')).join(' / ')}</td><td>${v}</td></tr>`).join('');
@@ -294,6 +319,9 @@ const App = (() => {
   }
 
   function bindKeys() {
+    let overGraph = null;   // last pointer position over the graph, for Tab (quick add)
+    $('#graph').addEventListener('pointermove', (e) => { overGraph = { x: e.clientX, y: e.clientY }; });
+    $('#graph').addEventListener('pointerleave', () => { overGraph = null; });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && $('#modal').classList.contains('show')) { $('#modal').classList.remove('show'); return; }
       if (e.key === 'Escape' && !isTyping(e.target) && state.multi.size) { select(null); return; }
@@ -318,6 +346,12 @@ const App = (() => {
       }
       if (mod || e.altKey) return;
       if (code === 'Slash' && e.shiftKey) { e.preventDefault(); showHotkeys(); return; }
+      if (code === 'Tab' && !e.shiftKey) {
+        e.preventDefault();
+        const r = $('#graph').getBoundingClientRect(), pt = overGraph || { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        QuickAdd.open(pt.x, pt.y, GraphView.toGraph(pt.x, pt.y));
+        return;
+      }
       if (code === 'KeyF') { GraphView.fit(); return; }
       if (code === 'KeyN') { PresetBrowser.open('noise'); return; }
       if (code === 'KeyE') { PresetBrowser.open('fx'); return; }
@@ -370,8 +404,10 @@ const App = (() => {
     modal('Справка', `
       <h3>Граф</h3>
       <ul>
-      <li><b>На телефоне</b>: внизу переключатель панелей «Граф / Ноды / Превью / Параметры»; граф двигается пальцем, масштаб — двумя пальцами; двойное касание ноды открывает её параметры; остальные команды — в меню <b>☰</b>.</li>
-      <li><b>Добавить ноду</b>: щелчок по пункту каталога слева (или перетаскивание на граф). Поиск + <kbd>Enter</kbd> добавляет первую найденную.</li>
+      <li><b>На телефоне</b>: внизу переключатель панелей «Граф / Ноды / Превью / Параметры»; граф двигается пальцем, масштаб — двумя пальцами; двойное касание ноды закрепляет её в превью; остальные команды — в меню <b>☰</b>.</li>
+      <li><b>Добавить ноду</b>: щелчок по пункту каталога слева (или перетаскивание на граф). Поиск + <kbd>Enter</kbd> добавляет первую найденную. Поиск понимает английские и русские названия (blur / размытие, multiply / умножение).</li>
+      <li><b>Быстрое добавление</b>: потяните провод из выхода (или входа) и отпустите в пустом месте — откроется меню нод с поиском; выбранная нода появится там же, уже подключённой. <kbd>Tab</kbd> над графом открывает то же меню.</li>
+      <li><b>Закрепить превью</b>: двойной щелчок по ноде (например, по финальному Output) — превью показывает её, а одиночным щелчком выбирайте и настраивайте любые другие ноды. Повторный двойной щелчок или значок 📌 под превью — открепить.</li>
       <li><b>Соединить</b>: потяните от кружка выхода (справа у ноды) к кружку входа (слева). Можно и наоборот. Один выход может идти в несколько входов; циклы запрещены.</li>
       <li><b>Разорвать связь</b>: потяните за подключённый вход и отпустите в пустом месте; или щёлкните провод и нажмите <kbd>Delete</kbd>; или двойной щелчок / правая кнопка по проводу.</li>
       <li><b>Переместить</b> ноду — за заголовок. <b>Удалить</b> — <kbd>Delete</kbd>, <b>дублировать</b> — <kbd>Ctrl+D</kbd>.</li>
@@ -545,6 +581,28 @@ const App = (() => {
     return null;
   }
 
+  // Quick add (wire dropped on empty space / Tab): one undo step for the node and its connection.
+  function quickAddNode(type, params, c) {
+    const W = 176;
+    const x = c.to ? c.x - W - 30 : c.from ? c.x + 20 : c.x - W / 2, y = c.y - 34;
+    const n = Graph.addNode(type, Math.round(x), Math.round(y), params ? JSON.parse(JSON.stringify(params)) : undefined);
+    let err = null;
+    if (c.from) {
+      const src = Graph.nodes.get(c.from.id);
+      const k = QuickAdd.matchPort(n, 'in', portKind(src, 'out', c.from.port));
+      if (k >= 0) err = Graph.connect(c.from.id, c.from.port, n.id, k);
+    } else if (c.to) {
+      const dst = Graph.nodes.get(c.to.id);
+      const k = QuickAdd.matchPort(n, 'out', portKind(dst, 'in', c.to.port));
+      if (k >= 0) err = Graph.connect(n.id, k, c.to.id, c.to.port);
+    }
+    if (err) toast(err, 'err');
+    GraphView.rebuild();
+    select(n.id);
+    changed({ commit: true, structure: true });
+    return n;
+  }
+
   function addNode(type, x, y, params) {
     const n = Graph.addNode(type, x, y, params);
     GraphView.rebuild();
@@ -603,7 +661,7 @@ const App = (() => {
     } else {
       state.multi = new Set(id ? [id] : []);
     }
-    if (state.selected !== id) { state.viewPort = 0; if (id) mobileMarkParams(); }
+    if (state.selected !== id) { if (!pinnedId()) state.viewPort = 0; if (id) mobileMarkParams(); }
     state.selected = id;
     if (id) state.selectedLink = null;
     GraphView.refreshMarks();
@@ -616,7 +674,7 @@ const App = (() => {
     const set = add ? new Set([...state.multi, ...ids]) : new Set(ids);
     state.multi = set;
     state.selected = ids.length ? ids[ids.length - 1] : (add ? state.selected : null);
-    state.viewPort = 0;
+    if (!pinnedId()) state.viewPort = 0;
     state.selectedLink = null;
     GraphView.refreshMarks();
     GraphView.drawWires();
@@ -636,7 +694,21 @@ const App = (() => {
     GraphView.drawWires();
   }
 
+  // Preview pin: double-click a node to keep watching it (e.g. the final result) while
+  // single clicks select other nodes to tweak. Double-click the pinned node again to unpin.
+  function pinnedId() { return state.previewPin && Graph.nodes.has(state.previewPin) ? state.previewPin : null; }
+  function pinPreview(id) {
+    const unpin = !id || id === pinnedId();
+    state.previewPin = unpin ? null : id;
+    state.viewPort = 0;
+    if (!unpin) select(id, { keep: true });
+    GraphView.refreshMarks();
+    requestEval();
+    if (!unpin && isMobile()) mtab('preview');
+  }
   function viewedId() {
+    const pin = pinnedId();
+    if (pin) return pin;
     if (state.selected && Graph.nodes.has(state.selected)) return state.selected;
     return Graph.state.activeOutput && Graph.nodes.has(Graph.state.activeOutput) ? Graph.state.activeOutput : null;
   }
@@ -644,6 +716,7 @@ const App = (() => {
   function afterLoad() {
     if (frameCache.frames.size) clearFrameCache();
     if (state.selected && !Graph.nodes.has(state.selected)) state.selected = null;
+    if (state.previewPin && !Graph.nodes.has(state.previewPin)) state.previewPin = null;
     state.multi = new Set([...state.multi].filter((id) => Graph.nodes.has(id)));
     if (state.selected) state.multi.add(state.selected);
     state.selectedLink = null;
@@ -1026,8 +1099,8 @@ const App = (() => {
   }
 
   return {
-    init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId,
-    undo, redo, flush, mtab, isMobile, downloadApp, removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId, pinPreview, pinnedId,
+    undo, redo, flush, mtab, isMobile, downloadApp, quickAddNode, nodeSearchText: (t) => searchText(t), removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };

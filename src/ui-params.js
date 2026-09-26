@@ -6,7 +6,7 @@
 const ParamsPanel = (() => {
   const $ = (s) => document.querySelector(s);
   let lastPreset = null;
-  const closedSections = new Set(['flare/Искры (Sparkles)', 'flare/Грязь на линзе (Lens dirt)']);
+  const closedSections = new Set();
   let el, current = null, rows = [], seamEl = null, errEl = null, portsEl = null;
 
   function init() { el = $('#params'); }
@@ -47,7 +47,7 @@ const ParamsPanel = (() => {
     if (App.state.multi.size > 1) { buildMulti(); return; }
     if (!node) { buildProject(); return; }
     const def = NODES[node.type];
-    el.append(h('h3', { text: nodeTitle(node) }), h('div', { class: 'sub', text: `id: ${node.id} · ${def.cat}` }));
+    el.append(h('h3', { text: nodeTitle(node) }), h('div', { class: 'sub', text: `id: ${node.id} · ${I18N.cat(def.cat)} · ${def.ru || ''}` }));
     const actions = h('div', { class: 'actions' },
       h('button', { text: 'Дублировать', title: 'Ctrl+D', onclick: () => App.duplicate(node.id) }),
       h('button', { text: 'Удалить', title: 'Delete', onclick: () => App.removeNode(node.id) }),
@@ -113,6 +113,7 @@ const ParamsPanel = (() => {
 
   function labelEl(d, node, text) {
     const l = h('label', { text: text || d.label });
+    if (d.ru && !text) l.title = d.ru;
     if (d.help) l.append(h('span', { class: 'q', title: d.help, text: '?' }));
     if (node && d.type !== 'image') {
       const on = Graph.isExposed(node.id, d.key);

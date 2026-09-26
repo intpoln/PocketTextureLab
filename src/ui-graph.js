@@ -95,8 +95,8 @@ const GraphView = (() => {
       e.stopPropagation();
       if (!e.target.classList.contains('dot')) App.select(n.id, { toggle: e.ctrlKey || e.metaKey || e.shiftKey, keep: true });
     });
-    // phone: double tap on a node opens its parameters
-    el.addEventListener('dblclick', (e) => { if (!e.target.classList.contains('dot') && App.isMobile()) App.mtab('params'); });
+    // double click: pin this node to the preview (again: unpin); single click only selects for editing
+    el.addEventListener('dblclick', (e) => { if (!e.target.classList.contains('dot')) App.pinPreview(n.id); });
     el.addEventListener('dragover', (e) => { if (n.type === 'image') e.preventDefault(); });
     el.addEventListener('drop', (e) => {
       if (n.type !== 'image') return;
@@ -132,6 +132,7 @@ const GraphView = (() => {
     for (const [id, rec] of els) {
       rec.el.classList.toggle('sel', App.state.multi.has(id) || id === App.state.selected);
       rec.el.classList.toggle('primary', id === App.state.selected && App.state.multi.size > 1);
+      rec.el.classList.toggle('pinned', id === App.pinnedId());
       rec.el.querySelector('.badge.out').textContent = id === Graph.state.activeOutput ? '★' : '';
       const err = Engine.errors.get(id);
       const be = rec.el.querySelector('.badge.err');
@@ -252,10 +253,11 @@ const GraphView = (() => {
     tempWire = { a: portPos(id, 'out', port), b: toGraph(e.clientX, e.clientY) };
     drawWires();
     drag(e, (ev) => { tempWire.b = toGraph(ev.clientX, ev.clientY); highlight(portUnder(ev.clientX, ev.clientY, 'in')); drawWires(); }, (ev) => {
-      tempWire = null; highlight(null);
+      highlight(null);
       const hit = portUnder(ev.clientX, ev.clientY, 'in');
-      if (hit) App.tryConnect(id, port, hit.id, hit.port);
-      else drawWires();
+      if (hit) { tempWire = null; App.tryConnect(id, port, hit.id, hit.port); return; }
+      if (overEmptyGraph(ev)) { QuickAdd.open(ev.clientX, ev.clientY, { ...toGraph(ev.clientX, ev.clientY), from: { id, port } }); return; }   // wire stays until a node is picked
+      tempWire = null; drawWires();
     });
   }
 
@@ -282,12 +284,19 @@ const GraphView = (() => {
     }
     tempWire = { a: toGraph(e.clientX, e.clientY), b: portPos(id, 'in', port) };
     drag(e, (ev) => { tempWire.a = toGraph(ev.clientX, ev.clientY); highlight(portUnder(ev.clientX, ev.clientY, 'out')); drawWires(); }, (ev) => {
-      tempWire = null; highlight(null);
+      highlight(null);
       const hit = portUnder(ev.clientX, ev.clientY, 'out');
-      if (hit) App.tryConnect(hit.id, hit.port, id, port);
-      else drawWires();
+      if (hit) { tempWire = null; App.tryConnect(hit.id, hit.port, id, port); return; }
+      if (overEmptyGraph(ev)) { QuickAdd.open(ev.clientX, ev.clientY, { ...toGraph(ev.clientX, ev.clientY), to: { id, port } }); return; }
+      tempWire = null; drawWires();
     });
   }
+
+  function overEmptyGraph(ev) {
+    const el = document.elementFromPoint(ev.clientX, ev.clientY);
+    return !!(el && el.closest('#graph') && !el.closest('.node') && !el.closest('#graph-hud'));
+  }
+  function clearTempWire() { tempWire = null; drawWires(); }
 
   // Empty space: left drag = selection rectangle (like a desktop), right/middle drag = pan.
   // Touch: one finger on empty space pans, two fingers pinch-zoom.
@@ -424,5 +433,5 @@ const GraphView = (() => {
   }
   function thumbKey(id) { const r = els.get(id); return r ? r.thumbKey : null; }
 
-  return { init, rebuild, drawWires, refreshMarks, updateLabels, measure, center, fit, setThumb, thumbKey, view, applyView };
+  return { init, rebuild, drawWires, clearTempWire, toGraph, refreshMarks, updateLabels, measure, center, fit, setThumb, thumbKey, view, applyView };
 })();

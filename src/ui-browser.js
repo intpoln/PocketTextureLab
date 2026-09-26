@@ -11,12 +11,12 @@ const PresetBrowser = (() => {
 
   function items() {
     if (tab === 'noise') {
-      return NOISE_PRESETS.map(([title, type, params, desc, group], k) => ({ key: 'n' + k, title, type, params, desc, group }));
+      return NOISE_PRESETS.map(([title, type, params, desc, group, ru], k) => ({ key: 'n' + k, title, type, params, desc, group, ru }));
     }
     return [
-      ...FLARE_PRESETS.map(([title, desc, set], k) => ({ key: 'fl' + k, title, type: 'flare', desc, group: 'Оптические блики (Optical Flares)', params: flarePreset(set) })),
+      ...FLARE_PRESETS.map(([title, desc, set, ru], k) => ({ key: 'fl' + k, title, ru, type: 'flare', desc, group: I18N.group('Оптические блики (Optical Flares)'), params: flarePreset(set) })),
       ...FX_LIST.map((fx) => ({
-        key: 'fx:' + fx.id, title: fx.title, type: 'fx', desc: fx.note, group: fx.oneShot ? 'Однократные' : 'Зацикленные',
+        key: 'fx:' + fx.id, title: fx.title, ru: fx.ru, type: 'fx', desc: fx.note, group: I18N.group(fx.oneShot ? 'Однократные' : 'Зацикленные'),
         params: { effect: fx.id, stops: fxStops(fx.palette), ...fx.defaults },
       })),
     ];
@@ -54,7 +54,7 @@ const PresetBrowser = (() => {
     const body = $('#nd-body');
     body.textContent = '';
     queue = [];
-    const list = items().filter((it) => !q || (it.title + ' ' + it.desc + ' ' + it.group).toLowerCase().includes(q));
+    const list = items().filter((it) => !q || (it.title + ' ' + (it.ru || '') + ' ' + it.desc + ' ' + it.group).toLowerCase().includes(q));
     const groups = [...new Set(list.map((it) => it.group))];
     for (const g of groups) {
       const h = document.createElement('h4'); h.textContent = g; body.append(h);
@@ -62,7 +62,7 @@ const PresetBrowser = (() => {
       for (const it of list.filter((x) => x.group === g)) {
         const card = document.createElement('div');
         card.className = 'nd-card';
-        card.title = it.desc + '\n\nЩелчок — добавить в граф, или перетащите на граф';
+        card.title = (it.ru ? it.ru + ' — ' : '') + it.desc + '\n\nЩелчок — добавить в граф, или перетащите на граф';
         card.draggable = true;
         const cv = document.createElement('canvas'); cv.width = cv.height = TH;
         const lbl = document.createElement('div'); lbl.textContent = it.title;

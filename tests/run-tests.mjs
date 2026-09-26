@@ -863,8 +863,8 @@ await test('Выходы Base Color / Normal / ORM и 3D-превью матер
   ok(mean > 60 && sd > 20 && reddish / n > 0.3, 'в 3D-окне отрисован освещённый куб с кирпичной текстурой', { mean: Math.round(mean), sd: Math.round(sd), red: +(reddish / n).toFixed(2) });
   fs.writeFileSync(path.join(OUT, 'preview-3d.png'), await page.locator('#view').screenshot());
   // catalog entries for typed outputs
-  const cat = await page.evaluate(() => [...document.querySelectorAll('#catalog .item')].map((i) => i.textContent).filter((t) => /^Выход/.test(t)));
-  ok(cat.includes('Выход: Base Color') && cat.includes('Выход: Normal') && cat.includes('Выход: ORM'), 'в каталоге есть Выход: Base Color / Normal / ORM', cat);
+  const cat = await page.evaluate(() => [...document.querySelectorAll('#catalog .item')].map((i) => i.textContent).filter((t) => /^Output/.test(t)));
+  ok(cat.includes('Output: Base Color') && cat.includes('Output: Normal') && cat.includes('Output: ORM'), 'в каталоге есть Output: Base Color / Normal / ORM', cat);
   await page.context().close();
 });
 
@@ -924,21 +924,21 @@ await test('Окно «Шумы/Эффекты» с превью, статист
     let mn = 255, mx = 0; for (let i = 0; i < cv.length; i += 4) { mn = Math.min(mn, cv[i]); mx = Math.max(mx, cv[i]); }
     return { count: cards.length, names: cards.map((c) => c.textContent), spread: mx - mn, inCatalog: [...document.querySelectorAll('#catalog .item')].some((i) => i.textContent === 'Мрамор') };
   });
-  ok(drawer.count === 30 && drawer.names.includes('Мрамор') && !drawer.inCatalog, 'шумы вынесены в отдельное окно (30 карточек), список нод не загромождён', drawer.count);
+  ok(drawer.count === 30 && drawer.names.includes('Marble') && !drawer.inCatalog, 'шумы вынесены в отдельное окно (30 карточек), список нод не загромождён', drawer.count);
   ok(drawer.spread > 50, 'у карточек есть превью-миниатюры', drawer.spread);
-  await page.click('#nd-body .nd-card:has-text("Мрамор")');
+  await page.click('#nd-body .nd-card:has-text("Marble")');
   const added = await page.evaluate(() => { const n = PTL.getGraph().nodes.at(-1); return { type: n.type, warp: n.params.warp, fractal: n.params.fractal }; });
   ok(added.type === 'noise' && added.warp === 0.7 && added.fractal === 'ridged', 'щелчок по карточке добавляет ноду с настройками шума', added);
   await page.click('#noise-drawer [data-tab="fx"]');
   await page.waitForTimeout(500);
   const fxCards = await page.evaluate(() => document.querySelectorAll('#nd-body .nd-card').length);
-  ok(fxCards === 19 + 12, 'вкладка «Эффекты» с превью всех 19 эффектов и 12 бликов', fxCards);
+  ok(fxCards === 19 + 5, 'вкладка «Эффекты» с превью всех 19 эффектов и 5 вспышек', fxCards);
   const tlBefore = await page.evaluate(() => { PTL.newProject(); return document.getElementById('timeline').classList.contains('show'); });
-  await page.click('#nd-body .nd-card:has-text("Портал")');
+  await page.click('#nd-body .nd-card:has-text("Portal")');
   const tlAfter = await page.evaluate(() => document.getElementById('timeline').classList.contains('show'));
   ok(!tlBefore && tlAfter, 'эффект, добавленный из окна, сразу показывает таймлайн анимации', [tlBefore, tlAfter]);
   const hov = await page.evaluate(async () => {
-    const card = [...document.querySelectorAll('#nd-body .nd-card')].find((c) => /Портал/.test(c.textContent));
+    const card = [...document.querySelectorAll('#nd-body .nd-card')].find((c) => /Portal/.test(c.textContent));
     const cv = card.querySelector('canvas');
     card.dispatchEvent(new MouseEvent('mouseenter'));
     await new Promise((r) => setTimeout(r, 150));
@@ -962,7 +962,7 @@ await test('Окно «Шумы/Эффекты» с превью, статист
     return { same, groups };
   });
   ok(distinct.same.length === 0, 'превью всех эффектов попарно различаются (нет «чужих» картинок)', distinct.same);
-  ok(distinct.groups.includes('Зацикленные') && distinct.groups.includes('Однократные'), 'группы «Зацикленные» и «Однократные»', distinct.groups);
+  ok(distinct.groups.includes('Looping') && distinct.groups.includes('One-shot'), 'группы «Looping» и «One-shot»', distinct.groups);
   const stats = await page.evaluate(() => document.getElementById('stats').textContent);
   ok(/Ноды/.test(stats) && /VRAM/.test(stats) && /Пересчёт/.test(stats) && !/Промежуточные результаты/.test(stats), 'строка статистики внизу (ноды, разрешение, пересчёт, VRAM, формат, GPU)', stats.slice(0, 120));
   const r = await page.evaluate(async () => {
@@ -1113,21 +1113,17 @@ await test('Кнопка «Скачать HTML»: программа сохра�
   await p2.context().close();
 });
 
-await test('Оптический блик (Optical Flare): элементы, пресеты, ось отражений, анимация', async () => {
+await test('Оптический блик (Optical Flare): элементы, пресеты, центр, анимация', async () => {
   const page = await openPage();
   const r = await page.evaluate(() => {
     const S = 128, lum = (px) => { let s = 0; for (let i = 0; i < px.length; i += 4) s += px[i] + px[i + 1] + px[i + 2]; return s / (px.length / 4) / 765; };
     GPU.gl.getError();
     const presets = FLARE_PRESETS.map(([name, , set]) => { Anim.t = 0.3; return [name, lum(Engine.renderStandalone('flare', flarePreset(set), S))]; });
     const glErr = GPU.gl.getError();
-    // ghosts only: light on the left-top -> ghosts' centre of mass right-bottom of the frame centre
-    const ghostsOnly = (x, y) => {
-      const px = Engine.renderStandalone('flare', { ...flarePreset({ ghostI: 1, ghostCount: 8, posX: x, posY: y, edgeFade: false }) }, S);
-      let sx = 0, sy = 0, w = 0;
-      for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) { const k = (j * S + i) * 4, v = px[k] + px[k + 1] + px[k + 2]; sx += v * i; sy += v * j; w += v; }
-      return [sx / w / S, sy / w / S];
-    };
-    const gL = ghostsOnly(-0.6, 0.4), gR = ghostsOnly(0.6, -0.4);
+    // default flare sits in the frame centre: brightest pixel in the middle
+    const def = Engine.renderStandalone('flare', flarePreset(FLARE_PRESETS[0][2]), S);
+    let best = 0, bi = 0; for (let i = 0; i < S * S; i++) { const v = def[i * 4] + def[i * 4 + 1] + def[i * 4 + 2]; if (v > best) { best = v; bi = i; } }
+    const peak = [bi % S / S, Math.floor(bi / S) / S];
     const weld = FLARE_PRESETS.find((x) => /Welding/.test(x[0]))[2];
     Anim.t = 0.1; const a = Engine.renderStandalone('flare', flarePreset(weld), 64);
     Anim.t = 0.6; const b = Engine.renderStandalone('flare', flarePreset(weld), 64);
@@ -1138,20 +1134,81 @@ await test('Оптический блик (Optical Flare): элементы, п�
     const heads = [...document.querySelectorAll('#params .psec')].map((x) => x.textContent);
     const sec = document.querySelector('#params .psec'), body = sec.nextElementSibling;
     sec.click(); const hidden = body.hidden; sec.click();
-    return { presets, glErr, gL, gR, diff, cornerA: tr[3], centerA: tr[(32 * 64 + 20) * 4 + 3], offMax: Math.max(...off.filter((_, i) => i % 4 !== 3)), heads, hidden, reopened: !body.hidden, errs: PTL.errors() };
+    return { presets, glErr, peak, diff, cornerA: tr[3], centerA: tr[(32 * 64 + 20) * 4 + 3], offMax: Math.max(...off.filter((_, i) => i % 4 !== 3)), heads, hidden, reopened: !body.hidden, errs: PTL.errors() };
   });
-  ok(r.glErr === 0 && r.presets.every(([, l]) => l > 0.004), `все ${r.presets.length} пресетов бликов рендерятся без ошибок WebGL и не пустые`, r.presets.map(([n, l]) => n.split(' (')[0] + ' ' + l.toFixed(3)));
-  ok(r.presets.length >= 10, 'не меньше 10 пресетов', r.presets.length);
-  ok(r.gL[0] > 0.5 && r.gL[1] > 0.5 && r.gR[0] < 0.5 && r.gR[1] < 0.5, 'отражения идут от источника через центр объектива в противоположную сторону', { gL: r.gL, gR: r.gR });
-  ok(r.diff > 1000, 'мерцание и искры меняются по кадрам (анимация)', r.diff);
+  ok(r.glErr === 0 && r.presets.every(([, l]) => l > 0.004), `все ${r.presets.length} пресетов вспышек рендерятся без ошибок WebGL и не пустые`, r.presets.map(([n, l]) => n.split(' (')[0] + ' ' + l.toFixed(3)));
+  ok(r.presets.length === 5 && r.presets.map(([n]) => n).join() === 'Sun,Anamorphic,Spotlight,Welding,Soft orb', 'пять пресетов вспышек', r.presets.map(([n]) => n));
+  ok(Math.abs(r.peak[0] - 0.5) < 0.03 && Math.abs(r.peak[1] - 0.5) < 0.03, 'вспышка по центру кадра', r.peak);
+  ok(r.diff > 1000, 'мерцание меняется по кадрам (анимация)', r.diff);
   ok(r.cornerA === 0 && r.centerA > 0, 'прозрачный фон: альфа 0 в углу кадра, свет непрозрачен', [r.cornerA, r.centerA]);
   ok(r.offMax === 0, 'все элементы выключены — кадр полностью чёрный', r.offMax);
-  ok(r.heads.length === 8 && /Свечение/.test(r.heads[0]) && r.hidden && r.reopened, 'параметры разбиты на 8 сворачиваемых разделов', r.heads);
+  ok(r.heads.join() === 'Glow,Rays,Shimmer,Streak,Ring' && r.hidden && r.reopened, 'параметры разбиты на 5 сворачиваемых разделов', r.heads);
   ok(Object.keys(r.errs).length === 0, 'нода без ошибок в графе', r.errs);
   await page.click('#btn-effects');
   await page.waitForTimeout(300);
   const cards = await page.evaluate(() => [...document.querySelectorAll('#nd-body h4')].map((h) => [h.textContent, h.nextElementSibling.children.length]));
   ok(cards[0][0].includes('Optical Flares') && cards[0][1] === r.presets.length, 'окно «Эффекты» начинается с раздела оптических бликов', cards[0]);
+  await page.context().close();
+});
+
+await test('Быстрое добавление: провод в пустое место → меню с поиском → нода с подключением', async () => {
+  const page = await openPage();
+  const ids = await page.evaluate(() => {
+    PTL.newProject(); const a = PTL.addNode('noise', { x: 0, y: 0 }); const b = PTL.addNode('levels', { x: 600, y: 0 });
+    PTL.select(null); PTL.fitGraph(); return { a, b };
+  });
+  await idle(page);
+  const dot = await page.locator(`.node[data-id="${ids.a}"] .port.out .dot`).first().boundingBox();
+  const g = await page.locator('#graph').boundingBox();
+  const drop = { x: dot.x + 60, y: Math.min(g.y + g.height - 60, dot.y + 160) };
+  await page.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2); await page.mouse.down();
+  await page.mouse.move(drop.x, drop.y, { steps: 6 }); await page.mouse.up();
+  const opened = await page.evaluate(() => { const q = document.getElementById('quickadd'); return !!q && document.activeElement === q.querySelector('input'); });
+  ok(opened, 'провод, отпущенный в пустом месте, открывает меню нод с поиском в фокусе');
+  await page.keyboard.type('размыт');
+  const first = await page.evaluate(() => document.querySelector('#quickadd .qa-item.on span').textContent);
+  ok(first === 'Gaussian Blur', 'поиск по-русски «размыт» → Gaussian Blur первым', first);
+  await page.keyboard.press('Enter');
+  const r = await page.evaluate((a) => { const g = PTL.getGraph(); const n = g.nodes.at(-1); return { type: n.type, link: g.links.some((l) => l.from === a && l.to === n.id && l.toPort === 0), menu: !!document.getElementById('quickadd'), sel: PTL.info().selected === n.id }; }, ids.a);
+  ok(r.type === 'gaussian' && r.link && !r.menu && r.sel, 'Enter создаёт ноду на месте, провод уже подключён, нода выбрана', r);
+  await page.keyboard.press('Control+z');
+  const u = await page.evaluate(() => ({ n: PTL.getGraph().nodes.length, l: PTL.getGraph().links.length }));
+  ok(u.n === 2 && u.l === 0, 'одно Ctrl+Z убирает и ноду, и связь', u);
+  // from an input: new node's output plugs into it; English search "multiply" finds Blend
+  const inDot = await page.locator(`.node[data-id="${ids.b}"] .port.in .dot`).first().boundingBox();
+  await page.mouse.move(inDot.x + inDot.width / 2, inDot.y + inDot.height / 2); await page.mouse.down();
+  await page.mouse.move(inDot.x - 80, Math.min(g.y + g.height - 60, inDot.y + 150), { steps: 6 }); await page.mouse.up();
+  await page.keyboard.type('multiply');
+  const first2 = await page.evaluate(() => document.querySelector('#quickadd .qa-item.on span').textContent);
+  await page.keyboard.press('Enter');
+  const r2 = await page.evaluate((b) => { const g = PTL.getGraph(); const n = g.nodes.at(-1); return { type: n.type, link: g.links.some((l) => l.from === n.id && l.to === b) }; }, ids.b);
+  ok(first2 === 'Blend' && r2.type === 'blend' && r2.link, 'из входа: «multiply» → Blend, выход новой ноды подключён ко входу', { first2, ...r2 });
+  // Esc cancels, Tab opens without a wire
+  await page.mouse.move(g.x + 40, g.y + 40);
+  await page.keyboard.press('Tab');
+  const tabOpen = await page.evaluate(() => !!document.getElementById('quickadd'));
+  await page.keyboard.press('Escape');
+  const r3 = await page.evaluate(() => ({ menu: !!document.getElementById('quickadd'), n: PTL.getGraph().nodes.length }));
+  ok(tabOpen && !r3.menu && r3.n === 3, 'Tab открывает меню под курсором, Esc закрывает без изменений', { tabOpen, ...r3 });
+  await page.context().close();
+});
+
+await test('Превью закрепляется двойным щелчком, одиночный щелчок только выбирает ноду для настройки', async () => {
+  const page = await openPage();
+  const ids = await page.evaluate(() => { const g = PTL.getGraph(); PTL.fitGraph(); return g.nodes.map((n) => n.id); });
+  await idle(page);
+  const last = ids[ids.length - 1], first = ids[0];
+  await page.dblclick(`.node[data-id="${last}"] .head`);
+  await page.click(`.node[data-id="${first}"] .head`);
+  await idle(page);
+  const r = await page.evaluate(() => ({ viewed: App.viewedId(), sel: PTL.info().selected, badge: !!document.querySelector('#pinfo .pin-badge'), mark: document.querySelectorAll('.node.pinned').length, title: document.querySelector('#params h3').textContent }));
+  ok(r.viewed === last && r.sel === first && r.badge && r.mark === 1, 'после двойного щелчка по выходу и щелчка по первой ноде: превью — выход, параметры — первая нода', r);
+  const before = await page.evaluate((id) => { PTL.setParams(id, { seed: 5 }); return 0; }, first);
+  await idle(page);
+  ok(await page.evaluate(() => App.viewedId()) === last, 'изменение параметров другой ноды не сбивает закреплённое превью');
+  await page.dblclick(`.node[data-id="${last}"] .head`);
+  const r2 = await page.evaluate(() => ({ viewed: App.viewedId(), sel: PTL.info().selected, mark: document.querySelectorAll('.node.pinned').length }));
+  ok(r2.mark === 0 && r2.viewed === r2.sel, 'повторный двойной щелчок открепляет — превью снова следует за выбранной нодой', r2);
   await page.context().close();
 });
 
