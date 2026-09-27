@@ -61,9 +61,12 @@ void main() {
   if (u_shimI > 0.0 && u_shimLen > 0.0) {
     int M = max(u_shimN, 2);
     float x = fract(a / TAU) * float(M);
-    float z = T * float(u_shimSpeed);
-    float nz = vn3(vec3(x, 0.5, z), ivec3(M, 0, u_shimSpeed)) * 0.65 + vn3(vec3(x * 2.0, 3.5, z + 7.0), ivec3(M * 2, 0, u_shimSpeed)) * 0.35;
-    float lenMod = 0.55 + 0.45 * vn3(vec3(x * 0.5, 9.5, z), ivec3(max(M / 2, 1), 0, u_shimSpeed));
+    // time axis: 2·speed lattice cells per loop — with a period of 1 cell the lattice holds a single
+    // value (z = 0 and z = 1 wrap to the same node) and speed 1 would not animate at all
+    int ZP = 2 * u_shimSpeed;
+    float z = T * float(ZP);
+    float nz = vn3(vec3(x, 0.5, z), ivec3(M, 0, ZP)) * 0.65 + vn3(vec3(x * 2.0, 3.5, z + 7.0), ivec3(M * 2, 0, ZP)) * 0.35;
+    float lenMod = 0.55 + 0.45 * vn3(vec3(x * 0.5, 9.5, z), ivec3(max(M / 2, 1), 0, ZP));
     float fall = pow(max(1.0 - r / (u_shimLen * lenMod), 0.0), 2.0);
     col += mix(u_raysCol, vec3(1.0), 0.3) * u_shimI * pow(nz, u_shimSharp) * fall * (0.35 + 0.65 / (1.0 + r * 6.0)) * 2.0;
   }

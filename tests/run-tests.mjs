@@ -1468,6 +1468,32 @@ await test('Этап C: сглаживание, фильтрация при ум
   await page.context().close();
 });
 
+await test('Этап D: демонстрационные графы открываются, считаются и зациклены', async () => {
+  const page = await openPage();
+  const r = await page.evaluate(async () => {
+    window.setTimeout = () => 0;
+    const out = [];
+    for (let k = 0; k < EXAMPLES.length; k++) {
+      if (!/^Демо/.test(EXAMPLES[k].title)) continue;
+      App.loadExample(k); App.stop();
+      const o = PTL.getGraph().activeOutput;
+      const frames = []; for (let f = 0; f < 16; f++) { Anim.t = f / 16; frames.push(PTL.render(o, { size: 96 }).rgba); }
+      // neighbouring-frame differences, the last one across the loop seam (frame 15 → frame 0)
+      const steps = frames.map((fa, f) => { const fb = frames[(f + 1) % 16]; let d = 0; for (let i = 0; i < fa.length; i++) d += Math.abs(fa[i] - fb[i]); return d / fa.length; });
+      let lit = 0; for (let i = 0; i < frames[0].length; i += 4) lit = Math.max(lit, frames[0][i] * frames[0][i + 3] / 255);
+      const mn = Math.min(...steps), mx = Math.max(...steps), med = [...steps].sort((x, y) => x - y)[8];
+      out.push({ title: EXAMPLES[k].title.slice(0, 32), animated: !!EXAMPLES[k].fx, errors: Object.keys(PTL.errors()).length, exposed: PTL.exposed().length, lit,
+        stepMin: +mn.toFixed(3), stepMed: +med.toFixed(3), stepMax: +mx.toFixed(3), seam: +steps[15].toFixed(3) });
+    }
+    return out;
+  });
+  ok(r.length === 5, 'пять демонстрационных графов в меню примеров', r.map((x) => x.title));
+  ok(r.every((x) => x.errors === 0 && x.exposed >= 5 && x.lit > 100), 'все демо считаются без ошибок, не пустые, у каждого ≥ 5 вынесенных ручек', r);
+  ok(r.filter((x) => x.animated).every((x) => x.stepMin > 0.03 && x.stepMax < 3 * x.stepMed && x.seam <= x.stepMax),
+    'анимированные демо движутся без рывков: все 16 шагов между соседними кадрами ненулевые, ни один не больше трёх медианных, шаг через стык петли (15 → 0) обычный', r.filter((x) => x.animated));
+  await page.context().close();
+});
+
 await browser.close();
 
 console.log('\n# Внешние запросы: ' + (netRequests.length ? netRequests.join(', ') : 'нет'));

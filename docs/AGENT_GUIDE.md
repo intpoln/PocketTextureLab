@@ -84,6 +84,8 @@ Editing (all validated; unknown params/enum values throw with the list of valid 
   Blend modes: `over` (layer over background by its alpha — use for sprites), `mix`, `add`, `subtract`, `multiply`, `screen`,
   `overlay`, `softlight`, `difference`, `min`, `max`. Warp modes: `directional`, `gradient` (+ `mapBlur` σ px, default 3),
   `vector` (map RG = offset, 0.5 neutral). Voronoi `edgeSmooth` 0…1 (border mode: facets → rounded stones → pebbles).
+- Demo graphs: `PTL.examples()` lists «Демо: …» entries (star flare, smoke, energy fibers, stones, Structured Fractal);
+  their JSON is also in docs/demos. Quality contracts, audits and known limits: docs/QUALITY.md.
 - `PTL.pinPreview(id)` pins the preview to a node (like a double click in the graph; `null` unpins). UI titles of nodes and
   parameters are English (Levels, Blend, Gradient Map, Transform 2D…); node types and parameter keys are unchanged.
 - `PTL.batch(fn)` — several edits as one undo step. `PTL.undo()`, `PTL.redo()`, `PTL.autoLayout()`.

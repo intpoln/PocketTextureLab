@@ -29,6 +29,21 @@ for (const f of ORDER) {
   const src = r('src/' + f);
   if (/<\/script/i.test(src)) throw new Error(f + ' contains </script');
   js += `\n// ===== ${f} =====\n` + src + '\n';
+  if (f === 'examples.js') js += demoExamples();
+}
+
+// Demo graphs (docs/demos, made by tools/demos.mjs) become «Демо: …» entries of the examples menu.
+function demoExamples() {
+  let list;
+  try { list = JSON.parse(r('docs/demos/index.json')); } catch (e) { return ''; }
+  const items = list.map((d) => {
+    const p = JSON.parse(r('docs/demos/' + d.id + '.ptl.json'));
+    const graph = { engine: p.engine, resolution: p.resolution, activeOutput: p.activeOutput, nextId: p.nextId, nodes: p.nodes, links: p.links, exposed: p.exposed, animation: p.animation };
+    return { title: 'Демо: ' + d.title, graph, ...(d.animated ? { fx: true } : { template: true }), note: d.knobs };
+  });
+  const src = '\n// ===== demos (generated from docs/demos) =====\nEXAMPLES.push(...' + JSON.stringify(items) + ');\n';
+  if (/<\/script/i.test(src)) throw new Error('demo graphs contain </script');
+  return src;
 }
 const guide = r('docs/AGENT_GUIDE.md');
 if (/<\/script/i.test(guide)) throw new Error('guide contains </script');

@@ -1,0 +1,219 @@
+{
+ "format": "pocket-texture-lab",
+ "version": 1,
+ "app": "Pocket Texture Lab",
+ "appVersion": "0.6.0",
+ "saved": "2026-09-27T19:16:31.065Z",
+ "engine": 4,
+ "resolution": 512,
+ "activeOutput": "n5",
+ "nextId": 6,
+ "nodes": [
+  {
+   "id": "n1",
+   "type": "noise",
+   "x": 0,
+   "y": 0,
+   "params": {
+    "type": "flow",
+    "seed": 9,
+    "tile": true,
+    "scale": 2,
+    "grain": 1,
+    "stretch": 6,
+    "offsetX": 0,
+    "offsetY": 0,
+    "fractal": "ridged",
+    "flowRot": 0,
+    "advect": 0.5,
+    "splShape": "spot",
+    "splSize": 0.55,
+    "splHard": 0.2,
+    "splAspect": 1,
+    "splDensity": 0.85,
+    "splPer": 1,
+    "splSizeRand": 0.5,
+    "splPosRand": 1,
+    "splAngle": 0,
+    "splRotRand": 1,
+    "splValRand": 0.3,
+    "splIn": "smax",
+    "splAcross": "add",
+    "splSmooth": 0.5,
+    "octaves": 5,
+    "persistence": 0.55,
+    "lacunarity": 2,
+    "lod": true,
+    "warp": 0,
+    "warpScale": 2,
+    "warpLevels": 1,
+    "evolution": 0,
+    "warpEvo": false,
+    "flowSpin": 1,
+    "contrast": 1,
+    "balance": 0,
+    "clampOut": true,
+    "invert": false
+   }
+  },
+  {
+   "id": "n2",
+   "type": "levels",
+   "x": 230,
+   "y": 0,
+   "params": {
+    "inBlack": 0.5,
+    "inWhite": 0.97,
+    "gamma": 0.8,
+    "outBlack": 0,
+    "outWhite": 1,
+    "alpha": false
+   }
+  },
+  {
+   "id": "n3",
+   "type": "ramp",
+   "x": 460,
+   "y": 0,
+   "params": {
+    "stops": [
+     {
+      "p": 0,
+      "c": [
+       0,
+       0,
+       0.04,
+       1
+      ]
+     },
+     {
+      "p": 0.4,
+      "c": [
+       0.12,
+       0.04,
+       0.45,
+       1
+      ]
+     },
+     {
+      "p": 0.75,
+      "c": [
+       0.2,
+       0.6,
+       1,
+       1
+      ]
+     },
+     {
+      "p": 1,
+      "c": [
+       0.92,
+       1,
+       1,
+       1
+      ]
+     }
+    ],
+    "interp": "linear",
+    "source": "L",
+    "space": "color"
+   }
+  },
+  {
+   "id": "n4",
+   "type": "glow",
+   "x": 690,
+   "y": 0,
+   "params": {
+    "threshold": 0.5,
+    "knee": 0.15,
+    "radius": 6,
+    "intensity": 1.6,
+    "tint": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "alpha": true,
+    "wrap": "repeat"
+   }
+  },
+  {
+   "id": "n5",
+   "type": "output",
+   "x": 920,
+   "y": 0,
+   "params": {
+    "usage": "generic",
+    "normalY": "auto",
+    "filename": "energy_fibers"
+   }
+  }
+ ],
+ "animation": {
+  "frames": 16,
+  "frameSize": 256,
+  "fps": 24
+ },
+ "links": [
+  {
+   "from": "n1",
+   "fromPort": 0,
+   "to": "n2",
+   "toPort": 0
+  },
+  {
+   "from": "n2",
+   "fromPort": 0,
+   "to": "n3",
+   "toPort": 0
+  },
+  {
+   "from": "n3",
+   "fromPort": 0,
+   "to": "n4",
+   "toPort": 0
+  },
+  {
+   "from": "n4",
+   "fromPort": 0,
+   "to": "n5",
+   "toPort": 0
+  }
+ ],
+ "exposed": [
+  {
+   "node": "n1",
+   "key": "stretch",
+   "label": "Вытянутость волокон"
+  },
+  {
+   "node": "n1",
+   "key": "advect",
+   "label": "Изгиб"
+  },
+  {
+   "node": "n2",
+   "key": "inBlack",
+   "label": "Тонкость"
+  },
+  {
+   "node": "n4",
+   "key": "intensity",
+   "label": "Свечение"
+  },
+  {
+   "node": "n3",
+   "key": "stops",
+   "label": "Палитра"
+  }
+ ],
+ "selected": "n5",
+ "view": {
+  "x": 40,
+  "y": 290.4434306569343,
+  "z": 0.5611313868613139
+ },
+ "assets": {}
+}

@@ -11,6 +11,9 @@
 
 ![Спрайт-шиты 4×4, собранные в редакторе: взрыв (однократный) и портал (петля)](docs/img/spritesheets.jpg)
 
+**Демо** (меню «Примеры и шаблоны» → «Демо: …»): звёздная вспышка, дым, энергетические волокна, камни, два рисунка
+Structured Fractal — с вынесенными ручками; как они устроены и чем проверены — [docs/QUALITY.md](docs/QUALITY.md).
+
 **Попробовать за минуту:** откройте редактор → «Быстрый старт» справа: выберите шаблон (например, «Кирпичная стена») →
 подвигайте любой параметр шаблона → «2D | 3D» → «Экспорт всех PNG» (Base Color, Normal, ORM).
 
@@ -129,7 +132,7 @@
 ```sh
 npm install        # только для разработки: playwright, pngjs, pako, upng-js
 npm run build      # src/ -> texture-lab.html
-npm test           # сборка + 238 проверок в настоящем Chromium через file://
+npm test           # сборка + 241 проверка в настоящем Chromium через file://
 node tests/perf.mjs
 node tools/ptl-run.mjs script.js out/   # выполнить сценарий PTL без UI и сохранить PNG
 node tools/readme-shots.mjs             # пересобрать картинки README (docs/img) из настоящего редактора
