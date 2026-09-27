@@ -325,6 +325,7 @@ uniform int u_metric;   // 0 euclid, 1 manhattan, 2 chebyshev
 uniform float u_scale;
 uniform float u_rand;
 uniform bool u_tile;
+uniform float u_edgeSmooth;   // border mode: 0 = exact distance to the nearest edge (creased), >0 = smooth min over edges
 ivec2 wc(ivec2 c, int P) { return u_tile ? ((c % P) + P) % P : c + 4096; }
 uvec3 hc(ivec2 c) { return pcg3(uvec3(uvec2(c), uint(u_seed) * 747796405u + 12345u)); }
 uniform float u_evo;
@@ -363,18 +364,37 @@ void main() {
   else if (u_mode == 4) v = clamp(f2 - f1, 0.0, 1.0);
   else if (u_mode == 2) v = float(hc(wc(ic + mg, P)).z >> 8u) / 16777215.0;
   else {
-    float mb = 8.0;
+    float mb = 8.0, sm = 8.0, smc = 8.0, hc = 8.0;
+    float w = u_edgeSmooth * 0.5;          // rounding width in cell units: only edges within w of the nearest one matter
     for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) {
       ivec2 g = mg + ivec2(i, j);
       vec2 r = vec2(g) + pt(wc(ic + g, P)) - f;
       vec2 dd = r - mr;
-      if (dot(dd, dd) > 1e-6) mb = min(mb, dot(0.5 * (mr + r), normalize(dd)));
+      if (dot(dd, dd) > 1e-6) {
+        float e = dot(0.5 * (mr + r), normalize(dd));   // distance from here to the bisector with this neighbour
+        float ec = 0.5 * length(dd);                     // the same distance measured from the cell's own point
+        mb = min(mb, e); hc = min(hc, ec);
+        if (w > 0.0) {
+          // polynomial smooth minimum: rounds the crease where two edges are about equally near
+          float h = max(w - abs(sm - e), 0.0) / w;  sm = min(sm, e) - h * h * w * 0.25;
+          float hq = max(w - abs(smc - ec), 0.0) / w; smc = min(smc, ec) - hq * hq * w * 0.25;
+        }
+      }
+    }
+    if (w > 0.0) {
+      // the cell reads as a rounded dome instead of a faceted pyramid; the edge line stays put. Rescaled so the
+      // cell point keeps its exact height (bigger cells stay higher) — rounding does not sink the whole cell.
+      mb = smc > 1e-5 ? max(sm, 0.0) / smc * hc : 0.0;
     }
     v = clamp(mb * 2.0, 0.0, 1.0);
   }
   emit(vec4(v, v, v, 1.0));
 }` };
 
+  // Waves. With u_aa every shape is BOX-FILTERED over the pixel footprint exactly: the value is
+  // the mean of the wave over [t − w/2, t + w/2] computed from its closed-form integral, so
+  // square / saw / triangle edges are antialiased and patterns finer than a pixel settle to their
+  // mean instead of producing moiré. u_aa = false is the legacy point-sampled wave.
   S.waves = { nin: 1, body: `
 uniform int u_shape;    // 0 sine, 1 triangle, 2 saw, 3 square
 uniform bool u_rings;
@@ -384,24 +404,63 @@ uniform vec2 u_center;
 uniform float u_phase;
 uniform float u_duty;
 uniform float u_distort;
+uniform bool u_aa;
+float waveAt(float t) {
+  float f = fract(t);
+  if (u_shape == 0) return 0.5 - 0.5 * cos(2.0 * PI * t);
+  if (u_shape == 1) return 1.0 - abs(2.0 * f - 1.0);
+  if (u_shape == 2) return f;
+  return f < u_duty ? 1.0 : 0.0;
+}
+// antiderivative of each wave (continuous, grows by the period mean every period)
+float waveInt(float t) {
+  float k = floor(t), f = t - k;
+  if (u_shape == 0) return t * 0.5 - sin(2.0 * PI * t) / (4.0 * PI);
+  if (u_shape == 1) return k * 0.5 + (f < 0.5 ? f * f : -f * f + 2.0 * f - 0.5);
+  if (u_shape == 2) return k * 0.5 + f * f * 0.5;
+  return k * u_duty + min(f, u_duty);
+}
 void main() {
   vec2 uv = pixUV() + u_uvOff;
   float d = u_has0 ? lumaEnc(in0(pix()), u_col0) - 0.5 : 0.0;
   float t = u_rings ? length(uv - u_center) * u_ringN : dot(uv, u_count);
   t += u_phase + d * u_distort;
-  float f = fract(t), v;
-  if (u_shape == 0) v = 0.5 - 0.5 * cos(2.0 * PI * t);
-  else if (u_shape == 1) v = 1.0 - abs(2.0 * f - 1.0);
-  else if (u_shape == 2) v = f;
-  else v = f < u_duty ? 1.0 : 0.0;
+  float v;
+  if (!u_aa) v = waveAt(t);
+  else {
+    float w = length(vec2(dFdx(t), dFdy(t)));   // footprint in periods
+    v = w < 1e-4 ? waveAt(t) : (waveInt(t + 0.5 * w) - waveInt(t - 0.5 * w)) / w;
+  }
   emit(vec4(v, v, v, 1.0));
 }` };
 
   S.warp = { nin: 2, body: `
-uniform int u_mode;     // 0 directional, 1 along map gradient
+uniform int u_mode;     // 0 directional, 1 along map gradient, 2 vector (map RG = offset, 0.5 neutral)
 uniform vec2 u_dir;
 uniform float u_int;
 uniform bool u_premul;  // alpha-aware: interpolate the source premultiplied
+uniform bool u_ss;      // area filter where the warp compresses the source
+// Area-filtered read of slot 0 for resampling nodes: the output pixel covers the parallelogram
+// uv0 + jx·a + jy·b (a, b ∈ [−½, ½]) of the source (jx, jy = screen derivatives of the source UV).
+// When it spans more than one source texel, n×n bilinear taps (n ≤ 8) average it — no moiré when
+// minifying. premul averages premultiplied colour (result premultiplied, like in0B).
+vec4 footprint0(vec2 uv0, vec2 jx, vec2 jy, bool premul, bool ss) {
+  if (!ss) return in0B(uv0, premul);
+  vec2 tsz = vec2(textureSize(u_in0, 0));
+  float fp = max(length(jx * tsz), length(jy * tsz));
+  int n = int(clamp(ceil(fp - 0.25), 1.0, 8.0));
+  if (n <= 1) return in0B(uv0, premul);
+  vec4 acc = vec4(0.0);
+  for (int j = 0; j < 8; j++) {
+    if (j >= n) break;
+    for (int i = 0; i < 8; i++) {
+      if (i >= n) break;
+      vec2 o = (vec2(i, j) + 0.5) / float(n) - 0.5;
+      acc += in0B(uv0 + jx * o.x + jy * o.y, premul);
+    }
+  }
+  return acc / float(n * n);
+}
 // The map is read with its own boundary mode (u_bnd1: Repeat for tileable graphs, Clamp
 // otherwise) — never wrapped behind the user's back.
 float mapAt(ivec2 p) { return lumaEnc(in1T(p), u_col1); }
@@ -409,11 +468,13 @@ void main() {
   ivec2 p = pix();
   vec2 off;
   if (u_mode == 0) off = (mapAt(p) - 0.5) * 2.0 * u_int * u_dir;
+  else if (u_mode == 2) { vec2 v = enc(in1T(p), u_col1).rg - 0.5; off = vec2(v.x, -v.y) * 2.0 * u_int; }   // R → +x (right), G → +y (up)
   else {
     vec2 g = vec2(mapAt(p + ivec2(1, 0)) - mapAt(p - ivec2(1, 0)), mapAt(p + ivec2(0, 1)) - mapAt(p - ivec2(0, 1))) * 0.5 * u_res;
     off = g * u_int * 0.1;
   }
-  vec4 c = in0B(pixUV() + off, u_premul);
+  vec2 uv0 = pixUV() + off;
+  vec4 c = footprint0(uv0, dFdx(uv0), dFdy(uv0), u_premul, u_ss);
   emit(u_premul ? unpremul(c) : c);
 }` };
 
@@ -621,21 +682,43 @@ void main() {
 }` };
 
   S.blend = { nin: 3, body: `
-uniform int u_mode;     // 0 mix, 1 add, 2 multiply, 3 screen, 4 min, 5 max
+uniform int u_mode;     // 0 mix, 1 add, 2 multiply, 3 screen, 4 min, 5 max, 6 over, 7 subtract, 8 difference, 9 overlay, 10 soft light
 uniform float u_opacity;
 uniform bool u_keepA;
+uniform bool u_isColor; // colour inputs are linear inside; overlay / soft light work on display (sRGB) values
+vec3 enc3(vec3 c) { return u_isColor ? toSrgb(c) : c; }
+vec3 dec3(vec3 c) { return u_isColor ? toLin(c) : c; }
+vec3 overlay(vec3 a, vec3 b) { return mix(2.0 * a * b, 1.0 - 2.0 * (1.0 - a) * (1.0 - b), step(0.5, a)); }
+vec3 softlight(vec3 a, vec3 b) {   // W3C / Photoshop soft light
+  vec3 d = mix(sqrt(a), ((16.0 * a - 12.0) * a + 4.0) * a, step(a, vec3(0.25)));
+  return mix(a + (2.0 * b - 1.0) * (d - a), a - (1.0 - 2.0 * b) * a * (1.0 - a), step(b, vec3(0.5)));
+}
 void main() {
   ivec2 p = pix();
   vec4 A = in0(p), B = in1(p);
   float m = u_has2 ? lumaEnc(in2(p), u_col2) : 1.0;
+  float k = clamp(u_opacity * m, 0.0, 1.0);
+  if (u_mode == 6) {
+    // B OVER A (Porter–Duff, premultiplied): B's own alpha × opacity × mask is its coverage
+    float ba = B.a * k;
+    float oa = ba + A.a * (1.0 - ba);
+    vec3 prem = B.rgb * ba + A.rgb * A.a * (1.0 - ba);
+    vec4 o = vec4(oa > 1e-6 ? prem / oa : vec3(0.0), oa);
+    if (u_keepA) o.a = A.a;
+    emit(o); return;
+  }
   vec4 r;
   if (u_mode == 0) r = B;
   else if (u_mode == 1) r = A + B;
   else if (u_mode == 2) r = A * B;
   else if (u_mode == 3) r = 1.0 - (1.0 - A) * (1.0 - B);
   else if (u_mode == 4) r = min(A, B);
-  else r = max(A, B);
-  vec4 o = mix(A, r, clamp(u_opacity * m, 0.0, 1.0));
+  else if (u_mode == 5) r = max(A, B);
+  else if (u_mode == 7) r = A - B;
+  else if (u_mode == 8) r = abs(A - B);
+  else if (u_mode == 9) r = vec4(dec3(overlay(clamp(enc3(A.rgb), 0.0, 1.0), clamp(enc3(B.rgb), 0.0, 1.0))), overlay(vec3(A.a), vec3(B.a)).x);
+  else r = vec4(dec3(softlight(clamp(enc3(A.rgb), 0.0, 1.0), clamp(enc3(B.rgb), 0.0, 1.0))), softlight(vec3(A.a), vec3(B.a)).x);
+  vec4 o = mix(A, r, k);
   if (u_keepA) o.a = A.a;
   emit(o);
 }` };
@@ -645,13 +728,36 @@ uniform vec2 u_off;
 uniform vec2 u_scl;
 uniform float u_rot;
 uniform bool u_premul;
+uniform bool u_ss;      // area filter when minifying
+// Area-filtered read of slot 0 for resampling nodes: the output pixel covers the parallelogram
+// uv0 + jx·a + jy·b (a, b ∈ [−½, ½]) of the source (jx, jy = screen derivatives of the source UV).
+// When it spans more than one source texel, n×n bilinear taps (n ≤ 8) average it — no moiré when
+// minifying. premul averages premultiplied colour (result premultiplied, like in0B).
+vec4 footprint0(vec2 uv0, vec2 jx, vec2 jy, bool premul, bool ss) {
+  if (!ss) return in0B(uv0, premul);
+  vec2 tsz = vec2(textureSize(u_in0, 0));
+  float fp = max(length(jx * tsz), length(jy * tsz));
+  int n = int(clamp(ceil(fp - 0.25), 1.0, 8.0));
+  if (n <= 1) return in0B(uv0, premul);
+  vec4 acc = vec4(0.0);
+  for (int j = 0; j < 8; j++) {
+    if (j >= n) break;
+    for (int i = 0; i < 8; i++) {
+      if (i >= n) break;
+      vec2 o = (vec2(i, j) + 0.5) / float(n) - 0.5;
+      acc += in0B(uv0 + jx * o.x + jy * o.y, premul);
+    }
+  }
+  return acc / float(n * n);
+}
 void main() {
   vec2 d = pixUV() - 0.5 - u_off;
   vec2 q = vec2(d.x, -d.y);
   float a = radians(u_rot);
   q = mat2(cos(a), -sin(a), sin(a), cos(a)) * q;
   q /= u_scl;
-  vec4 c = in0B(vec2(q.x, -q.y) + 0.5, u_premul);
+  vec2 uv0 = vec2(q.x, -q.y) + 0.5;
+  vec4 c = footprint0(uv0, dFdx(uv0), dFdy(uv0), u_premul, u_ss);
   emit(u_premul ? unpremul(c) : c);
 }` };
 
@@ -660,23 +766,51 @@ uniform int u_mode;     // 0 strip -> circle, 1 circle -> strip
 uniform int u_turns;
 uniform float u_radius;
 uniform bool u_premul;
+uniform bool u_ss;
+// Area-filtered read of slot 0 for resampling nodes: the output pixel covers the parallelogram
+// uv0 + jx·a + jy·b (a, b ∈ [−½, ½]) of the source (jx, jy = screen derivatives of the source UV).
+// When it spans more than one source texel, n×n bilinear taps (n ≤ 8) average it — no moiré when
+// minifying. premul averages premultiplied colour (result premultiplied, like in0B).
+vec4 footprint0(vec2 uv0, vec2 jx, vec2 jy, bool premul, bool ss) {
+  if (!ss) return in0B(uv0, premul);
+  vec2 tsz = vec2(textureSize(u_in0, 0));
+  float fp = max(length(jx * tsz), length(jy * tsz));
+  int n = int(clamp(ceil(fp - 0.25), 1.0, 8.0));
+  if (n <= 1) return in0B(uv0, premul);
+  vec4 acc = vec4(0.0);
+  for (int j = 0; j < 8; j++) {
+    if (j >= n) break;
+    for (int i = 0; i < 8; i++) {
+      if (i >= n) break;
+      vec2 o = (vec2(i, j) + 0.5) / float(n) - 0.5;
+      acc += in0B(uv0 + jx * o.x + jy * o.y, premul);
+    }
+  }
+  return acc / float(n * n);
+}
 void main() {
   vec2 uv = pixUV();
-  vec4 c;
+  vec2 src, jx, jy; float r = 0.0;
   if (u_mode == 0) {
     vec2 d = vec2(uv.x - 0.5, 0.5 - uv.y);
-    float r = length(d) * 2.0 / u_radius;
+    r = length(d) * 2.0 / u_radius;
     float a = atan(d.y, d.x) / (2.0 * PI) + 0.5;
-    if (r > 1.0) { emit(vec4(0.0, 0.0, 0.0, 0.0)); return; }
     // x (angle) wraps; y (radius) is clamped to the strip's first/last row centre, so the
     // centre does not blend in the opposite edge of the strip (no torn centre)
     float h = float(textureSize(u_in0, 0).y);
-    float v = clamp(1.0 - r, 0.5 / h, 1.0 - 0.5 / h);
-    c = in0B(vec2(fract(a * float(u_turns)), v), u_premul);
+    src = vec2(fract(a * float(u_turns)), clamp(1.0 - r, 0.5 / h, 1.0 - 0.5 / h));
+    // exact screen derivatives of (angle·turns, 1 − r): no seam, correct up to the very centre
+    float rr2 = max(dot(d, d), 1e-12), rl = sqrt(rr2), T = float(u_turns) / (2.0 * PI);
+    vec2 px = 1.0 / u_res;                                   // one pixel in uv (image y down → d.y decreases)
+    jx = vec2(-d.y / rr2 * T, -d.x / rl * 2.0 / u_radius) * px.x;
+    jy = vec2(-d.x / rr2 * T, d.y / rl * 2.0 / u_radius) * px.y;
   } else {
-    float a = (uv.x / float(u_turns) - 0.5) * 2.0 * PI, r = (1.0 - uv.y) * 0.5 * u_radius;
-    c = in0B(vec2(0.5 + r * cos(a), 0.5 - r * sin(a)), u_premul);
+    float a = (uv.x / float(u_turns) - 0.5) * 2.0 * PI, rr = (1.0 - uv.y) * 0.5 * u_radius;
+    src = vec2(0.5 + rr * cos(a), 0.5 - rr * sin(a));
+    jx = dFdx(src); jy = dFdy(src);
   }
+  vec4 c = footprint0(src, jx, jy, u_premul, u_ss);
+  if (u_mode == 0 && r > 1.0) { emit(vec4(0.0)); return; }
   emit(u_premul ? unpremul(c) : c);
 }` };
 
@@ -768,13 +902,20 @@ uniform int u_n;
 uniform vec2 u_center;
 uniform float u_strength;
 uniform bool u_aa;
+uniform bool u_adapt;   // at least one sample per pixel of the path (no dotted arcs far from the centre)
 void main() {
   if (u_strength <= 0.0) { emit(in0(pix())); return; }
   vec2 uv = pixUV(), d = uv - u_center;
+  int n = u_n;
+  if (u_adapt) {
+    float rpx = length(d) * u_res.x;
+    float path = u_mode == 0 ? u_strength * rpx : u_strength * PI * rpx;   // length of the blur path in pixels
+    n = int(clamp(max(float(u_n), ceil(path) + 1.0), 2.0, 256.0));
+  }
   vec4 acc = vec4(0.0);
   for (int k = 0; k < 256; k++) {
-    if (k >= u_n) break;
-    float t = float(k) / float(max(u_n - 1, 1));
+    if (k >= n) break;
+    float t = float(k) / float(max(n - 1, 1));
     vec2 s;
     if (u_mode == 0) s = u_center + d * (1.0 - u_strength * t);
     else {
@@ -783,7 +924,7 @@ void main() {
     }
     acc += in0B(s, u_aa);
   }
-  acc /= float(u_n);
+  acc /= float(n);
   emit(u_aa ? unpremul(acc) : acc);
 }` };
 

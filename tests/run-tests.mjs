@@ -1397,6 +1397,77 @@ await test('Этап B: Noise v2 — seed, разрешения, периоди�
   await page.context().close();
 });
 
+await test('Этап C: сглаживание, фильтрация при уменьшении, выборки размытий, Blend Over, Warp, Voronoi', async () => {
+  const page = await openPage();
+  const r = await page.evaluate(() => {
+    const out = {};
+    const gray = (id, size) => { const px = PTL.render(id, { size }).rgba; const g = new Float32Array(size * size); for (let i = 0; i < g.length; i++) g[i] = px[i * 4]; return g; };
+    const down = (g, S, k) => { const s = S / k, o = new Float32Array(s * s); for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) o[Math.floor(y / k) * s + Math.floor(x / k)] += g[y * S + x] / (k * k); return o; };
+    const mae = (a, b) => { let d = 0; for (let i = 0; i < a.length; i++) d += Math.abs(a[i] - b[i]); return +(d / a.length).toFixed(2); };
+    const vsRef = (build) => { PTL.newProject(); PTL.setResolution(2048); const id = build(); return mae(gray(id, 256), down(gray(id, 2048), 2048, 8)); };
+    const code = (glsl, space = 'data') => PTL.addNode('code', { params: { code: glsl, space } });
+    out.waves = [vsRef(() => PTL.addNode('waves', { params: { shape: 'square', countX: 31, countY: 7 } })), vsRef(() => PTL.addNode('waves', { params: { shape: 'saw', mode: 'rings', rings: 40 } }))];
+    out.wavesOff = vsRef(() => PTL.addNode('waves', { params: { shape: 'square', countX: 31, countY: 7, aa: false } }));
+    out.transform = vsRef(() => { const c = code('vec4 process(vec2 uv, ivec2 px) { vec2 q = floor(uv * 64.0); float v = mod(q.x + q.y, 2.0); return vec4(v, v, v, 1.0); }'); const t = PTL.addNode('transform', { params: { scaleX: 0.23, scaleY: 0.23, rotation: 13 } }); PTL.connect(c, 0, t, 0); return t; });
+    // polar centre: 32 stripes converge — the centre should be their average, not torn noise
+    { PTL.newProject(); PTL.setResolution(2048);
+      const w = PTL.addNode('waves', { params: { shape: 'sine', countX: 32 } }); const p = PTL.addNode('polar'); PTL.connect(w, 0, p, 0);
+      const lo = gray(p, 256), ref = down(gray(p, 2048), 2048, 8); let e = 0, n = 0;
+      for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) if (Math.hypot(x + 0.5 - 128, y + 0.5 - 128) < 19) { e += Math.abs(lo[y * 256 + x] - ref[y * 256 + x]); n++; }
+      out.polarCentre = +(e / n).toFixed(2); }
+    // spin blur far from the centre: 64 wedges must average to flat gray along an arc
+    { PTL.newProject(); PTL.setResolution(512);
+      const wg = code('vec4 process(vec2 uv, ivec2 px) { vec2 d = uv - 0.5; float v = step(0.5, fract(atan(d.y, d.x) / 6.2831853 * 64.0)); return vec4(v, v, v, 1.0); }');
+      const rb = PTL.addNode('radialblur', { params: { mode: 'spin', strength: 0.5, quality: 32, wrap: 'clamp' } }); PTL.connect(wg, 0, rb, 0);
+      const p2 = PTL.render(rb, { size: 512 }).rgba; let lo = 1e9, hi = 0;
+      for (let k = 0; k < 400; k++) { const a = k / 400 * 6.2831853, x = Math.round(256 + 200 * Math.cos(a)), y = Math.round(256 + 200 * Math.sin(a)); const v = p2[(y * 512 + x) * 4]; lo = Math.min(lo, v); hi = Math.max(hi, v); }
+      out.spinRipple = hi - lo; }
+    // Blend Over and the display-space modes on exact values
+    { PTL.newProject(); PTL.setResolution(256);
+      const A = code('vec4 process(vec2 uv, ivec2 px) { return vec4(0.25, 0.5, 0.75, 1.0); }');
+      const B = code('vec4 process(vec2 uv, ivec2 px) { return uv.x < 0.5 ? vec4(1.0, 0.0, 0.0, 0.0) : vec4(1.0, 0.0, 0.0, 0.5); }');
+      const over = PTL.addNode('blend', { params: { mode: 'over' } }); PTL.connect(A, 0, over, 0); PTL.connect(B, 0, over, 1);
+      const r0 = PTL.render(over, { size: 64 }).rgba; const at = (x) => Array.from(r0.slice((32 * 64 + x) * 4, (32 * 64 + x) * 4 + 4));
+      out.over = { transparentB: at(10), halfB: at(50) };
+      const half = code('vec4 process(vec2 uv, ivec2 px) { return vec4(0.5, 0.5, 0.5, 1.0); }');
+      const sl = PTL.addNode('blend', { params: { mode: 'softlight' } }); PTL.connect(A, 0, sl, 0); PTL.connect(half, 0, sl, 1);
+      const q3 = code('vec4 process(vec2 uv, ivec2 px) { return vec4(0.75, 0.75, 0.75, 1.0); }');
+      const ov = PTL.addNode('blend', { params: { mode: 'overlay' } }); PTL.connect(A, 0, ov, 0); PTL.connect(q3, 0, ov, 1);
+      const df = PTL.addNode('blend', { params: { mode: 'difference' } }); PTL.connect(A, 0, df, 0); PTL.connect(half, 0, df, 1);
+      const px0 = (id) => Array.from(PTL.render(id, { size: 8 }).rgba.slice(0, 3));
+      out.softlightNeutral = px0(sl); out.overlayHalf = px0(ov); out.difference = px0(df); }
+    // Warp vector: map (0.75, 0.5) moves content right by (0.75 − 0.5)·2·intensity
+    { PTL.newProject(); PTL.setResolution(256);
+      const tex = code('vec4 process(vec2 uv, ivec2 px) { return vec4(fract(uv * 4.0), 0.5, 1.0); }');
+      const vec = code('vec4 process(vec2 uv, ivec2 px) { return vec4(0.75, 0.5, 0.0, 1.0); }');
+      const w = PTL.addNode('warp', { params: { mode: 'vector', intensity: 0.125 } }); PTL.connect(tex, 0, w, 0); PTL.connect(vec, 0, w, 1);
+      const a = PTL.render(tex, { size: 64 }).rgba, b = PTL.render(w, { size: 64 }).rgba;
+      out.vector = [b[(5 * 64 + 10) * 4], a[(5 * 64 + 14) * 4], b[(5 * 64 + 10) * 4 + 1], a[(5 * 64 + 10) * 4 + 1]];   // (0.75 − 0.5)·2·0.125 = 0.0625 uv = 4 px
+    }
+    // Voronoi edge roundness: continuous, never collapses
+    { PTL.newProject(); PTL.setResolution(256);
+      const means = []; for (const v of [0, 0.25, 0.5, 0.75, 1]) { const g = gray(PTL.addNode('voronoi', { params: { mode: 'border', scale: 6, edgeSmooth: v } }), 128); means.push(+(g.reduce((x, y) => x + y, 0) / g.length).toFixed(1)); }
+      out.voronoiMeans = means; }
+    out.errors = PTL.errors();
+    return out;
+  });
+  ok(r.waves[0] < 1.5 && r.waves[1] < 2 && r.wavesOff > 10, 'Waves: сглаживание — 256 px совпадает с эталоном 2048 (меандр, кольца-пила), без него муар', { aa: r.waves, off: r.wavesOff });
+  ok(r.transform < 3, 'Transform: уменьшение в 4 раза с поворотом без муара (эталон 2048)', r.transform);
+  ok(r.polarCentre < 6, 'Polar: центр кольца — среднее полосы, а не рваный шум', r.polarCentre);
+  ok(r.spinRipple <= 6, 'Radial Blur (Spin): вдали от центра дуга сплошная — рябь ≤ 6/255', r.spinRipple);
+  ok(r.over.transparentB.join() === '64,128,191,255' && Math.abs(r.over.halfB[0] - 159) <= 3 && r.over.halfB[3] === 255, 'Blend Over: прозрачный B не меняет A, полупрозрачный — половинное наложение по альфе', r.over);
+  ok(r.softlightNeutral.join() === '64,128,191' && r.overlayHalf.every((v, i) => Math.abs(v - [96, 191, 223][i]) <= 2) && r.difference.every((v, i) => Math.abs(v - [64, 0, 64][i]) <= 2), 'Soft Light с 0.5 нейтрален; Overlay (слой 0.75) и Difference дают значения по формулам', { softlight: r.softlightNeutral, overlay: r.overlayHalf, difference: r.difference });
+  ok(Math.abs(r.vector[0] - r.vector[1]) <= 2 && Math.abs(r.vector[2] - r.vector[3]) <= 2, 'Warp Vector: R карты сдвигает по X ровно на (R − 0.5)·2·сила, G = 0.5 — без сдвига по Y', r.vector);
+  ok(r.voronoiMeans.every((m) => m > 25) && r.voronoiMeans.slice(1).every((m, k) => Math.abs(m - r.voronoiMeans[k]) < 40), 'Voronoi: мягкость граней меняет рисунок плавно и не проваливает яркость', r.voronoiMeans);
+  ok(Object.keys(r.errors).length === 0, 'нет ошибок нод', r.errors);
+  const leg = await page.evaluate(async () => {
+    await App.loadProjectData({ format: 'pocket-texture-lab', version: 1, engine: 3, resolution: 256, nodes: [{ id: 'n1', type: 'waves', x: 0, y: 0, params: {} }, { id: 'n2', type: 'transform', x: 0, y: 0, params: {} }, { id: 'n3', type: 'noise', x: 0, y: 0, params: {} }], links: [] });
+    return [PTL.getParams('n1').aa, PTL.getParams('n2').ss, PTL.getParams('n2').alphaAware, PTL.getParams('n3').lod];
+  });
+  ok(leg.join() === 'false,false,true,true', 'проект движка 3 (0.5): новшества 0.6 выключены, а 0.4/0.5 — как были сохранены', leg);
+  await page.context().close();
+});
+
 await browser.close();
 
 console.log('\n# Внешние запросы: ' + (netRequests.length ? netRequests.join(', ') : 'нет'));

@@ -1,0 +1,18 @@
+{ "cols": 5, "size": 192, "resolution": 512, "cases": [
+  { "label": "Shape: прямоуг. 0.9×0.006, поворот 7°, мягкость 0", "script": "return PTL.addNode('shape',{params:{shape:'rect',sizeX:0.9,sizeY:0.006,rotation:7,softness:0}})" },
+  { "label": "Shape: кольцо, толщина 0.004", "script": "return PTL.addNode('shape',{params:{shape:'ring',sizeX:0.8,sizeY:0.8,thickness:0.004,softness:0}})" },
+  { "label": "Shape: эллипс 0.9×0.2, мягкость 0.3", "script": "return PTL.addNode('shape',{params:{shape:'ellipse',sizeX:0.9,sizeY:0.2,softness:0.3,rotation:30}})" },
+  { "label": "Gradient: угловой (шов на 0°?)", "script": "return PTL.addNode('gradient',{params:{type:'angular'}})" },
+  { "label": "Gradient: радиальный, Mirror, масштаб 6", "script": "return PTL.addNode('gradient',{params:{type:'radial',repeat:'mirror',scale:6}})" },
+  { "label": "Waves: меандр 31×7 (ступеньки?)", "script": "return PTL.addNode('waves',{params:{shape:'square',countX:31,countY:7}})" },
+  { "label": "Waves: пила, кольца 40", "script": "return PTL.addNode('waves',{params:{shape:'saw',mode:'rings',rings:40}})" },
+  { "label": "Waves: синус + искажение шумом 3", "script": "const n=PTL.addNode('noise',{params:{scale:3}});const w=PTL.addNode('waves',{params:{countX:12,distort:3}});PTL.connect(n,0,w,0);return w" },
+  { "label": "Voronoi: границы, масштаб 6", "script": "return PTL.addNode('voronoi',{params:{mode:'border',scale:6}})" },
+  { "label": "Voronoi: трещины F2−F1, масштаб 24", "script": "return PTL.addNode('voronoi',{params:{mode:'crackle',scale:24}})" },
+  { "label": "Voronoi: F1 манхэттен, масштаб 8", "script": "return PTL.addNode('voronoi',{params:{mode:'f1',metric:'manhattan',scale:8}})" },
+  { "label": "Voronoi: значение ячейки, масштаб 40", "script": "return PTL.addNode('voronoi',{params:{mode:'cell',scale:40}})" },
+  { "label": "Tile Sampler: кирпичи, фаска 0.08", "script": "return PTL.addNode('tiler',{params:{}})" },
+  { "label": "Tile Sampler: 40×40 кругов, поворот", "script": "return PTL.addNode('tiler',{params:{pattern:'disc',countX:40,countY:40,sizeX:0.8,sizeY:0.8,bevel:0}})" },
+  { "label": "Splatter: 4000 пятен, размер 0.01", "script": "return PTL.addNode('splatter',{params:{count:4000,size:0.01}})" },
+  { "label": "Splatter: 60 штрихов (прямоуг., вытян. 0.05)", "script": "return PTL.addNode('splatter',{params:{pattern:'square',count:60,size:0.2,aspect:0.05,bevel:0}})" }
+] }

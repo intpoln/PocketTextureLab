@@ -21,6 +21,7 @@ uniform float u_twist;
 uniform int u_outMode;
 uniform bool u_blackBg;
 uniform int u_edge;      // 0 fade to all frame edges, 1 only top/bottom, 2 none (tileable)
+uniform bool u_roundFade; // fade to the inscribed circle (engine 4) instead of the square frame
 uniform int u_n;
 uniform float u_pos[8];
 uniform vec4 u_cols[8];
@@ -381,7 +382,7 @@ void main() {
   float T = fract(u_t * float(u_loops));
   float v = max(fx(p, T), 0.0) * u_int;
   // sprites must end exactly transparent at the frame border (no faint square in engines)
-  float e = u_edge == 0 ? max(abs(p.x), abs(p.y)) : u_edge == 1 ? abs(p.y) : 0.0;
+  float e = u_edge == 0 ? (u_roundFade ? length(p) : max(abs(p.x), abs(p.y))) : u_edge == 1 ? abs(p.y) : 0.0;
   v *= 1.0 - smoothstep(0.82, 0.98, e);
   v = max(v - 0.004, 0.0) / 0.996;
   if (u_outMode == 1) { float g = clamp(v, 0.0, 1.0); emit(vec4(g, g, g, 1.0)); return; }

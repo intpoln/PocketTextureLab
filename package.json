@@ -1,7 +1,7 @@
 {
   "name": "pocket-texture-lab",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Single-file offline procedural texture editor (build tooling and tests only; runtime needs nothing)",
   "scripts": {
     "build": "node build.mjs",

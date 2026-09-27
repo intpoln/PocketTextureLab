@@ -89,10 +89,9 @@ const Graph = (() => {
     const old = g.nodes;
     g.nodes = new Map();
     // Graphs saved before compute engine 2 keep the old values of parameters whose default changed.
-    const legacy = !(data.engine >= ENGINE);
     for (const n of data.nodes) {
       const prev = old.get(n.id);
-      const params = { ...defaultParams(n.type), ...(legacy ? LEGACY_DEFAULTS[n.type] || {} : {}), ...JSON.parse(JSON.stringify(n.params || {})) };
+      const params = { ...defaultParams(n.type), ...legacyDefaults(n.type, data.engine | 0), ...JSON.parse(JSON.stringify(n.params || {})) };
       const anim = cleanAnim(n.type, n.anim);
       const same = prev && prev.type === n.type && JSON.stringify(prev.params) === JSON.stringify(params) &&
         JSON.stringify(prev.anim || {}) === JSON.stringify(anim);

@@ -79,6 +79,11 @@ Editing (all validated; unknown params/enum values throw with the list of valid 
   Warp reads its map with Repeat when `wrap` is `repeat`, else Clamp. `alphaAware` (Transform/Warp/Polar default true,
   blurs default false) interpolates premultiplied so hidden RGB under A=0 never leaks; switch it off for packed data maps.
   Graphs carry `engine: 2`; older graphs load with legacy defaults. Details and proofs: docs/QUALITY.md.
+- Engine 4 (0.6) quality switches, default on for new nodes: Waves `aa` (box-filtered waves), Transform/Polar/Warp `ss`
+  (area filtering when minifying), Directional/Radial Blur `adaptive` (≥ 1 sample per pixel of the path), FX `roundFade`.
+  Blend modes: `over` (layer over background by its alpha — use for sprites), `mix`, `add`, `subtract`, `multiply`, `screen`,
+  `overlay`, `softlight`, `difference`, `min`, `max`. Warp modes: `directional`, `gradient` (+ `mapBlur` σ px, default 3),
+  `vector` (map RG = offset, 0.5 neutral). Voronoi `edgeSmooth` 0…1 (border mode: facets → rounded stones → pebbles).
 - `PTL.pinPreview(id)` pins the preview to a node (like a double click in the graph; `null` unpins). UI titles of nodes and
   parameters are English (Levels, Blend, Gradient Map, Transform 2D…); node types and parameter keys are unchanged.
 - `PTL.batch(fn)` — several edits as one undo step. `PTL.undo()`, `PTL.redo()`, `PTL.autoLayout()`.

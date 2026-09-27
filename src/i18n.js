@@ -81,7 +81,7 @@ const I18N = (() => {
     'Смешивание в слое': 'Blend within Layer', 'Смешивание слоёв': 'Blend Layers', 'Мягкость стыков': 'Blend Smoothness',
     'Гасить неразличимую деталь (LOD)': 'Anti-alias Detail (LOD)', 'Уровней искажения': 'Warp Levels', 'Эволюция (morph)': 'Evolution (Morph)',
     'Искажение тоже эволюционирует': 'Evolve Warp', 'Течение: оборотов за цикл': 'Flow Turns per Loop', 'Баланс (сдвиг яркости)': 'Balance',
-    'Ограничить 0…1': 'Clamp 0–1',
+    'Ограничить 0…1': 'Clamp 0–1', 'Сглаживание при уменьшении': 'Filter when Minifying', 'Адаптивное число выборок': 'Adaptive Sampling', 'Сглаживание (antialias)': 'Antialias', 'Круглое затухание к краям': 'Round Edge Fade', 'Мягкость граней': 'Edge Roundness', 'Сглаживание карты (σ, px проекта)': 'Map Smoothing (σ, px)',
   };
   const OPT = {
     'Цвет sRGB (Color)': 'Color (sRGB)', 'Данные каналов (Data)': 'Data (linear)', 'Растянуть (Stretch)': 'Stretch', 'Заполнить с обрезкой (Cover)': 'Cover (crop)',
@@ -113,11 +113,11 @@ const I18N = (() => {
     'Полоса → круг': 'Rectangular to Polar', 'Круг → полоса': 'Polar to Rectangular', 'Обычная карта': 'Generic', 'Base Color (альбедо)': 'Base Color',
     'Авто (по ноде Height to Normal)': 'Auto (from Height to Normal)',
     'Текучий (Flow)': 'Flow', 'Фрактал пятен (Splat Fractal)': 'Splat Fractal', 'Конус': 'Cone', 'Штрих (вытянутый)': 'Streak',
-    'Сложение (мягкое насыщение)': 'Add (soft saturation)', 'Плавный максимум (Smooth Max)': 'Smooth Max', 'Взвешенная сумма (как fBM)': 'Weighted Sum (fBM)',
+    'Сложение (мягкое насыщение)': 'Add (soft saturation)', 'Плавный максимум (Smooth Max)': 'Smooth Max', 'Взвешенная сумма (как fBM)': 'Weighted Sum (fBM)', 'Поверх по альфе (Over)': 'Normal (Over)', 'Вычитание (Subtract)': 'Subtract', 'Перекрытие (Overlay)': 'Overlay', 'Мягкий свет (Soft Light)': 'Soft Light', 'Разница (Difference)': 'Difference', 'Вектор RG (Vector Warp)': 'Vector (RG)',
   };
   const GROUP = {
     'Зацикленные': 'Looping', 'Однократные': 'One-shot', 'Оптические блики (Optical Flares)': 'Optical Flares',
-    'Мягкие': 'Soft', 'Рельеф': 'Ridges & Relief', 'Органика': 'Organic', 'Клетки': 'Cells', 'Зерно': 'Grain', 'Вытянутые': 'Anisotropic',
+    'Мягкие': 'Soft', 'Полосы': 'Stripes', 'Рельеф': 'Ridges & Relief', 'Органика': 'Organic', 'Клетки': 'Cells', 'Зерно': 'Grain', 'Вытянутые': 'Anisotropic',
   };
   const NOISE = {
     'Мягкий Perlin': 'Soft Perlin', 'Мелкий Perlin': 'Fine Perlin', 'Прожилки / вены': 'Veins', 'Турбулентность': 'Turbulence', 'Мрамор': 'Marble',

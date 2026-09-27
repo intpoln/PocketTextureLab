@@ -1,0 +1,10 @@
+{ "cols": 4, "size": 200, "resolution": 512, "cases": [
+  { "label": "Voronoi границы, мягкость 0 (как раньше)", "script": "return PTL.addNode('voronoi',{params:{mode:'border',scale:6,seed:4,edgeSmooth:0}})" },
+  { "label": "мягкость 0.35", "script": "return PTL.addNode('voronoi',{params:{mode:'border',scale:6,seed:4,edgeSmooth:0.35}})" },
+  { "label": "мягкость 0.6", "script": "return PTL.addNode('voronoi',{params:{mode:'border',scale:6,seed:4,edgeSmooth:0.6}})" },
+  { "label": "мягкость 1", "script": "return PTL.addNode('voronoi',{params:{mode:'border',scale:6,seed:4,edgeSmooth:1}})" },
+  { "label": "нормаль, мягкость 0", "script": "const v=PTL.addNode('voronoi',{params:{mode:'border',scale:6,seed:4,edgeSmooth:0}});const n=PTL.addNode('normal',{params:{strength:6}});PTL.connect(v,0,n,0);return n" },
+  { "label": "нормаль, мягкость 0.35", "script": "const v=PTL.addNode('voronoi',{params:{mode:'border',scale:6,seed:4,edgeSmooth:0.35}});const n=PTL.addNode('normal',{params:{strength:6}});PTL.connect(v,0,n,0);return n" },
+  { "label": "нормаль, мягкость 0.6", "script": "const v=PTL.addNode('voronoi',{params:{mode:'border',scale:6,seed:4,edgeSmooth:0.6}});const n=PTL.addNode('normal',{params:{strength:6}});PTL.connect(v,0,n,0);return n" },
+  { "label": "нормаль, мягкость 1", "script": "const v=PTL.addNode('voronoi',{params:{mode:'border',scale:6,seed:4,edgeSmooth:1}});const n=PTL.addNode('normal',{params:{strength:6}});PTL.connect(v,0,n,0);return n" }
+] }

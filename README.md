@@ -129,7 +129,7 @@
 ```sh
 npm install        # только для разработки: playwright, pngjs, pako, upng-js
 npm run build      # src/ -> texture-lab.html
-npm test           # сборка + 228 проверок в настоящем Chromium через file://
+npm test           # сборка + 238 проверок в настоящем Chromium через file://
 node tests/perf.mjs
 node tools/ptl-run.mjs script.js out/   # выполнить сценарий PTL без UI и сохранить PNG
 node tools/readme-shots.mjs             # пересобрать картинки README (docs/img) из настоящего редактора

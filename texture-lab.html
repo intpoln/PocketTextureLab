@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Pocket Texture Lab v0.5.0 — offline procedural texture editor in one HTML file.
+  Pocket Texture Lab v0.6.0 — offline procedural texture editor in one HTML file.
   Author: intpoln — https://github.com/intpoln/PocketTextureLab
   FOR AI AGENTS / AUTOMATION: this page exposes a full JavaScript API as
   `window.PTL`. Call `PTL.help()` for the manual (it is also embedded below in
@@ -17,11 +17,23 @@
 <meta name="author" content="intpoln — https://github.com/intpoln/PocketTextureLab">
 <title>Pocket Texture Lab</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232d6fb8'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%2358c27d'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%23e0b04d'/%3E%3C/svg%3E">
-<meta name="version" content="0.5.0">
+<meta name="version" content="0.6.0">
 <script type="text/markdown" id="ptl-changelog">
 # История версий
 
 Пока версия начинается с 0 — программа в активной разработке и может содержать ошибки.
+
+## 0.6.0
+Этап C переработки ядра — аудит всех основных нод, сквозные цепочки «до/после» (docs/QUALITY.md).
+- **Blend**: новый режим **Over** — обычное наложение слоя по его альфе (раньше спрайт с прозрачностью нельзя было положить на фон без каймы); также **Subtract, Difference, Overlay, Soft Light** (последние два — на отображаемых значениях, как в Photoshop).
+- **Warp**: сглаживание карты перед взятием градиента — сдвиг задают крупные формы, картинка больше не превращается в «мятую фольгу»; новый режим **Вектор RG** (R и G карты — сдвиг по X и Y, 0.5 — без сдвига).
+- **Voronoi**: «Мягкость граней» для режима «Границы» — от острых граней через скруглённые камни к отдельной гальке; нормали без «пирамидок».
+- **Waves**: точное сглаживание — ровные края меандра и пилы, мелкие полосы без муара.
+- **Transform, Polar, Warp**: сглаживание при уменьшении — без муара (ошибка против эталона 71 → 1 из 255); центр Polar-кольца чистый.
+- **Directional / Radial Blur**: адаптивное число выборок — длинные штрихи и дуги вдали от центра сплошные, а не пунктирные.
+- **FX**: круглое затухание к краям кадра вместо квадратного.
+- Все новшества включены для новых проектов; старые проекты рендерятся как раньше (проверено побайтно на всех встроенных примерах).
+- Инструменты: tools/audit-c.mjs, tools/chains.mjs, tools/sheet.mjs, tools/glow-pyramid.mjs.
 
 ## 0.5.0
 Этап B переработки ядра — Noise v2 (подробности и замеры — docs/QUALITY.md).
@@ -194,6 +206,11 @@ Editing (all validated; unknown params/enum values throw with the list of valid 
   Warp reads its map with Repeat when `wrap` is `repeat`, else Clamp. `alphaAware` (Transform/Warp/Polar default true,
   blurs default false) interpolates premultiplied so hidden RGB under A=0 never leaks; switch it off for packed data maps.
   Graphs carry `engine: 2`; older graphs load with legacy defaults. Details and proofs: docs/QUALITY.md.
+- Engine 4 (0.6) quality switches, default on for new nodes: Waves `aa` (box-filtered waves), Transform/Polar/Warp `ss`
+  (area filtering when minifying), Directional/Radial Blur `adaptive` (≥ 1 sample per pixel of the path), FX `roundFade`.
+  Blend modes: `over` (layer over background by its alpha — use for sprites), `mix`, `add`, `subtract`, `multiply`, `screen`,
+  `overlay`, `softlight`, `difference`, `min`, `max`. Warp modes: `directional`, `gradient` (+ `mapBlur` σ px, default 3),
+  `vector` (map RG = offset, 0.5 neutral). Voronoi `edgeSmooth` 0…1 (border mode: facets → rounded stones → pebbles).
 - `PTL.pinPreview(id)` pins the preview to a node (like a double click in the graph; `null` unpins). UI titles of nodes and
   parameters are English (Levels, Blend, Gradient Map, Transform 2D…); node types and parameter keys are unchanged.
 - `PTL.batch(fn)` — several edits as one undo step. `PTL.undo()`, `PTL.redo()`, `PTL.autoLayout()`.
@@ -672,7 +689,7 @@ main { position: relative; }
 <div id="agent-note" class="sr-only">Note for AI agents and screen readers: this is Pocket Texture Lab, a procedural texture editor. It is fully scriptable through the JavaScript object window.PTL. Run PTL.help() in the page for the complete manual (also embedded in this document as script#ptl-agent-guide), PTL.examples() for ready texture templates (brick, asphalt, cobblestone, wood, painted metal) and PTL.exportAll() to download the PNG maps.</div>
 <div id="app">
   <header id="toolbar">
-    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.5.0</button></span>
+    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.6.0</button></span>
     <button id="btn-mmenu" title="Меню">☰</button>
     <select id="examples" title="Встроенные примеры, шаблоны текстур и ваши шаблоны"></select>
     <button id="btn-lib" title="Мои пресеты и шаблоны (хранятся в браузере), экспорт/импорт">Библиотека</button>
@@ -2216,6 +2233,7 @@ uniform int u_metric;   // 0 euclid, 1 manhattan, 2 chebyshev
 uniform float u_scale;
 uniform float u_rand;
 uniform bool u_tile;
+uniform float u_edgeSmooth;   // border mode: 0 = exact distance to the nearest edge (creased), >0 = smooth min over edges
 ivec2 wc(ivec2 c, int P) { return u_tile ? ((c % P) + P) % P : c + 4096; }
 uvec3 hc(ivec2 c) { return pcg3(uvec3(uvec2(c), uint(u_seed) * 747796405u + 12345u)); }
 uniform float u_evo;
@@ -2254,18 +2272,37 @@ void main() {
   else if (u_mode == 4) v = clamp(f2 - f1, 0.0, 1.0);
   else if (u_mode == 2) v = float(hc(wc(ic + mg, P)).z >> 8u) / 16777215.0;
   else {
-    float mb = 8.0;
+    float mb = 8.0, sm = 8.0, smc = 8.0, hc = 8.0;
+    float w = u_edgeSmooth * 0.5;          // rounding width in cell units: only edges within w of the nearest one matter
     for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) {
       ivec2 g = mg + ivec2(i, j);
       vec2 r = vec2(g) + pt(wc(ic + g, P)) - f;
       vec2 dd = r - mr;
-      if (dot(dd, dd) > 1e-6) mb = min(mb, dot(0.5 * (mr + r), normalize(dd)));
+      if (dot(dd, dd) > 1e-6) {
+        float e = dot(0.5 * (mr + r), normalize(dd));   // distance from here to the bisector with this neighbour
+        float ec = 0.5 * length(dd);                     // the same distance measured from the cell's own point
+        mb = min(mb, e); hc = min(hc, ec);
+        if (w > 0.0) {
+          // polynomial smooth minimum: rounds the crease where two edges are about equally near
+          float h = max(w - abs(sm - e), 0.0) / w;  sm = min(sm, e) - h * h * w * 0.25;
+          float hq = max(w - abs(smc - ec), 0.0) / w; smc = min(smc, ec) - hq * hq * w * 0.25;
+        }
+      }
+    }
+    if (w > 0.0) {
+      // the cell reads as a rounded dome instead of a faceted pyramid; the edge line stays put. Rescaled so the
+      // cell point keeps its exact height (bigger cells stay higher) — rounding does not sink the whole cell.
+      mb = smc > 1e-5 ? max(sm, 0.0) / smc * hc : 0.0;
     }
     v = clamp(mb * 2.0, 0.0, 1.0);
   }
   emit(vec4(v, v, v, 1.0));
 }` };
 
+  // Waves. With u_aa every shape is BOX-FILTERED over the pixel footprint exactly: the value is
+  // the mean of the wave over [t − w/2, t + w/2] computed from its closed-form integral, so
+  // square / saw / triangle edges are antialiased and patterns finer than a pixel settle to their
+  // mean instead of producing moiré. u_aa = false is the legacy point-sampled wave.
   S.waves = { nin: 1, body: `
 uniform int u_shape;    // 0 sine, 1 triangle, 2 saw, 3 square
 uniform bool u_rings;
@@ -2275,24 +2312,63 @@ uniform vec2 u_center;
 uniform float u_phase;
 uniform float u_duty;
 uniform float u_distort;
+uniform bool u_aa;
+float waveAt(float t) {
+  float f = fract(t);
+  if (u_shape == 0) return 0.5 - 0.5 * cos(2.0 * PI * t);
+  if (u_shape == 1) return 1.0 - abs(2.0 * f - 1.0);
+  if (u_shape == 2) return f;
+  return f < u_duty ? 1.0 : 0.0;
+}
+// antiderivative of each wave (continuous, grows by the period mean every period)
+float waveInt(float t) {
+  float k = floor(t), f = t - k;
+  if (u_shape == 0) return t * 0.5 - sin(2.0 * PI * t) / (4.0 * PI);
+  if (u_shape == 1) return k * 0.5 + (f < 0.5 ? f * f : -f * f + 2.0 * f - 0.5);
+  if (u_shape == 2) return k * 0.5 + f * f * 0.5;
+  return k * u_duty + min(f, u_duty);
+}
 void main() {
   vec2 uv = pixUV() + u_uvOff;
   float d = u_has0 ? lumaEnc(in0(pix()), u_col0) - 0.5 : 0.0;
   float t = u_rings ? length(uv - u_center) * u_ringN : dot(uv, u_count);
   t += u_phase + d * u_distort;
-  float f = fract(t), v;
-  if (u_shape == 0) v = 0.5 - 0.5 * cos(2.0 * PI * t);
-  else if (u_shape == 1) v = 1.0 - abs(2.0 * f - 1.0);
-  else if (u_shape == 2) v = f;
-  else v = f < u_duty ? 1.0 : 0.0;
+  float v;
+  if (!u_aa) v = waveAt(t);
+  else {
+    float w = length(vec2(dFdx(t), dFdy(t)));   // footprint in periods
+    v = w < 1e-4 ? waveAt(t) : (waveInt(t + 0.5 * w) - waveInt(t - 0.5 * w)) / w;
+  }
   emit(vec4(v, v, v, 1.0));
 }` };
 
   S.warp = { nin: 2, body: `
-uniform int u_mode;     // 0 directional, 1 along map gradient
+uniform int u_mode;     // 0 directional, 1 along map gradient, 2 vector (map RG = offset, 0.5 neutral)
 uniform vec2 u_dir;
 uniform float u_int;
 uniform bool u_premul;  // alpha-aware: interpolate the source premultiplied
+uniform bool u_ss;      // area filter where the warp compresses the source
+// Area-filtered read of slot 0 for resampling nodes: the output pixel covers the parallelogram
+// uv0 + jx·a + jy·b (a, b ∈ [−½, ½]) of the source (jx, jy = screen derivatives of the source UV).
+// When it spans more than one source texel, n×n bilinear taps (n ≤ 8) average it — no moiré when
+// minifying. premul averages premultiplied colour (result premultiplied, like in0B).
+vec4 footprint0(vec2 uv0, vec2 jx, vec2 jy, bool premul, bool ss) {
+  if (!ss) return in0B(uv0, premul);
+  vec2 tsz = vec2(textureSize(u_in0, 0));
+  float fp = max(length(jx * tsz), length(jy * tsz));
+  int n = int(clamp(ceil(fp - 0.25), 1.0, 8.0));
+  if (n <= 1) return in0B(uv0, premul);
+  vec4 acc = vec4(0.0);
+  for (int j = 0; j < 8; j++) {
+    if (j >= n) break;
+    for (int i = 0; i < 8; i++) {
+      if (i >= n) break;
+      vec2 o = (vec2(i, j) + 0.5) / float(n) - 0.5;
+      acc += in0B(uv0 + jx * o.x + jy * o.y, premul);
+    }
+  }
+  return acc / float(n * n);
+}
 // The map is read with its own boundary mode (u_bnd1: Repeat for tileable graphs, Clamp
 // otherwise) — never wrapped behind the user's back.
 float mapAt(ivec2 p) { return lumaEnc(in1T(p), u_col1); }
@@ -2300,11 +2376,13 @@ void main() {
   ivec2 p = pix();
   vec2 off;
   if (u_mode == 0) off = (mapAt(p) - 0.5) * 2.0 * u_int * u_dir;
+  else if (u_mode == 2) { vec2 v = enc(in1T(p), u_col1).rg - 0.5; off = vec2(v.x, -v.y) * 2.0 * u_int; }   // R → +x (right), G → +y (up)
   else {
     vec2 g = vec2(mapAt(p + ivec2(1, 0)) - mapAt(p - ivec2(1, 0)), mapAt(p + ivec2(0, 1)) - mapAt(p - ivec2(0, 1))) * 0.5 * u_res;
     off = g * u_int * 0.1;
   }
-  vec4 c = in0B(pixUV() + off, u_premul);
+  vec2 uv0 = pixUV() + off;
+  vec4 c = footprint0(uv0, dFdx(uv0), dFdy(uv0), u_premul, u_ss);
   emit(u_premul ? unpremul(c) : c);
 }` };
 
@@ -2512,21 +2590,43 @@ void main() {
 }` };
 
   S.blend = { nin: 3, body: `
-uniform int u_mode;     // 0 mix, 1 add, 2 multiply, 3 screen, 4 min, 5 max
+uniform int u_mode;     // 0 mix, 1 add, 2 multiply, 3 screen, 4 min, 5 max, 6 over, 7 subtract, 8 difference, 9 overlay, 10 soft light
 uniform float u_opacity;
 uniform bool u_keepA;
+uniform bool u_isColor; // colour inputs are linear inside; overlay / soft light work on display (sRGB) values
+vec3 enc3(vec3 c) { return u_isColor ? toSrgb(c) : c; }
+vec3 dec3(vec3 c) { return u_isColor ? toLin(c) : c; }
+vec3 overlay(vec3 a, vec3 b) { return mix(2.0 * a * b, 1.0 - 2.0 * (1.0 - a) * (1.0 - b), step(0.5, a)); }
+vec3 softlight(vec3 a, vec3 b) {   // W3C / Photoshop soft light
+  vec3 d = mix(sqrt(a), ((16.0 * a - 12.0) * a + 4.0) * a, step(a, vec3(0.25)));
+  return mix(a + (2.0 * b - 1.0) * (d - a), a - (1.0 - 2.0 * b) * a * (1.0 - a), step(b, vec3(0.5)));
+}
 void main() {
   ivec2 p = pix();
   vec4 A = in0(p), B = in1(p);
   float m = u_has2 ? lumaEnc(in2(p), u_col2) : 1.0;
+  float k = clamp(u_opacity * m, 0.0, 1.0);
+  if (u_mode == 6) {
+    // B OVER A (Porter–Duff, premultiplied): B's own alpha × opacity × mask is its coverage
+    float ba = B.a * k;
+    float oa = ba + A.a * (1.0 - ba);
+    vec3 prem = B.rgb * ba + A.rgb * A.a * (1.0 - ba);
+    vec4 o = vec4(oa > 1e-6 ? prem / oa : vec3(0.0), oa);
+    if (u_keepA) o.a = A.a;
+    emit(o); return;
+  }
   vec4 r;
   if (u_mode == 0) r = B;
   else if (u_mode == 1) r = A + B;
   else if (u_mode == 2) r = A * B;
   else if (u_mode == 3) r = 1.0 - (1.0 - A) * (1.0 - B);
   else if (u_mode == 4) r = min(A, B);
-  else r = max(A, B);
-  vec4 o = mix(A, r, clamp(u_opacity * m, 0.0, 1.0));
+  else if (u_mode == 5) r = max(A, B);
+  else if (u_mode == 7) r = A - B;
+  else if (u_mode == 8) r = abs(A - B);
+  else if (u_mode == 9) r = vec4(dec3(overlay(clamp(enc3(A.rgb), 0.0, 1.0), clamp(enc3(B.rgb), 0.0, 1.0))), overlay(vec3(A.a), vec3(B.a)).x);
+  else r = vec4(dec3(softlight(clamp(enc3(A.rgb), 0.0, 1.0), clamp(enc3(B.rgb), 0.0, 1.0))), softlight(vec3(A.a), vec3(B.a)).x);
+  vec4 o = mix(A, r, k);
   if (u_keepA) o.a = A.a;
   emit(o);
 }` };
@@ -2536,13 +2636,36 @@ uniform vec2 u_off;
 uniform vec2 u_scl;
 uniform float u_rot;
 uniform bool u_premul;
+uniform bool u_ss;      // area filter when minifying
+// Area-filtered read of slot 0 for resampling nodes: the output pixel covers the parallelogram
+// uv0 + jx·a + jy·b (a, b ∈ [−½, ½]) of the source (jx, jy = screen derivatives of the source UV).
+// When it spans more than one source texel, n×n bilinear taps (n ≤ 8) average it — no moiré when
+// minifying. premul averages premultiplied colour (result premultiplied, like in0B).
+vec4 footprint0(vec2 uv0, vec2 jx, vec2 jy, bool premul, bool ss) {
+  if (!ss) return in0B(uv0, premul);
+  vec2 tsz = vec2(textureSize(u_in0, 0));
+  float fp = max(length(jx * tsz), length(jy * tsz));
+  int n = int(clamp(ceil(fp - 0.25), 1.0, 8.0));
+  if (n <= 1) return in0B(uv0, premul);
+  vec4 acc = vec4(0.0);
+  for (int j = 0; j < 8; j++) {
+    if (j >= n) break;
+    for (int i = 0; i < 8; i++) {
+      if (i >= n) break;
+      vec2 o = (vec2(i, j) + 0.5) / float(n) - 0.5;
+      acc += in0B(uv0 + jx * o.x + jy * o.y, premul);
+    }
+  }
+  return acc / float(n * n);
+}
 void main() {
   vec2 d = pixUV() - 0.5 - u_off;
   vec2 q = vec2(d.x, -d.y);
   float a = radians(u_rot);
   q = mat2(cos(a), -sin(a), sin(a), cos(a)) * q;
   q /= u_scl;
-  vec4 c = in0B(vec2(q.x, -q.y) + 0.5, u_premul);
+  vec2 uv0 = vec2(q.x, -q.y) + 0.5;
+  vec4 c = footprint0(uv0, dFdx(uv0), dFdy(uv0), u_premul, u_ss);
   emit(u_premul ? unpremul(c) : c);
 }` };
 
@@ -2551,23 +2674,51 @@ uniform int u_mode;     // 0 strip -> circle, 1 circle -> strip
 uniform int u_turns;
 uniform float u_radius;
 uniform bool u_premul;
+uniform bool u_ss;
+// Area-filtered read of slot 0 for resampling nodes: the output pixel covers the parallelogram
+// uv0 + jx·a + jy·b (a, b ∈ [−½, ½]) of the source (jx, jy = screen derivatives of the source UV).
+// When it spans more than one source texel, n×n bilinear taps (n ≤ 8) average it — no moiré when
+// minifying. premul averages premultiplied colour (result premultiplied, like in0B).
+vec4 footprint0(vec2 uv0, vec2 jx, vec2 jy, bool premul, bool ss) {
+  if (!ss) return in0B(uv0, premul);
+  vec2 tsz = vec2(textureSize(u_in0, 0));
+  float fp = max(length(jx * tsz), length(jy * tsz));
+  int n = int(clamp(ceil(fp - 0.25), 1.0, 8.0));
+  if (n <= 1) return in0B(uv0, premul);
+  vec4 acc = vec4(0.0);
+  for (int j = 0; j < 8; j++) {
+    if (j >= n) break;
+    for (int i = 0; i < 8; i++) {
+      if (i >= n) break;
+      vec2 o = (vec2(i, j) + 0.5) / float(n) - 0.5;
+      acc += in0B(uv0 + jx * o.x + jy * o.y, premul);
+    }
+  }
+  return acc / float(n * n);
+}
 void main() {
   vec2 uv = pixUV();
-  vec4 c;
+  vec2 src, jx, jy; float r = 0.0;
   if (u_mode == 0) {
     vec2 d = vec2(uv.x - 0.5, 0.5 - uv.y);
-    float r = length(d) * 2.0 / u_radius;
+    r = length(d) * 2.0 / u_radius;
     float a = atan(d.y, d.x) / (2.0 * PI) + 0.5;
-    if (r > 1.0) { emit(vec4(0.0, 0.0, 0.0, 0.0)); return; }
     // x (angle) wraps; y (radius) is clamped to the strip's first/last row centre, so the
     // centre does not blend in the opposite edge of the strip (no torn centre)
     float h = float(textureSize(u_in0, 0).y);
-    float v = clamp(1.0 - r, 0.5 / h, 1.0 - 0.5 / h);
-    c = in0B(vec2(fract(a * float(u_turns)), v), u_premul);
+    src = vec2(fract(a * float(u_turns)), clamp(1.0 - r, 0.5 / h, 1.0 - 0.5 / h));
+    // exact screen derivatives of (angle·turns, 1 − r): no seam, correct up to the very centre
+    float rr2 = max(dot(d, d), 1e-12), rl = sqrt(rr2), T = float(u_turns) / (2.0 * PI);
+    vec2 px = 1.0 / u_res;                                   // one pixel in uv (image y down → d.y decreases)
+    jx = vec2(-d.y / rr2 * T, -d.x / rl * 2.0 / u_radius) * px.x;
+    jy = vec2(-d.x / rr2 * T, d.y / rl * 2.0 / u_radius) * px.y;
   } else {
-    float a = (uv.x / float(u_turns) - 0.5) * 2.0 * PI, r = (1.0 - uv.y) * 0.5 * u_radius;
-    c = in0B(vec2(0.5 + r * cos(a), 0.5 - r * sin(a)), u_premul);
+    float a = (uv.x / float(u_turns) - 0.5) * 2.0 * PI, rr = (1.0 - uv.y) * 0.5 * u_radius;
+    src = vec2(0.5 + rr * cos(a), 0.5 - rr * sin(a));
+    jx = dFdx(src); jy = dFdy(src);
   }
+  vec4 c = footprint0(src, jx, jy, u_premul, u_ss);
+  if (u_mode == 0 && r > 1.0) { emit(vec4(0.0)); return; }
   emit(u_premul ? unpremul(c) : c);
 }` };
 
@@ -2659,13 +2810,20 @@ uniform int u_n;
 uniform vec2 u_center;
 uniform float u_strength;
 uniform bool u_aa;
+uniform bool u_adapt;   // at least one sample per pixel of the path (no dotted arcs far from the centre)
 void main() {
   if (u_strength <= 0.0) { emit(in0(pix())); return; }
   vec2 uv = pixUV(), d = uv - u_center;
+  int n = u_n;
+  if (u_adapt) {
+    float rpx = length(d) * u_res.x;
+    float path = u_mode == 0 ? u_strength * rpx : u_strength * PI * rpx;   // length of the blur path in pixels
+    n = int(clamp(max(float(u_n), ceil(path) + 1.0), 2.0, 256.0));
+  }
   vec4 acc = vec4(0.0);
   for (int k = 0; k < 256; k++) {
-    if (k >= u_n) break;
-    float t = float(k) / float(max(u_n - 1, 1));
+    if (k >= n) break;
+    float t = float(k) / float(max(n - 1, 1));
     vec2 s;
     if (u_mode == 0) s = u_center + d * (1.0 - u_strength * t);
     else {
@@ -2674,7 +2832,7 @@ void main() {
     }
     acc += in0B(s, u_aa);
   }
-  acc /= float(u_n);
+  acc /= float(n);
   emit(u_aa ? unpremul(acc) : acc);
 }` };
 
@@ -3269,6 +3427,7 @@ uniform float u_twist;
 uniform int u_outMode;
 uniform bool u_blackBg;
 uniform int u_edge;      // 0 fade to all frame edges, 1 only top/bottom, 2 none (tileable)
+uniform bool u_roundFade; // fade to the inscribed circle (engine 4) instead of the square frame
 uniform int u_n;
 uniform float u_pos[8];
 uniform vec4 u_cols[8];
@@ -3629,7 +3788,7 @@ void main() {
   float T = fract(u_t * float(u_loops));
   float v = max(fx(p, T), 0.0) * u_int;
   // sprites must end exactly transparent at the frame border (no faint square in engines)
-  float e = u_edge == 0 ? max(abs(p.x), abs(p.y)) : u_edge == 1 ? abs(p.y) : 0.0;
+  float e = u_edge == 0 ? (u_roundFade ? length(p) : max(abs(p.x), abs(p.y))) : u_edge == 1 ? abs(p.y) : 0.0;
   v *= 1.0 - smoothstep(0.82, 0.98, e);
   v = max(v - 0.004, 0.0) / 0.996;
   if (u_outMode == 1) { float g = clamp(v, 0.0, 1.0); emit(vec4(g, g, g, 1.0)); return; }
@@ -3807,15 +3966,25 @@ const WRAP_OPTS = [['repeat', 'Повтор (Repeat)'], ['clamp', 'Край (Cla
 const WRAP_RC = [['repeat', 'Повтор (Repeat)'], ['clamp', 'Край (Clamp)']];
 const WRAP_HELP = 'Что фильтр видит за краем изображения. Repeat — противоположный край (бесшовные текстуры). Clamp — продолжение крайних пикселей. Border — пустоту (прозрачный ноль): для спрайтов и эффектов на пустом холсте, ореол не переносится и не «растягивает» край.';
 const AA_HELP = 'Включено: пиксели смешиваются в premultiplied-виде (цвет × альфа) до интерполяции — невидимые пиксели со скрытым цветом не дают каймы. Выключено: каналы RGBA интерполируются независимо, как числа (для карт-данных).';
+const SS_HELP = 'При уменьшении (и там, где искажение сжимает изображение) пиксель усредняет всю попавшую в него область источника — без муара и дрожащих мелких деталей. Выключено — одна выборка на пиксель (старое поведение, быстрее).';
 const BORDER_SEAM = 'Режим Border видит за краем пустоту — при повторе текстуры появится шов.';
 const wrapSeam = (w) => (w === 'clamp' ? CLAMP_SEAM : w === 'border' ? BORDER_SEAM : '');
 // Parameters whose default changed with compute engine 2 (v0.4): projects saved before that
 // get the old values, so they keep rendering exactly as they did.
-const ENGINE = 3;
-const LEGACY_DEFAULTS = {
-  transform: { alphaAware: false }, warp: { alphaAware: false }, polar: { alphaAware: false }, glow: { wrap: 'clamp' },
-  noise: { lod: false },   // engine 3: octaves finer than a pixel fade out
-};
+const ENGINE = 4;
+// Parameters whose default changed with a compute-engine version: a project saved with an older
+// engine gets, for every later version, the value it rendered with before — so it looks unchanged.
+const LEGACY_DEFAULTS = [
+  [2, { transform: { alphaAware: false }, warp: { alphaAware: false }, polar: { alphaAware: false }, glow: { wrap: 'clamp' } }],   // 0.4: alpha-aware resampling, Border glow
+  [3, { noise: { lod: false } }],                                                                                                 // 0.5: sub-pixel octaves fade
+  [4, { waves: { aa: false }, transform: { ss: false }, polar: { ss: false }, warp: { ss: false, mapBlur: 0 },                  // 0.6: antialiasing, area filtering,
+    dirblur: { adaptive: false }, radialblur: { adaptive: false }, fx: { roundFade: false }, voronoi: { edgeSmooth: 0 } }],        //      adaptive blur sampling, round FX fade
+];
+function legacyDefaults(type, engine) {
+  const out = {};
+  for (const [v, table] of LEGACY_DEFAULTS) if (!(engine >= v) && table[type]) Object.assign(out, table[type]);
+  return out;
+}
 // Mean value of one noise octave after the fractal fold (measured on the GPU with tools/noise-means.mjs):
 // a faded (sub-pixel) octave contributes this constant, so the overall brightness does not jump.
 const NOISE_MEANS = { 0: [0.5025, 0.4457, 0.3794], 1: [0.5, 0.5951, 0.2487], 2: [0.4289, 0.4998, 0.3316], 3: [0.4998, 0.3335, 0.4997], 4: [0.5, 0.5951, 0.2487] };
@@ -4050,6 +4219,7 @@ const NODES = {
       f('scale', 'Масштаб (Scale)', 1, 64, 8, { step: 1, intWhen: (p) => p.tile }),
       i('seed', 'Seed', 0, 99999, 1),
       f('randomness', 'Случайность (Randomness)', 0, 1, 1),
+      f('edgeSmooth', 'Мягкость граней', 0, 1, 0.5, { visible: (p) => p.mode === 'border', help: 'Режим «Границы»: 0 — точное расстояние до ближайшего края (острые грани-«пирамидки», излом по диагоналям клетки). Больше — плавный минимум по соседним краям: клетка читается как скруглённый купол (камни, брусчатка), линия шва не сдвигается.' }),
       f('evolution', 'Эволюция (анимация)', 0, 1, 0, { step: 0.001, help: 'Плавно меняет узор, не сдвигая его. Для зацикленной анимации анимируйте 0 → 1 (кривая «Линейно»): последний кадр переходит в первый без скачка.' }),
     ],
     seamFn: (p) => (p.tile ? '' : 'Tileable выключен — узор не периодичен, при повторе будет шов.'),
@@ -4057,7 +4227,7 @@ const NODES = {
       const p = ctx.params, out = ctx.alloc();
       ctx.pass('voronoi', out, {
         u_seed: p.seed, u_mode: { f1: 0, border: 1, cell: 2, f2: 3, crackle: 4 }[p.mode], u_scale: p.scale,
-        u_rand: p.randomness, u_tile: p.tile, u_evo: p.evolution, u_metric: { euclid: 0, manhattan: 1, chebyshev: 2 }[p.metric],
+        u_rand: p.randomness, u_tile: p.tile, u_evo: p.evolution, u_edgeSmooth: p.edgeSmooth || 0, u_metric: { euclid: 0, manhattan: 1, chebyshev: 2 }[p.metric],
       });
       return [{ tex: out, space: 'data' }];
     },
@@ -4120,6 +4290,7 @@ const NODES = {
       f('centerX', 'Центр X', 0, 1, 0.5, { visible: (p) => p.mode === 'rings' }), f('centerY', 'Центр Y (вниз)', 0, 1, 0.5, { visible: (p) => p.mode === 'rings' }),
       f('phase', 'Фаза', 0, 1, 0),
       f('duty', 'Заполнение меандра', 0, 1, 0.5, { visible: (p) => p.shape === 'square' }),
+      b('aa', 'Сглаживание (antialias)', true, { help: 'Каждый пиксель — точное среднее волны по своей площади: ровные края у меандра и пилы, мелкие полосы превращаются в ровный серый вместо муара. Выключено — одна выборка на пиксель (старое поведение).' }),
       f('distort', 'Сила искажения', 0, 8, 1, { step: 0.05, help: 'Сдвиг фазы на (вход − 0.5) × сила периодов. Подключите шум — получите годичные кольца, мрамор.' }),
     ],
     seamFn: (p) => (p.mode === 'rings' ? 'Кольца от центра не периодичны — при повторе будет шов.' : ''),
@@ -4128,6 +4299,7 @@ const NODES = {
       const u = { u_shape: ['sine', 'triangle', 'saw', 'square'].indexOf(p.shape), u_rings: p.mode === 'rings', u_count: [p.countX, p.countY],
         u_ringN: p.rings, u_center: [p.centerX, p.centerY], u_phase: p.phase, u_duty: p.duty, u_distort: p.distort };
       ctx.bindIn(u, 0, 0, 'native');
+      u.u_aa = !!ctx.params.aa;
       ctx.pass('waves', out, u);
       return [{ tex: out, space: 'data' }];
     },
@@ -4269,15 +4441,16 @@ const NODES = {
       { label: 'Маска', def: [1, 1, 1, 1], defText: 'белая (1) — везде полная сила' },
     ],
     params: [
-      e('mode', 'Режим', [['mix', 'Замена (Mix)'], ['add', 'Сложение (Add)'], ['multiply', 'Умножение (Multiply)'], ['screen', 'Экран (Screen)'], ['min', 'Минимум (Min)'], ['max', 'Максимум (Max)']], 'mix'),
+      e('mode', 'Режим', [['over', 'Поверх по альфе (Over)'], ['mix', 'Замена (Mix)'], ['add', 'Сложение (Add)'], ['subtract', 'Вычитание (Subtract)'], ['multiply', 'Умножение (Multiply)'], ['screen', 'Экран (Screen)'], ['overlay', 'Перекрытие (Overlay)'], ['softlight', 'Мягкий свет (Soft Light)'], ['difference', 'Разница (Difference)'], ['min', 'Минимум (Min)'], ['max', 'Максимум (Max)']], 'mix',
+        { help: 'Over — обычное наложение слоя: B кладётся на A по своей альфе (Porter–Duff over), прозрачное в B не закрывает A. Add/Subtract/Multiply/Screen/Min/Max/Difference — покомпонентно; для цвета — в линейном свете. Overlay и Soft Light — на отображаемых (sRGB) значениях, как в Photoshop.' }),
       f('opacity', 'Сила (Opacity)', 0, 1, 1),
       e('alpha', 'Альфа', [['same', 'Та же формула, что для RGB'], ['keepA', 'Взять из A']], 'same'),
     ],
-    help: 'Результат = mix(A, op(A, B), сила × маска) — отдельно для каждого канала. Альфа не используется как прозрачность (нет скрытого alpha compositing): она либо считается той же формулой, либо берётся из A. Маска — яркость входа маски. Если A цветной, а B — данные (или наоборот), B приводится к пространству A.',
+    help: 'Кроме Over: результат = mix(A, op(A, B), сила × маска) — отдельно для каждого канала; альфа считается той же формулой или берётся из A. Over: B над A по альфе B × сила × маска (альфа — объединение). Маска — яркость входа маски. Если A цветной, а B — данные (или наоборот), B приводится к пространству A.',
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
       const sp = ctx.space(0) || ctx.space(1) || 'data';
-      const u = { u_mode: ['mix', 'add', 'multiply', 'screen', 'min', 'max'].indexOf(p.mode), u_opacity: p.opacity, u_keepA: p.alpha === 'keepA' };
+      const u = { u_mode: ['mix', 'add', 'multiply', 'screen', 'min', 'max', 'over', 'subtract', 'difference', 'overlay', 'softlight'].indexOf(p.mode), u_opacity: p.opacity, u_keepA: p.alpha === 'keepA', u_isColor: sp === 'color' };
       ctx.bindIn(u, 0, 0, 'native');
       ctx.bindIn(u, 1, 1, sp);
       ctx.bindIn(u, 2, 2, 'native');
@@ -4295,6 +4468,7 @@ const NODES = {
       f('rotation', 'Поворот, °', -180, 180, 0, { step: 1 }),
       e('wrap', 'Края', WRAP_OPTS, 'repeat', { help: WRAP_HELP }),
       b('alphaAware', 'С учётом альфы', true, { help: AA_HELP }),
+      b('ss', 'Сглаживание при уменьшении', true, { help: SS_HELP }),
     ],
     seamFn: (p) => {
       const w = [];
@@ -4307,7 +4481,7 @@ const NODES = {
     },
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
-      const u = { u_off: [p.offsetX, p.offsetY], u_scl: [p.scaleX || 1e-3, p.scaleY || 1e-3], u_rot: p.rotation, u_premul: !!p.alphaAware };
+      const u = { u_off: [p.offsetX, p.offsetY], u_scl: [p.scaleX || 1e-3, p.scaleY || 1e-3], u_rot: p.rotation, u_premul: !!p.alphaAware, u_ss: !!p.ss };
       ctx.bindIn(u, 0, 0, 'native');
       ctx.pass('transform', out, u, { u_in0: p.wrap });
       return [{ tex: out, space: ctx.space(0) || 'data' }];
@@ -4319,20 +4493,29 @@ const NODES = {
     inputs: [{ label: 'Вход', def: BLACK, defText: 'чёрный (0,0,0,1)' }, { label: 'Карта', def: [0.5, 0.5, 0.5, 1], defText: '0.5 (без сдвига)' }],
     desc: 'Сдвигает пиксели входа по серой карте: в заданном направлении или вдоль её градиента. Делает узоры органичными: неровные кирпичи, мрамор, эрозия, «плывущие» пятна.',
     params: [
-      e('mode', 'Режим', [['directional', 'Направленный (Directional)'], ['gradient', 'По градиенту карты (Warp)']], 'gradient'),
+      e('mode', 'Режим', [['directional', 'Направленный (Directional)'], ['gradient', 'По градиенту карты (Warp)'], ['vector', 'Вектор RG (Vector Warp)']], 'gradient', { help: 'Направленный: сдвиг вдоль угла на (карта − 0.5)·2·сила. По градиенту: сдвиг вдоль склона карты — формы «обтекают» её рельеф. Вектор RG: R и G карты — сдвиг по X и Y (0.5 — нет сдвига; R вправо, G вверх), сила — максимальный сдвиг в долях текстуры.' }),
       f('intensity', 'Сила', 0, 1, 0.1, { step: 0.001, help: 'Направленный: сдвиг (карта−0.5)·2·сила в долях текстуры. По градиенту: сдвиг = градиент карты (на единицу UV) · сила/10.' }),
       f('angle', 'Угол, °', -180, 180, 0, { step: 1, visible: (p) => p.mode === 'directional' }),
+      f('mapBlur', 'Сглаживание карты (σ, px проекта)', 0, 32, 3, { step: 0.5, visible: (p) => p.mode === 'gradient', help: 'Градиент берётся со сглаженной карты: сдвиг задают крупные формы, а мелкие октавы шума не рвут изображение в «мятую фольгу». 0 — градиент исходной карты (старое поведение).' }),
       e('wrap', 'Края', WRAP_OPTS, 'repeat', { help: WRAP_HELP + ' Карта искажения читается так же при Repeat и с продолжением края (Clamp) при Clamp/Border — пустота за краем карты не должна давать ложный сдвиг.' }),
       b('alphaAware', 'С учётом альфы', true, { help: AA_HELP }),
+      b('ss', 'Сглаживание при уменьшении', true, { help: SS_HELP }),
     ],
     seamFn: (p) => wrapSeam(p.wrap),
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
       const a = (p.angle * Math.PI) / 180;
-      const u = { u_mode: p.mode === 'gradient' ? 1 : 0, u_dir: [Math.cos(a), -Math.sin(a)], u_int: p.intensity, u_premul: !!p.alphaAware };
+      const u = { u_mode: { directional: 0, gradient: 1, vector: 2 }[p.mode] ?? 1, u_dir: [Math.cos(a), -Math.sin(a)], u_int: p.intensity, u_premul: !!p.alphaAware, u_ss: !!p.ss };
+      const mapWrap = p.wrap === 'repeat' ? 'repeat' : 'clamp';
       ctx.bindIn(u, 0, 0, 'native');
-      ctx.bindIn(u, 1, 1, 'native');
-      ctx.pass('warp', out, u, { u_in0: p.wrap, u_in1: p.wrap === 'repeat' ? 'repeat' : 'clamp' });
+      const map = ctx.input(1);
+      if (map && p.mode === 'gradient' && p.mapBlur > 0) {
+        const sm = ctx.temp();
+        gaussianInto(ctx, map, 0, sm, ctx.px(p.mapBlur), mapWrap, false);
+        ctx.bindTex(u, 1, { tex: sm, space: map.space }, 'native');
+        u.u_def1 = NODES.warp.inputs[1].def;
+      } else ctx.bindIn(u, 1, 1, 'native');
+      ctx.pass('warp', out, u, { u_in0: p.wrap, u_in1: mapWrap });
       return [{ tex: out, space: ctx.space(0) || 'data' }];
     },
   },
@@ -4362,8 +4545,9 @@ const NODES = {
       f('angle', 'Угол, °', -180, 180, 0, { step: 1 }),
       e('wrap', 'Края', WRAP_OPTS, 'repeat', { help: WRAP_HELP }),
       b('alphaAware', 'С учётом альфы', false, { help: AA_HELP }),
+      b('adaptive', 'Адаптивное число выборок', true, { help: 'Не реже одной выборки на пиксель пути (до 256) — длинный штрих остаётся сплошным. Выключено — старое правило: L+1 выборок, не более 128.' }),
     ],
-    help: 'Равномерное усреднение вдоль отрезка длиной L по обе стороны пикселя; число выборок ≈ L+1 (не более 128), с билинейной фильтрацией.',
+    help: 'Равномерное усреднение вдоль отрезка длиной L по обе стороны пикселя, билинейная выборка.',
     seamFn: (p) => wrapSeam(p.wrap),
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
@@ -4371,7 +4555,8 @@ const NODES = {
       ctx.bindIn(u, 0, 0, 'native');
       if (p.length <= 0) { ctx.pass('copy', out, u); return [{ tex: out, space: ctx.space(0) || 'data' }]; }
       const a = (p.angle * Math.PI) / 180, L = p.length / ctx.projRes;
-      Object.assign(u, { u_vec: [Math.cos(a) * L, -Math.sin(a) * L], u_n: Math.min(128, Math.max(2, Math.ceil(p.length) + 1)), u_aa: p.alphaAware });
+      const n = p.adaptive ? Math.min(256, Math.max(2, Math.ceil(ctx.px(p.length)) + 1)) : Math.min(128, Math.max(2, Math.ceil(p.length) + 1));
+      Object.assign(u, { u_vec: [Math.cos(a) * L, -Math.sin(a) * L], u_n: n, u_aa: p.alphaAware });
       ctx.pass('dirblur', out, u, { u_in0: p.wrap });
       return [{ tex: out, space: ctx.space(0) || 'data' }];
     },
@@ -4387,11 +4572,12 @@ const NODES = {
       i('quality', 'Качество (выборок)', 4, 128, 32),
       e('wrap', 'Края', WRAP_OPTS, 'repeat', { help: WRAP_HELP }),
       b('alphaAware', 'С учётом альфы', false, { help: AA_HELP }),
+      b('adaptive', 'Адаптивное число выборок', true, { help: 'Число выборок растёт с длиной пути размытия (до 256): дуги вдали от центра сплошные, а не пунктирные. «Качество» — минимум.' }),
     ],
     seam: 'Радиальное размытие привязано к центру и в общем случае не периодично — возможен шов.',
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
-      const u = { u_mode: p.mode === 'spin' ? 1 : 0, u_n: p.quality, u_center: [p.centerX, p.centerY], u_strength: p.strength, u_aa: p.alphaAware };
+      const u = { u_mode: p.mode === 'spin' ? 1 : 0, u_n: p.quality, u_center: [p.centerX, p.centerY], u_strength: p.strength, u_aa: p.alphaAware, u_adapt: !!p.adaptive };
       ctx.bindIn(u, 0, 0, 'native');
       ctx.pass('radial', out, u, { u_in0: p.wrap });
       return [{ tex: out, space: ctx.space(0) || 'data' }];
@@ -4574,6 +4760,7 @@ const NODES = {
       f('twist', 'Закрутка / поворот', 0, 3, 1, { visible: (p) => fxUses(p.effect, 'twist') }),
       i('seed', 'Seed', 0, 99999, 1),
       e('background', 'Фон', [['transparent', 'Прозрачный (альфа из палитры)'], ['black', 'Чёрный (для аддитивного смешивания)']], 'transparent'),
+      b('roundFade', 'Круглое затухание к краям', true, { help: 'Эффект гаснет к вписанной окружности кадра. Выключено — к квадратной рамке (старое поведение): на ярких эффектах у углов может проявляться форма кадра.' }),
     ],
     topParams: ['effect'],
     colorPresets: 'stops',
@@ -4590,7 +4777,7 @@ const NODES = {
       for (let k = 0; k < 8; k++) { const s = st[Math.min(k, st.length - 1)]; pos.push(s.p); cols.push(s.c.slice(0, 4)); }
       const u = {
         u_t: Anim.t, u_loops: p.loops, u_seed: p.seed, u_oct: p.detail, u_count: p.count, u_int: p.intensity, u_scale: p.scale,
-        u_thick: p.thick, u_distort: p.distort, u_twist: p.twist, u_edge: fx.edge || 0, u_blackBg: p.background === 'black', u_n: st.length, u_pos: pos, u_cols: cols,
+        u_thick: p.thick, u_distort: p.distort, u_twist: p.twist, u_edge: fx.edge || 0, u_roundFade: p.roundFade !== false, u_blackBg: p.background === 'black', u_n: st.length, u_pos: pos, u_cols: cols,
       };
       const col = ctx.alloc();
       ctx.pass('fx_' + fx.id, col, { ...u, u_outMode: 0 }, null, 2);
@@ -4686,11 +4873,12 @@ const NODES = {
       f('turns', 'Повторов по кругу', 1, 16, 1, { step: 1 }),
       f('radius', 'Радиус', 0.1, 1, 1),
       b('alphaAware', 'С учётом альфы', true, { help: AA_HELP }),
+      b('ss', 'Сглаживание при уменьшении', true, { help: SS_HELP + ' У центра кольца в пиксель сходится вся ширина полосы — там сглаживание даёт её среднее вместо рваного шума.' }),
     ],
     help: 'Полоса → круг: ось X входа идёт по кругу (целое число повторов — без шва), ось Y — от внешнего края (верх) к центру (низ).',
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
-      const u = { u_mode: p.mode === 'toPolar' ? 0 : 1, u_turns: Math.round(p.turns), u_radius: p.radius, u_premul: !!p.alphaAware };
+      const u = { u_mode: p.mode === 'toPolar' ? 0 : 1, u_turns: Math.round(p.turns), u_radius: p.radius, u_premul: !!p.alphaAware, u_ss: !!p.ss };
       ctx.bindIn(u, 0, 0, 'native');
       ctx.pass('polar', out, u, { u_in0: 'repeat' });
       return [{ tex: out, space: ctx.space(0) || 'data' }];
@@ -4991,7 +5179,7 @@ const I18N = (() => {
     'Смешивание в слое': 'Blend within Layer', 'Смешивание слоёв': 'Blend Layers', 'Мягкость стыков': 'Blend Smoothness',
     'Гасить неразличимую деталь (LOD)': 'Anti-alias Detail (LOD)', 'Уровней искажения': 'Warp Levels', 'Эволюция (morph)': 'Evolution (Morph)',
     'Искажение тоже эволюционирует': 'Evolve Warp', 'Течение: оборотов за цикл': 'Flow Turns per Loop', 'Баланс (сдвиг яркости)': 'Balance',
-    'Ограничить 0…1': 'Clamp 0–1',
+    'Ограничить 0…1': 'Clamp 0–1', 'Сглаживание при уменьшении': 'Filter when Minifying', 'Адаптивное число выборок': 'Adaptive Sampling', 'Сглаживание (antialias)': 'Antialias', 'Круглое затухание к краям': 'Round Edge Fade', 'Мягкость граней': 'Edge Roundness', 'Сглаживание карты (σ, px проекта)': 'Map Smoothing (σ, px)',
   };
   const OPT = {
     'Цвет sRGB (Color)': 'Color (sRGB)', 'Данные каналов (Data)': 'Data (linear)', 'Растянуть (Stretch)': 'Stretch', 'Заполнить с обрезкой (Cover)': 'Cover (crop)',
@@ -5023,11 +5211,11 @@ const I18N = (() => {
     'Полоса → круг': 'Rectangular to Polar', 'Круг → полоса': 'Polar to Rectangular', 'Обычная карта': 'Generic', 'Base Color (альбедо)': 'Base Color',
     'Авто (по ноде Height to Normal)': 'Auto (from Height to Normal)',
     'Текучий (Flow)': 'Flow', 'Фрактал пятен (Splat Fractal)': 'Splat Fractal', 'Конус': 'Cone', 'Штрих (вытянутый)': 'Streak',
-    'Сложение (мягкое насыщение)': 'Add (soft saturation)', 'Плавный максимум (Smooth Max)': 'Smooth Max', 'Взвешенная сумма (как fBM)': 'Weighted Sum (fBM)',
+    'Сложение (мягкое насыщение)': 'Add (soft saturation)', 'Плавный максимум (Smooth Max)': 'Smooth Max', 'Взвешенная сумма (как fBM)': 'Weighted Sum (fBM)', 'Поверх по альфе (Over)': 'Normal (Over)', 'Вычитание (Subtract)': 'Subtract', 'Перекрытие (Overlay)': 'Overlay', 'Мягкий свет (Soft Light)': 'Soft Light', 'Разница (Difference)': 'Difference', 'Вектор RG (Vector Warp)': 'Vector (RG)',
   };
   const GROUP = {
     'Зацикленные': 'Looping', 'Однократные': 'One-shot', 'Оптические блики (Optical Flares)': 'Optical Flares',
-    'Мягкие': 'Soft', 'Рельеф': 'Ridges & Relief', 'Органика': 'Organic', 'Клетки': 'Cells', 'Зерно': 'Grain', 'Вытянутые': 'Anisotropic',
+    'Мягкие': 'Soft', 'Полосы': 'Stripes', 'Рельеф': 'Ridges & Relief', 'Органика': 'Organic', 'Клетки': 'Cells', 'Зерно': 'Grain', 'Вытянутые': 'Anisotropic',
   };
   const NOISE = {
     'Мягкий Perlin': 'Soft Perlin', 'Мелкий Perlin': 'Fine Perlin', 'Прожилки / вены': 'Veins', 'Турбулентность': 'Turbulence', 'Мрамор': 'Marble',
@@ -5156,10 +5344,9 @@ const Graph = (() => {
     const old = g.nodes;
     g.nodes = new Map();
     // Graphs saved before compute engine 2 keep the old values of parameters whose default changed.
-    const legacy = !(data.engine >= ENGINE);
     for (const n of data.nodes) {
       const prev = old.get(n.id);
-      const params = { ...defaultParams(n.type), ...(legacy ? LEGACY_DEFAULTS[n.type] || {} : {}), ...JSON.parse(JSON.stringify(n.params || {})) };
+      const params = { ...defaultParams(n.type), ...legacyDefaults(n.type, data.engine | 0), ...JSON.parse(JSON.stringify(n.params || {})) };
       const anim = cleanAnim(n.type, n.anim);
       const same = prev && prev.type === n.type && JSON.stringify(prev.params) === JSON.stringify(params) &&
         JSON.stringify(prev.anim || {}) === JSON.stringify(anim);
@@ -8913,7 +9100,7 @@ window.PTL = PTL;
 
 // ===== main.js =====
 // Entry point.
-const PTL_VERSION = '0.5.0';
+const PTL_VERSION = '0.6.0';
 (() => {
   const start = () => {
     try {
