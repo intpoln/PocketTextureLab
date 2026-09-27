@@ -37,6 +37,8 @@ float pickChan(vec4 c, bool isColor, int src) {
   return src == 0 ? e.r : src == 1 ? e.g : src == 2 ? e.b : e.a;
 }
 void emit(vec4 c) { fragColor = cconv(c, u_outConv); }
+// premultiplied -> straight (transparent stays transparent black)
+vec4 unpremul(vec4 c) { return vec4(c.a > 1e-6 ? c.rgb / c.a : vec3(0.0), c.a); }
 ivec2 pix() { return ivec2(gl_FragCoord.xy); }
 vec2 pixUV() { return gl_FragCoord.xy / u_res; }
 ivec2 wrapPx(ivec2 p, bool rep) {
@@ -58,8 +60,29 @@ uniform bool u_has${i};
 uniform bool u_col${i};
 uniform int u_conv${i};
 uniform vec4 u_def${i};
+uniform int u_bnd${i};   // boundary: 0 repeat, 1 clamp, 2 border (zero outside)
 vec4 in${i}(ivec2 p) { return u_has${i} ? cconv(texelFetch(u_in${i}, p, 0), u_conv${i}) : u_def${i}; }
 vec4 in${i}UV(vec2 uv) { return u_has${i} ? cconv(texture(u_in${i}, uv), u_conv${i}) : u_def${i}; }
+// exact texel with the slot's boundary mode (texel coordinates of the INPUT texture)
+vec4 in${i}T(ivec2 p) {
+  if (!u_has${i}) return u_def${i};
+  ivec2 n = textureSize(u_in${i}, 0);
+  if (u_bnd${i} == 2 && (p.x < 0 || p.y < 0 || p.x >= n.x || p.y >= n.y)) return vec4(0.0);
+  ivec2 q = u_bnd${i} == 0 ? ((p % n) + n) % n : clamp(p, ivec2(0), n - 1);
+  return cconv(texelFetch(u_in${i}, q, 0), u_conv${i});
+}
+// Bilinear read that honours the boundary mode. premul: the four taps are premultiplied by
+// their own alpha BEFORE interpolation (image semantics: an invisible texel contributes no
+// colour); the result is then premultiplied — divide by .a when done. premul = false keeps
+// straight per-channel interpolation (numeric data).
+vec4 in${i}B(vec2 uv, bool premul) {
+  if (!u_has${i}) { vec4 d = u_def${i}; if (premul) d.rgb *= d.a; return d; }
+  vec2 f = uv * vec2(textureSize(u_in${i}, 0)) - 0.5;
+  ivec2 i0 = ivec2(floor(f)); vec2 t = f - floor(f);
+  vec4 a = in${i}T(i0), b = in${i}T(i0 + ivec2(1, 0)), c = in${i}T(i0 + ivec2(0, 1)), d = in${i}T(i0 + ivec2(1, 1));
+  if (premul) { a.rgb *= a.a; b.rgb *= b.a; c.rgb *= c.a; d.rgb *= d.a; }
+  return mix(mix(a, b, t.x), mix(c, d, t.x), t.y);
+}
 `;
 
   const S = {};
@@ -264,8 +287,10 @@ void main() {
 uniform int u_mode;     // 0 directional, 1 along map gradient
 uniform vec2 u_dir;
 uniform float u_int;
-uniform bool u_rep;
-float mapAt(ivec2 p) { return lumaEnc(in1(wrapPx(p, true)), u_col1); }
+uniform bool u_premul;  // alpha-aware: interpolate the source premultiplied
+// The map is read with its own boundary mode (u_bnd1: Repeat for tileable graphs, Clamp
+// otherwise) — never wrapped behind the user's back.
+float mapAt(ivec2 p) { return lumaEnc(in1T(p), u_col1); }
 void main() {
   ivec2 p = pix();
   vec2 off;
@@ -274,7 +299,8 @@ void main() {
     vec2 g = vec2(mapAt(p + ivec2(1, 0)) - mapAt(p - ivec2(1, 0)), mapAt(p + ivec2(0, 1)) - mapAt(p - ivec2(0, 1))) * 0.5 * u_res;
     off = g * u_int * 0.1;
   }
-  emit(in0UV(pixUV() + off));
+  vec4 c = in0B(pixUV() + off, u_premul);
+  emit(u_premul ? unpremul(c) : c);
 }` };
 
   // Tiler / Splatter: instances on a periodic grid of cells (hashes wrap
@@ -504,31 +530,40 @@ void main() {
 uniform vec2 u_off;
 uniform vec2 u_scl;
 uniform float u_rot;
+uniform bool u_premul;
 void main() {
   vec2 d = pixUV() - 0.5 - u_off;
   vec2 q = vec2(d.x, -d.y);
   float a = radians(u_rot);
   q = mat2(cos(a), -sin(a), sin(a), cos(a)) * q;
   q /= u_scl;
-  emit(in0UV(vec2(q.x, -q.y) + 0.5));
+  vec4 c = in0B(vec2(q.x, -q.y) + 0.5, u_premul);
+  emit(u_premul ? unpremul(c) : c);
 }` };
 
   S.polar = { nin: 1, body: `
 uniform int u_mode;     // 0 strip -> circle, 1 circle -> strip
 uniform int u_turns;
 uniform float u_radius;
+uniform bool u_premul;
 void main() {
   vec2 uv = pixUV();
+  vec4 c;
   if (u_mode == 0) {
     vec2 d = vec2(uv.x - 0.5, 0.5 - uv.y);
     float r = length(d) * 2.0 / u_radius;
     float a = atan(d.y, d.x) / (2.0 * PI) + 0.5;
     if (r > 1.0) { emit(vec4(0.0, 0.0, 0.0, 0.0)); return; }
-    emit(in0UV(vec2(fract(a * float(u_turns)), 1.0 - r)));
+    // x (angle) wraps; y (radius) is clamped to the strip's first/last row centre, so the
+    // centre does not blend in the opposite edge of the strip (no torn centre)
+    float h = float(textureSize(u_in0, 0).y);
+    float v = clamp(1.0 - r, 0.5 / h, 1.0 - 0.5 / h);
+    c = in0B(vec2(fract(a * float(u_turns)), v), u_premul);
   } else {
     float a = (uv.x / float(u_turns) - 0.5) * 2.0 * PI, r = (1.0 - uv.y) * 0.5 * u_radius;
-    emit(in0UV(vec2(0.5 + r * cos(a), 0.5 - r * sin(a))));
+    c = in0B(vec2(0.5 + r * cos(a), 0.5 - r * sin(a)), u_premul);
   }
+  emit(u_premul ? unpremul(c) : c);
 }` };
 
   // Glow: bright pass (alpha-weighted so invisible pixels do not glow) ...
@@ -538,8 +573,12 @@ uniform float u_knee;
 void main() {
   vec4 c = in0(pix());
   float l = max(max(c.r, c.g), c.b);
-  float k = smoothstep(u_thr - u_knee, u_thr + u_knee, l);
-  emit(vec4(c.rgb * c.a * k, c.a * k));
+  // knee = 0 is an explicit hard threshold (smoothstep with equal edges is undefined)
+  float k = u_knee > 0.0 ? smoothstep(u_thr - u_knee, u_thr + u_knee, l) : step(u_thr, l);
+  // Light energy only: premultiplied RGB of the bright part. Its alpha is the energy's
+  // brightest channel (clamped), so black or invisible pixels can never create opacity.
+  vec3 e = max(c.rgb, 0.0) * c.a * k;
+  emit(vec4(e, clamp(max(max(e.r, e.g), e.b), 0.0, 1.0)));
 }` };
   // ... and combine: base (straight alpha) + premultiplied glow of 3 blur radii.
   S.glowmix = { nin: 4, body: `
@@ -551,19 +590,23 @@ void main() {
   ivec2 p = pix();
   vec4 b = in0(p);
   vec2 uv = pixUV();
-  vec4 g = (in1UV(uv) + in2UV(uv) * 0.7 + in3UV(uv) * 0.45) / 2.15 * u_int;
+  vec4 g = (in1B(uv, false) + in2B(uv, false) * 0.7 + in3B(uv, false) * 0.45) / 2.15 * u_int;
   g.rgb *= u_tint;
   if (u_out == 1) { float a = clamp(g.a, 0.0, 1.0); emit(vec4(a > 1e-5 ? g.rgb / a : vec3(0.0), a)); return; }
   vec3 prem = b.rgb * b.a + g.rgb;
-  float a = u_alpha ? clamp(b.a + g.a * (1.0 - b.a), 0.0, 1.0) : b.a;
+  // coverage of the base plus the glow — and never less than the brightest premultiplied
+  // channel, so straight RGB stays <= 1 where possible and 8-bit export keeps the light
+  // energy exactly (composite over black == base + glow)
+  float a = u_alpha ? clamp(max(b.a + g.a * (1.0 - b.a), max(max(prem.r, prem.g), prem.b)), 0.0, 1.0) : b.a;
   vec3 rgb = a > 1e-5 ? prem / max(a, 1e-5) : vec3(0.0);
   if (!u_alpha) rgb = b.rgb + g.rgb;
   emit(vec4(rgb, a));
 }` };
 
-  // 2x box downsample of the input (bilinear taps land between texels)
+  // 2x box downsample of the input (the bilinear tap lands between 4 texels), honouring
+  // the boundary mode of slot 0
   S.downsample = { nin: 1, body: `
-void main() { emit(in0UV(pixUV())); }` };
+void main() { emit(in0B(pixUV(), false)); }` };
 
   S.copy = { nin: 1, body: `
 void main() { emit(in0(pix())); }` };
@@ -572,7 +615,6 @@ void main() { emit(in0(pix())); }` };
 uniform ivec2 u_dir;
 uniform float u_sigma;
 uniform int u_radius;
-uniform bool u_rep;
 uniform bool u_premul;
 uniform bool u_unpremul;
 void main() {
@@ -581,7 +623,7 @@ void main() {
   float k2 = 1.0 / (2.0 * u_sigma * u_sigma);
   for (int k = -u_radius; k <= u_radius; k++) {
     float w = exp(-float(k * k) * k2);
-    vec4 c = in0(wrapPx(p + u_dir * k, u_rep));
+    vec4 c = in0T(p + u_dir * k);     // Repeat / Clamp / Border per slot 0
     if (u_premul) c.rgb *= c.a;
     acc += c * w; ws += w;
   }
@@ -600,13 +642,10 @@ void main() {
   for (int k = 0; k < 256; k++) {
     if (k >= u_n) break;
     float t = u_n == 1 ? 0.0 : float(k) / float(u_n - 1) - 0.5;
-    vec4 c = in0UV(uv + u_vec * t);
-    if (u_aa) c.rgb *= c.a;
-    acc += c;
+    acc += in0B(uv + u_vec * t, u_aa);   // alpha-aware: premultiplied before interpolation
   }
   acc /= float(u_n);
-  if (u_aa) acc.rgb = acc.a > 1e-6 ? acc.rgb / acc.a : vec3(0.0);
-  emit(acc);
+  emit(u_aa ? unpremul(acc) : acc);
 }` };
 
   S.radial = { nin: 1, body: `
@@ -621,20 +660,17 @@ void main() {
   vec4 acc = vec4(0.0);
   for (int k = 0; k < 256; k++) {
     if (k >= u_n) break;
-    float t = float(k) / float(u_n - 1);
+    float t = float(k) / float(max(u_n - 1, 1));
     vec2 s;
     if (u_mode == 0) s = u_center + d * (1.0 - u_strength * t);
     else {
       float a = (t - 0.5) * u_strength * PI;
       s = u_center + mat2(cos(a), sin(a), -sin(a), cos(a)) * d;
     }
-    vec4 c = in0UV(s);
-    if (u_aa) c.rgb *= c.a;
-    acc += c;
+    acc += in0B(s, u_aa);
   }
   acc /= float(u_n);
-  if (u_aa) acc.rgb = acc.a > 1e-6 ? acc.rgb / acc.a : vec3(0.0);
-  emit(acc);
+  emit(u_aa ? unpremul(acc) : acc);
 }` };
 
   // Height (in .r, 0..1) -> tangent-space normal. Derivatives are taken per

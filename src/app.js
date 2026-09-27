@@ -1033,7 +1033,9 @@ const App = (() => {
       if (n.type === 'image' && n.params && n.params.asset && !Assets.get(n.params.asset))
         throw new Error('В проекте нет встроенного изображения ' + n.params.asset);
     }
+    const affected = !(data.engine >= ENGINE) && (data.nodes || []).some((n) => ['glow', 'warp'].includes(n.type) || (['dirblur', 'radialblur'].includes(n.type) && n.params && n.params.alphaAware));
     loadGraph(data);
+    if (affected) toast('Проект из версии до 0.4: исправлены Glow (чёрное больше не даёт альфу), Warp у краёв и alpha-aware размытия — результат этих нод может немного отличаться. Остальные параметры открыты как были.', 'warn', 9000);
     commit();
     if (data.view) { Object.assign(GraphView.view, data.view); GraphView.applyView(); }
   }

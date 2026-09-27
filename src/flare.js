@@ -91,7 +91,8 @@ void main() {
 
   float fl = 1.0 - u_flicker * (0.7 * vn3(vec3(T * 16.0, 3.5, 0.5), ivec3(16, 0, 0)) + 0.3 * vn3(vec3(T * 48.0, 8.5, 0.5), ivec3(48, 0, 0)));
   col *= u_tint * u_int * fl;
-  if (u_edgeFade) col *= 1.0 - smoothstep(0.82, 0.98, max(abs(p.x), abs(p.y)));
+  // round fade to the inscribed circle: a square max(|x|,|y|) mask would imprint the frame shape
+  if (u_edgeFade) col *= 1.0 - smoothstep(0.8, 0.98, length(p));
   col = max(col - 0.002, 0.0);
   float m = max(col.r, max(col.g, col.b));
   if (u_outMode == 1) { float g = clamp(m, 0.0, 1.0); emit(vec4(g, g, g, 1.0)); return; }

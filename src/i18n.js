@@ -76,7 +76,7 @@ const I18N = (() => {
   };
   const OPT = {
     'Цвет sRGB (Color)': 'Color (sRGB)', 'Данные каналов (Data)': 'Data (linear)', 'Растянуть (Stretch)': 'Stretch', 'Заполнить с обрезкой (Cover)': 'Cover (crop)',
-    '1:1 без масштаба, повтор (Tile)': 'Tile 1:1', 'Повтор (Repeat)': 'Repeat', 'Край (Clamp)': 'Clamp', 'Серое значение (данные)': 'Grayscale',
+    '1:1 без масштаба, повтор (Tile)': 'Tile 1:1', 'Повтор (Repeat)': 'Repeat', 'Край (Clamp)': 'Clamp', 'Прозрачно за краем (Border)': 'Border (transparent)', 'Серое значение (данные)': 'Grayscale',
     'Цвет RGBA (sRGB)': 'Color RGBA', 'Градиентный (Perlin)': 'Perlin', 'Клеточный (Worley)': 'Worley', 'Белый шум (White)': 'White Noise',
     'Обычный (fBM) — облака': 'fBM', 'Гребни (Ridged) — горы, трещины': 'Ridged', 'Клубы (Billow) — камни, дым': 'Billow',
     'Расстояние до точки (F1)': 'F1 Distance', 'До второй точки (F2)': 'F2 Distance', 'Трещины (F2 − F1)': 'Crackle (F2 − F1)',

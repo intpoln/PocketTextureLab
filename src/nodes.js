@@ -6,7 +6,20 @@
 //         'data'  = raw channel numbers (masks, height, normals, packed maps).
 // ---------------------------------------------------------------------------
 const BLACK = [0, 0, 0, 1];
-const WRAP_OPTS = [['repeat', 'Повтор (Repeat)'], ['clamp', 'Край (Clamp)']];
+// Boundary modes of image filters: Repeat (tileable), Clamp (extend the edge pixel),
+// Border (transparent zero outside — sprites, effects on an empty canvas).
+const WRAP_OPTS = [['repeat', 'Повтор (Repeat)'], ['clamp', 'Край (Clamp)'], ['border', 'Прозрачно за краем (Border)']];
+const WRAP_RC = [['repeat', 'Повтор (Repeat)'], ['clamp', 'Край (Clamp)']];
+const WRAP_HELP = 'Что фильтр видит за краем изображения. Repeat — противоположный край (бесшовные текстуры). Clamp — продолжение крайних пикселей. Border — пустоту (прозрачный ноль): для спрайтов и эффектов на пустом холсте, ореол не переносится и не «растягивает» край.';
+const AA_HELP = 'Включено: пиксели смешиваются в premultiplied-виде (цвет × альфа) до интерполяции — невидимые пиксели со скрытым цветом не дают каймы. Выключено: каналы RGBA интерполируются независимо, как числа (для карт-данных).';
+const BORDER_SEAM = 'Режим Border видит за краем пустоту — при повторе текстуры появится шов.';
+const wrapSeam = (w) => (w === 'clamp' ? CLAMP_SEAM : w === 'border' ? BORDER_SEAM : '');
+// Parameters whose default changed with compute engine 2 (v0.4): projects saved before that
+// get the old values, so they keep rendering exactly as they did.
+const ENGINE = 2;
+const LEGACY_DEFAULTS = {
+  transform: { alphaAware: false }, warp: { alphaAware: false }, polar: { alphaAware: false }, glow: { wrap: 'clamp' },
+};
 const CHAN_OPTS = [['L', 'Яркость (Luminance)'], ['R', 'R'], ['G', 'G'], ['B', 'B'], ['A', 'A']];
 const CHAN_IDX = { R: 0, G: 1, B: 2, A: 3, L: 4, C: 5 };
 const CLAMP_SEAM = 'Режим Clamp не берёт соседей с противоположного края — при повторе текстуры появится шов.';
@@ -108,7 +121,7 @@ const NODES = {
         { help: 'Цвет: значения считаются sRGB и переводятся в линейное пространство для размытия/смешивания. Данные: числа каналов используются как есть (маски, height, normal, упакованные карты).' }),
       e('fit', 'Приведение к размеру проекта', [['stretch', 'Растянуть (Stretch)'], ['cover', 'Заполнить с обрезкой (Cover)'], ['tile', '1:1 без масштаба, повтор (Tile)']], 'stretch',
         { help: 'Stretch: вся картинка масштабируется в квадрат проекта (при совпадении размеров — точная копия пикселей). Cover: сохраняет пропорции и обрезает лишнее по центру. Tile: пиксели 1:1 от левого верхнего угла, повтор при нехватке.' }),
-      e('wrap', 'Края при фильтрации', WRAP_OPTS, 'repeat'),
+      e('wrap', 'Края при фильтрации', WRAP_RC, 'repeat'),
     ],
     seam: 'Загруженное изображение бесшовно только если оно было бесшовным изначально. Cover и Tile с неподходящим размером почти всегда дают шов.',
     eval(ctx) {
@@ -434,7 +447,8 @@ const NODES = {
       f('offsetX', 'Смещение X', -1, 1, 0, { step: 0.001 }), f('offsetY', 'Смещение Y (вниз)', -1, 1, 0, { step: 0.001 }),
       f('scaleX', 'Масштаб X', 0.05, 8, 1), f('scaleY', 'Масштаб Y', 0.05, 8, 1),
       f('rotation', 'Поворот, °', -180, 180, 0, { step: 1 }),
-      e('wrap', 'Края', WRAP_OPTS, 'repeat'),
+      e('wrap', 'Края', WRAP_OPTS, 'repeat', { help: WRAP_HELP }),
+      b('alphaAware', 'С учётом альфы', true, { help: AA_HELP }),
     ],
     seamFn: (p) => {
       const w = [];
@@ -442,12 +456,12 @@ const NODES = {
       if (r > 1e-6 && 90 - r > 1e-6) w.push('Поворот не кратен 90° — периодичность нарушается, возможен шов.');
       const okScale = (s) => { const k = 1 / s; return Math.abs(k - Math.round(k)) < 1e-4; };
       if (!okScale(p.scaleX) || !okScale(p.scaleY)) w.push('Масштаб не равен 1/n — содержимое не укладывается целое число раз, возможен шов.');
-      if (p.wrap === 'clamp') w.push(CLAMP_SEAM);
+      if (wrapSeam(p.wrap)) w.push(wrapSeam(p.wrap));
       return w.join(' ');
     },
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
-      const u = { u_off: [p.offsetX, p.offsetY], u_scl: [p.scaleX || 1e-3, p.scaleY || 1e-3], u_rot: p.rotation };
+      const u = { u_off: [p.offsetX, p.offsetY], u_scl: [p.scaleX || 1e-3, p.scaleY || 1e-3], u_rot: p.rotation, u_premul: !!p.alphaAware };
       ctx.bindIn(u, 0, 0, 'native');
       ctx.pass('transform', out, u, { u_in0: p.wrap });
       return [{ tex: out, space: ctx.space(0) || 'data' }];
@@ -462,16 +476,17 @@ const NODES = {
       e('mode', 'Режим', [['directional', 'Направленный (Directional)'], ['gradient', 'По градиенту карты (Warp)']], 'gradient'),
       f('intensity', 'Сила', 0, 1, 0.1, { step: 0.001, help: 'Направленный: сдвиг (карта−0.5)·2·сила в долях текстуры. По градиенту: сдвиг = градиент карты (на единицу UV) · сила/10.' }),
       f('angle', 'Угол, °', -180, 180, 0, { step: 1, visible: (p) => p.mode === 'directional' }),
-      e('wrap', 'Края', WRAP_OPTS, 'repeat'),
+      e('wrap', 'Края', WRAP_OPTS, 'repeat', { help: WRAP_HELP + ' Карта искажения читается так же при Repeat и с продолжением края (Clamp) при Clamp/Border — пустота за краем карты не должна давать ложный сдвиг.' }),
+      b('alphaAware', 'С учётом альфы', true, { help: AA_HELP }),
     ],
-    seamFn: (p) => (p.wrap === 'clamp' ? CLAMP_SEAM : ''),
+    seamFn: (p) => wrapSeam(p.wrap),
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
       const a = (p.angle * Math.PI) / 180;
-      const u = { u_mode: p.mode === 'gradient' ? 1 : 0, u_dir: [Math.cos(a), -Math.sin(a)], u_int: p.intensity, u_rep: p.wrap === 'repeat' };
+      const u = { u_mode: p.mode === 'gradient' ? 1 : 0, u_dir: [Math.cos(a), -Math.sin(a)], u_int: p.intensity, u_premul: !!p.alphaAware };
       ctx.bindIn(u, 0, 0, 'native');
       ctx.bindIn(u, 1, 1, 'native');
-      ctx.pass('warp', out, u, { u_in0: p.wrap });
+      ctx.pass('warp', out, u, { u_in0: p.wrap, u_in1: p.wrap === 'repeat' ? 'repeat' : 'clamp' });
       return [{ tex: out, space: ctx.space(0) || 'data' }];
     },
   },
@@ -482,13 +497,13 @@ const NODES = {
     inputs: [{ label: 'Вход', def: BLACK, defText: 'чёрный (0,0,0,1)' }],
     params: [
       f('sigma', 'Радиус (σ, px проекта)', 0, 64, 4, { step: 0.1, help: 'Сигма в пикселях при разрешении проекта. Ядро ±3σ, два прохода (горизонталь + вертикаль). В уменьшенном предпросмотре масштабируется пропорционально.' }),
-      e('wrap', 'Края', WRAP_OPTS, 'repeat'),
+      e('wrap', 'Края', WRAP_OPTS, 'repeat', { help: WRAP_HELP }),
       b('alphaAware', 'С учётом альфы (для цветных изображений с прозрачностью)', false, { help: 'Выключено: каналы RGBA размываются независимо, как числа. Включено: RGB взвешивается альфой (premultiply → blur → unpremultiply), чтобы прозрачные пиксели не «пачкали» цвет.' }),
     ],
-    seamFn: (p) => (p.wrap === 'clamp' ? CLAMP_SEAM : ''),
+    seamFn: (p) => wrapSeam(p.wrap),
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
-      gaussianInto(ctx, ctx.input(0), 0, out, ctx.px(p.sigma), p.wrap === 'repeat', p.alphaAware);
+      gaussianInto(ctx, ctx.input(0), 0, out, ctx.px(p.sigma), p.wrap, p.alphaAware);
       return [{ tex: out, space: ctx.space(0) || 'data' }];
     },
   },
@@ -499,11 +514,11 @@ const NODES = {
     params: [
       f('length', 'Длина (px проекта)', 0, 256, 16, { step: 0.5 }),
       f('angle', 'Угол, °', -180, 180, 0, { step: 1 }),
-      e('wrap', 'Края', WRAP_OPTS, 'repeat'),
-      b('alphaAware', 'С учётом альфы', false),
+      e('wrap', 'Края', WRAP_OPTS, 'repeat', { help: WRAP_HELP }),
+      b('alphaAware', 'С учётом альфы', false, { help: AA_HELP }),
     ],
     help: 'Равномерное усреднение вдоль отрезка длиной L по обе стороны пикселя; число выборок ≈ L+1 (не более 128), с билинейной фильтрацией.',
-    seamFn: (p) => (p.wrap === 'clamp' ? CLAMP_SEAM : ''),
+    seamFn: (p) => wrapSeam(p.wrap),
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
       const u = {};
@@ -524,8 +539,8 @@ const NODES = {
       f('centerX', 'Центр X', 0, 1, 0.5), f('centerY', 'Центр Y (вниз)', 0, 1, 0.5),
       f('strength', 'Сила', 0, 1, 0.2, { step: 0.005, help: 'Zoom: доля расстояния до центра. Spin: 1 = ±90°. При 0 результат точно равен входу.' }),
       i('quality', 'Качество (выборок)', 4, 128, 32),
-      e('wrap', 'Края', WRAP_OPTS, 'repeat'),
-      b('alphaAware', 'С учётом альфы', false),
+      e('wrap', 'Края', WRAP_OPTS, 'repeat', { help: WRAP_HELP }),
+      b('alphaAware', 'С учётом альфы', false, { help: AA_HELP }),
     ],
     seam: 'Радиальное размытие привязано к центру и в общем случае не периодично — возможен шов.',
     eval(ctx) {
@@ -543,21 +558,21 @@ const NODES = {
     desc: 'Ореол вокруг ярких областей (bloom): порог яркости, мягкое многоуровневое размытие, сила и оттенок. Для эффектов, неона, магии, огня; у спрайтов с прозрачностью свечение расширяет альфу.',
     params: [
       f('threshold', 'Порог яркости', 0, 1, 0.5, { help: 'Светятся пиксели ярче порога (по максимальному из R, G, B). 0 — светится всё.' }),
-      f('knee', 'Мягкость порога', 0, 0.5, 0.15),
+      f('knee', 'Мягкость порога', 0, 0.5, 0.15, { help: 'Ширина плавного перехода вокруг порога. 0 — жёсткий порог.' }),
       f('radius', 'Радиус (σ, px проекта)', 0.5, 64, 10, { step: 0.5, help: 'Складываются три размытия: σ, 2σ и 4σ — плотное ядро и широкий ореол.' }),
       f('intensity', 'Сила', 0, 8, 1.5),
       { key: 'tint', label: 'Оттенок свечения', type: 'color', def: [1, 1, 1, 1] },
-      b('alpha', 'Свечение расширяет альфу (спрайты)', true),
-      e('wrap', 'Края', WRAP_OPTS, 'clamp'),
+      b('alpha', 'Свечение расширяет альфу (спрайты)', true, { help: 'Свечение — это добавленная световая энергия. Для спрайта с альфой (обычное смешивание) включите: альфа ореола = яркость свечения, чёрное и прозрачное не светятся. Для аддитивного материала альфа не нужна — берите RGB.' }),
+      e('wrap', 'Края', WRAP_OPTS, 'border', { help: WRAP_HELP }),
     ],
-    seamFn: (p) => (p.wrap === 'clamp' ? 'Края в режиме Clamp: для бесшовных текстур выберите Repeat.' : ''),
+    seamFn: (p) => (p.wrap !== 'repeat' ? 'Свечение не переносится через край: для бесшовных текстур выберите Repeat.' : ''),
     eval(ctx) {
       const p = ctx.params, sp = ctx.space(0) || 'data';
       const bright = ctx.temp();
       const u = { u_thr: p.threshold, u_knee: p.knee };
       ctx.bindIn(u, 0, 0, 'native');
       ctx.pass('brightpass', bright, u);
-      const rep = p.wrap === 'repeat', wrap = rep ? 'repeat' : 'clamp';
+      const wrap = p.wrap || 'border';
       // bloom pyramid: blur σ·2^k at resolution res/2^(k+1) (same look, a fraction of the cost)
       let prev = bright;
       const blurs = [1, 2, 4].map((m, k) => {
@@ -566,7 +581,7 @@ const NODES = {
         ctx.bindTex(u2, 0, { tex: prev, space: sp }, 'native');
         ctx.pass('downsample', down, u2, { u_in0: wrap });
         const t = ctx.tempAt(size);
-        gaussianInto(ctx, { tex: down, space: sp }, 0, t, Math.min(96, ctx.px(p.radius * m) * size / ctx.res), rep, false);
+        gaussianInto(ctx, { tex: down, space: sp }, 0, t, Math.min(96, ctx.px(p.radius * m) * size / ctx.res), wrap, false);
         prev = down;
         return t;
       });
@@ -592,7 +607,7 @@ const NODES = {
       b('invert', 'Инвертировать высоту', false),
       e('convention', 'Соглашение Y', [['gl', 'OpenGL (+Y, зелёный вверх)'], ['dx', 'DirectX (−Y, зелёный вниз)']], 'gl'),
       b('invertX', 'Дополнительно инвертировать X (красный)', false),
-      e('wrap', 'Края', WRAP_OPTS, 'repeat'),
+      e('wrap', 'Края', WRAP_RC, 'repeat'),
     ],
     presets: [
       { label: 'Unity / OpenGL +Y', apply: { convention: 'gl', invertX: false } },
@@ -824,11 +839,12 @@ const NODES = {
       e('mode', 'Режим', [['toPolar', 'Полоса → круг'], ['fromPolar', 'Круг → полоса']], 'toPolar'),
       f('turns', 'Повторов по кругу', 1, 16, 1, { step: 1 }),
       f('radius', 'Радиус', 0.1, 1, 1),
+      b('alphaAware', 'С учётом альфы', true, { help: AA_HELP }),
     ],
     help: 'Полоса → круг: ось X входа идёт по кругу (целое число повторов — без шва), ось Y — от внешнего края (верх) к центру (низ).',
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
-      const u = { u_mode: p.mode === 'toPolar' ? 0 : 1, u_turns: Math.round(p.turns), u_radius: p.radius };
+      const u = { u_mode: p.mode === 'toPolar' ? 0 : 1, u_turns: Math.round(p.turns), u_radius: p.radius, u_premul: !!p.alphaAware };
       ctx.bindIn(u, 0, 0, 'native');
       ctx.pass('polar', out, u, { u_in0: 'repeat' });
       return [{ tex: out, space: ctx.space(0) || 'data' }];
@@ -904,16 +920,18 @@ function pointwise(ctx, shader, u) {
 }
 
 // Two-pass separable Gaussian. sigma in evaluation pixels.
-function gaussianInto(ctx, src, _slot, out, sigma, repeat, alphaAware) {
+// wrap: 'repeat' | 'clamp' | 'border' (a boolean is accepted as repeat/clamp).
+function gaussianInto(ctx, src, _slot, out, sigma, wrap, alphaAware) {
+  const mode = typeof wrap === 'string' ? wrap : wrap ? 'repeat' : 'clamp';
   const u = {};
   ctx.bindTex(u, 0, src, 'native');
   if (!src || sigma <= 0.05) { ctx.pass('copy', out, u); return; }
   const radius = Math.min(512, Math.ceil(sigma * 3));
   const tmp = ctx.tempAt(out.size);
-  ctx.pass('gauss', tmp, { ...u, u_dir: [1, 0], u_sigma: sigma, u_radius: radius, u_rep: repeat, u_premul: alphaAware, u_unpremul: false });
+  ctx.pass('gauss', tmp, { ...u, u_dir: [1, 0], u_sigma: sigma, u_radius: radius, u_premul: alphaAware, u_unpremul: false }, { u_in0: mode });
   const u2 = {};
   ctx.bindTex(u2, 0, { tex: tmp, space: src.space }, 'native');
-  ctx.pass('gauss', out, { ...u2, u_dir: [0, 1], u_sigma: sigma, u_radius: radius, u_rep: repeat, u_premul: false, u_unpremul: alphaAware });
+  ctx.pass('gauss', out, { ...u2, u_dir: [0, 1], u_sigma: sigma, u_radius: radius, u_premul: false, u_unpremul: alphaAware }, { u_in0: mode });
 }
 
 // Stable sort by position: coincident stops keep list order.

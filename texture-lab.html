@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Pocket Texture Lab v0.3.2 — offline procedural texture editor in one HTML file.
+  Pocket Texture Lab v0.4.0 — offline procedural texture editor in one HTML file.
   Author: intpoln — https://github.com/intpoln/PocketTextureLab
   FOR AI AGENTS / AUTOMATION: this page exposes a full JavaScript API as
   `window.PTL`. Call `PTL.help()` for the manual (it is also embedded below in
@@ -17,11 +17,21 @@
 <meta name="author" content="intpoln — https://github.com/intpoln/PocketTextureLab">
 <title>Pocket Texture Lab</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232d6fb8'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%2358c27d'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%23e0b04d'/%3E%3C/svg%3E">
-<meta name="version" content="0.3.2">
+<meta name="version" content="0.4.0">
 <script type="text/markdown" id="ptl-changelog">
 # История версий
 
 Пока версия начинается с 0 — программа в активной разработке и может содержать ошибки.
+
+## 0.4.0
+Этап A переработки ядра (подробности, замеры до/после и контракты — docs/QUALITY.md).
+- Новый режим края **Border (прозрачно за краем)** во всех фильтрах изображения (Transform, Warp, Gaussian / Directional / Radial Blur, Glow): фильтр видит за краем пустоту — ореол спрайта не переносится на другую сторону (Repeat) и не растягивает край (Clamp). Glow теперь по умолчанию Border.
+- Glow: чёрные и прозрачные пиксели больше не создают непрозрачность (раньше чёрный вход с порогом 0 давал альфу 0.75); knee = 0 — явный жёсткий порог; альфа ореола согласована со светом — 8-битный экспорт не обрезает энергию, поверх светлого фона нет тёмной вуали.
+- Warp: карта искажения больше не заворачивается через край при Clamp (у правого края был ложный сдвиг).
+- «С учётом альфы» в Directional и Radial Blur теперь действительно чистый: цвет смешивается в premultiplied-виде до интерполяции (раньше скрытый цвет прозрачных пикселей давал кайму до 174/255). Та же галочка появилась у Transform, Warp и Polar (по умолчанию включена).
+- Polar: центр кольца больше не подмешивает противоположный край полосы. Optical Flare: круглое затухание к краям вместо квадратной маски.
+- Совместимость: проекты помнят версию вычислений; старые открываются с прежними значениями параметров, а если в них есть Glow, Warp или alpha-aware размытия — появляется предупреждение. Все встроенные материалы рендерятся побайтно как раньше.
+- Инструменты: tools/audit-a.mjs (зонды), tools/compare-builds.mjs (сравнение сборок), tools/chain-a1.mjs (цепочка Flare → Glow → Transform).
 
 ## 0.3.2
 - Первое знакомство: карточка «Быстрый старт» (шаблон → параметр → 3D → «Экспорт всех PNG»), шаги отмечаются по мере выполнения; скрывается ✕, возвращается из «Справки».
@@ -170,6 +180,11 @@ Editing (all validated; unknown params/enum values throw with the list of valid 
 - `PTL.connect(fromId, fromPort, toId, toPort)` — an input takes one link (replaces the old one); outputs fan out; cycles throw.
 - `PTL.disconnect(toId, toPort)`, `PTL.removeNode(id)`, `PTL.duplicate(id)`.
 - `PTL.setActiveOutput(outputId)`, `PTL.setResolution(256|512|1024|2048)`, `PTL.select(id)`.
+- Boundary modes of image filters (`wrap` of Transform, Warp, Gaussian/Directional/Radial Blur, Glow): `repeat`
+  (tileable), `clamp` (extend edge), `border` (transparent zero outside — use for sprites/effects; Glow defaults to it).
+  Warp reads its map with Repeat when `wrap` is `repeat`, else Clamp. `alphaAware` (Transform/Warp/Polar default true,
+  blurs default false) interpolates premultiplied so hidden RGB under A=0 never leaks; switch it off for packed data maps.
+  Graphs carry `engine: 2`; older graphs load with legacy defaults. Details and proofs: docs/QUALITY.md.
 - `PTL.pinPreview(id)` pins the preview to a node (like a double click in the graph; `null` unpins). UI titles of nodes and
   parameters are English (Levels, Blend, Gradient Map, Transform 2D…); node types and parameter keys are unchanged.
 - `PTL.batch(fn)` — several edits as one undo step. `PTL.undo()`, `PTL.redo()`, `PTL.autoLayout()`.
@@ -648,7 +663,7 @@ main { position: relative; }
 <div id="agent-note" class="sr-only">Note for AI agents and screen readers: this is Pocket Texture Lab, a procedural texture editor. It is fully scriptable through the JavaScript object window.PTL. Run PTL.help() in the page for the complete manual (also embedded in this document as script#ptl-agent-guide), PTL.examples() for ready texture templates (brick, asphalt, cobblestone, wood, painted metal) and PTL.exportAll() to download the PNG maps.</div>
 <div id="app">
   <header id="toolbar">
-    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.3.2</button></span>
+    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.4.0</button></span>
     <button id="btn-mmenu" title="Меню">☰</button>
     <select id="examples" title="Встроенные примеры, шаблоны текстур и ваши шаблоны"></select>
     <button id="btn-lib" title="Мои пресеты и шаблоны (хранятся в браузере), экспорт/импорт">Библиотека</button>
@@ -1904,6 +1919,8 @@ float pickChan(vec4 c, bool isColor, int src) {
   return src == 0 ? e.r : src == 1 ? e.g : src == 2 ? e.b : e.a;
 }
 void emit(vec4 c) { fragColor = cconv(c, u_outConv); }
+// premultiplied -> straight (transparent stays transparent black)
+vec4 unpremul(vec4 c) { return vec4(c.a > 1e-6 ? c.rgb / c.a : vec3(0.0), c.a); }
 ivec2 pix() { return ivec2(gl_FragCoord.xy); }
 vec2 pixUV() { return gl_FragCoord.xy / u_res; }
 ivec2 wrapPx(ivec2 p, bool rep) {
@@ -1925,8 +1942,29 @@ uniform bool u_has${i};
 uniform bool u_col${i};
 uniform int u_conv${i};
 uniform vec4 u_def${i};
+uniform int u_bnd${i};   // boundary: 0 repeat, 1 clamp, 2 border (zero outside)
 vec4 in${i}(ivec2 p) { return u_has${i} ? cconv(texelFetch(u_in${i}, p, 0), u_conv${i}) : u_def${i}; }
 vec4 in${i}UV(vec2 uv) { return u_has${i} ? cconv(texture(u_in${i}, uv), u_conv${i}) : u_def${i}; }
+// exact texel with the slot's boundary mode (texel coordinates of the INPUT texture)
+vec4 in${i}T(ivec2 p) {
+  if (!u_has${i}) return u_def${i};
+  ivec2 n = textureSize(u_in${i}, 0);
+  if (u_bnd${i} == 2 && (p.x < 0 || p.y < 0 || p.x >= n.x || p.y >= n.y)) return vec4(0.0);
+  ivec2 q = u_bnd${i} == 0 ? ((p % n) + n) % n : clamp(p, ivec2(0), n - 1);
+  return cconv(texelFetch(u_in${i}, q, 0), u_conv${i});
+}
+// Bilinear read that honours the boundary mode. premul: the four taps are premultiplied by
+// their own alpha BEFORE interpolation (image semantics: an invisible texel contributes no
+// colour); the result is then premultiplied — divide by .a when done. premul = false keeps
+// straight per-channel interpolation (numeric data).
+vec4 in${i}B(vec2 uv, bool premul) {
+  if (!u_has${i}) { vec4 d = u_def${i}; if (premul) d.rgb *= d.a; return d; }
+  vec2 f = uv * vec2(textureSize(u_in${i}, 0)) - 0.5;
+  ivec2 i0 = ivec2(floor(f)); vec2 t = f - floor(f);
+  vec4 a = in${i}T(i0), b = in${i}T(i0 + ivec2(1, 0)), c = in${i}T(i0 + ivec2(0, 1)), d = in${i}T(i0 + ivec2(1, 1));
+  if (premul) { a.rgb *= a.a; b.rgb *= b.a; c.rgb *= c.a; d.rgb *= d.a; }
+  return mix(mix(a, b, t.x), mix(c, d, t.x), t.y);
+}
 `;
 
   const S = {};
@@ -2131,8 +2169,10 @@ void main() {
 uniform int u_mode;     // 0 directional, 1 along map gradient
 uniform vec2 u_dir;
 uniform float u_int;
-uniform bool u_rep;
-float mapAt(ivec2 p) { return lumaEnc(in1(wrapPx(p, true)), u_col1); }
+uniform bool u_premul;  // alpha-aware: interpolate the source premultiplied
+// The map is read with its own boundary mode (u_bnd1: Repeat for tileable graphs, Clamp
+// otherwise) — never wrapped behind the user's back.
+float mapAt(ivec2 p) { return lumaEnc(in1T(p), u_col1); }
 void main() {
   ivec2 p = pix();
   vec2 off;
@@ -2141,7 +2181,8 @@ void main() {
     vec2 g = vec2(mapAt(p + ivec2(1, 0)) - mapAt(p - ivec2(1, 0)), mapAt(p + ivec2(0, 1)) - mapAt(p - ivec2(0, 1))) * 0.5 * u_res;
     off = g * u_int * 0.1;
   }
-  emit(in0UV(pixUV() + off));
+  vec4 c = in0B(pixUV() + off, u_premul);
+  emit(u_premul ? unpremul(c) : c);
 }` };
 
   // Tiler / Splatter: instances on a periodic grid of cells (hashes wrap
@@ -2371,31 +2412,40 @@ void main() {
 uniform vec2 u_off;
 uniform vec2 u_scl;
 uniform float u_rot;
+uniform bool u_premul;
 void main() {
   vec2 d = pixUV() - 0.5 - u_off;
   vec2 q = vec2(d.x, -d.y);
   float a = radians(u_rot);
   q = mat2(cos(a), -sin(a), sin(a), cos(a)) * q;
   q /= u_scl;
-  emit(in0UV(vec2(q.x, -q.y) + 0.5));
+  vec4 c = in0B(vec2(q.x, -q.y) + 0.5, u_premul);
+  emit(u_premul ? unpremul(c) : c);
 }` };
 
   S.polar = { nin: 1, body: `
 uniform int u_mode;     // 0 strip -> circle, 1 circle -> strip
 uniform int u_turns;
 uniform float u_radius;
+uniform bool u_premul;
 void main() {
   vec2 uv = pixUV();
+  vec4 c;
   if (u_mode == 0) {
     vec2 d = vec2(uv.x - 0.5, 0.5 - uv.y);
     float r = length(d) * 2.0 / u_radius;
     float a = atan(d.y, d.x) / (2.0 * PI) + 0.5;
     if (r > 1.0) { emit(vec4(0.0, 0.0, 0.0, 0.0)); return; }
-    emit(in0UV(vec2(fract(a * float(u_turns)), 1.0 - r)));
+    // x (angle) wraps; y (radius) is clamped to the strip's first/last row centre, so the
+    // centre does not blend in the opposite edge of the strip (no torn centre)
+    float h = float(textureSize(u_in0, 0).y);
+    float v = clamp(1.0 - r, 0.5 / h, 1.0 - 0.5 / h);
+    c = in0B(vec2(fract(a * float(u_turns)), v), u_premul);
   } else {
     float a = (uv.x / float(u_turns) - 0.5) * 2.0 * PI, r = (1.0 - uv.y) * 0.5 * u_radius;
-    emit(in0UV(vec2(0.5 + r * cos(a), 0.5 - r * sin(a))));
+    c = in0B(vec2(0.5 + r * cos(a), 0.5 - r * sin(a)), u_premul);
   }
+  emit(u_premul ? unpremul(c) : c);
 }` };
 
   // Glow: bright pass (alpha-weighted so invisible pixels do not glow) ...
@@ -2405,8 +2455,12 @@ uniform float u_knee;
 void main() {
   vec4 c = in0(pix());
   float l = max(max(c.r, c.g), c.b);
-  float k = smoothstep(u_thr - u_knee, u_thr + u_knee, l);
-  emit(vec4(c.rgb * c.a * k, c.a * k));
+  // knee = 0 is an explicit hard threshold (smoothstep with equal edges is undefined)
+  float k = u_knee > 0.0 ? smoothstep(u_thr - u_knee, u_thr + u_knee, l) : step(u_thr, l);
+  // Light energy only: premultiplied RGB of the bright part. Its alpha is the energy's
+  // brightest channel (clamped), so black or invisible pixels can never create opacity.
+  vec3 e = max(c.rgb, 0.0) * c.a * k;
+  emit(vec4(e, clamp(max(max(e.r, e.g), e.b), 0.0, 1.0)));
 }` };
   // ... and combine: base (straight alpha) + premultiplied glow of 3 blur radii.
   S.glowmix = { nin: 4, body: `
@@ -2418,19 +2472,23 @@ void main() {
   ivec2 p = pix();
   vec4 b = in0(p);
   vec2 uv = pixUV();
-  vec4 g = (in1UV(uv) + in2UV(uv) * 0.7 + in3UV(uv) * 0.45) / 2.15 * u_int;
+  vec4 g = (in1B(uv, false) + in2B(uv, false) * 0.7 + in3B(uv, false) * 0.45) / 2.15 * u_int;
   g.rgb *= u_tint;
   if (u_out == 1) { float a = clamp(g.a, 0.0, 1.0); emit(vec4(a > 1e-5 ? g.rgb / a : vec3(0.0), a)); return; }
   vec3 prem = b.rgb * b.a + g.rgb;
-  float a = u_alpha ? clamp(b.a + g.a * (1.0 - b.a), 0.0, 1.0) : b.a;
+  // coverage of the base plus the glow — and never less than the brightest premultiplied
+  // channel, so straight RGB stays <= 1 where possible and 8-bit export keeps the light
+  // energy exactly (composite over black == base + glow)
+  float a = u_alpha ? clamp(max(b.a + g.a * (1.0 - b.a), max(max(prem.r, prem.g), prem.b)), 0.0, 1.0) : b.a;
   vec3 rgb = a > 1e-5 ? prem / max(a, 1e-5) : vec3(0.0);
   if (!u_alpha) rgb = b.rgb + g.rgb;
   emit(vec4(rgb, a));
 }` };
 
-  // 2x box downsample of the input (bilinear taps land between texels)
+  // 2x box downsample of the input (the bilinear tap lands between 4 texels), honouring
+  // the boundary mode of slot 0
   S.downsample = { nin: 1, body: `
-void main() { emit(in0UV(pixUV())); }` };
+void main() { emit(in0B(pixUV(), false)); }` };
 
   S.copy = { nin: 1, body: `
 void main() { emit(in0(pix())); }` };
@@ -2439,7 +2497,6 @@ void main() { emit(in0(pix())); }` };
 uniform ivec2 u_dir;
 uniform float u_sigma;
 uniform int u_radius;
-uniform bool u_rep;
 uniform bool u_premul;
 uniform bool u_unpremul;
 void main() {
@@ -2448,7 +2505,7 @@ void main() {
   float k2 = 1.0 / (2.0 * u_sigma * u_sigma);
   for (int k = -u_radius; k <= u_radius; k++) {
     float w = exp(-float(k * k) * k2);
-    vec4 c = in0(wrapPx(p + u_dir * k, u_rep));
+    vec4 c = in0T(p + u_dir * k);     // Repeat / Clamp / Border per slot 0
     if (u_premul) c.rgb *= c.a;
     acc += c * w; ws += w;
   }
@@ -2467,13 +2524,10 @@ void main() {
   for (int k = 0; k < 256; k++) {
     if (k >= u_n) break;
     float t = u_n == 1 ? 0.0 : float(k) / float(u_n - 1) - 0.5;
-    vec4 c = in0UV(uv + u_vec * t);
-    if (u_aa) c.rgb *= c.a;
-    acc += c;
+    acc += in0B(uv + u_vec * t, u_aa);   // alpha-aware: premultiplied before interpolation
   }
   acc /= float(u_n);
-  if (u_aa) acc.rgb = acc.a > 1e-6 ? acc.rgb / acc.a : vec3(0.0);
-  emit(acc);
+  emit(u_aa ? unpremul(acc) : acc);
 }` };
 
   S.radial = { nin: 1, body: `
@@ -2488,20 +2542,17 @@ void main() {
   vec4 acc = vec4(0.0);
   for (int k = 0; k < 256; k++) {
     if (k >= u_n) break;
-    float t = float(k) / float(u_n - 1);
+    float t = float(k) / float(max(u_n - 1, 1));
     vec2 s;
     if (u_mode == 0) s = u_center + d * (1.0 - u_strength * t);
     else {
       float a = (t - 0.5) * u_strength * PI;
       s = u_center + mat2(cos(a), sin(a), -sin(a), cos(a)) * d;
     }
-    vec4 c = in0UV(s);
-    if (u_aa) c.rgb *= c.a;
-    acc += c;
+    acc += in0B(s, u_aa);
   }
   acc /= float(u_n);
-  if (u_aa) acc.rgb = acc.a > 1e-6 ? acc.rgb / acc.a : vec3(0.0);
-  emit(acc);
+  emit(u_aa ? unpremul(acc) : acc);
 }` };
 
   // Height (in .r, 0..1) -> tangent-space normal. Derivatives are taken per
@@ -2856,6 +2907,16 @@ void main() {
       const vp = opts.viewport || [0, 0, opts.width, opts.height];
       gl.viewport(vp[0], vp[1], vp[2], vp[3]);
     }
+    // Boundary mode per input slot: 'repeat' | 'clamp' | 'border' (transparent zero outside).
+    // WebGL2 has no CLAMP_TO_BORDER, so 'border' binds a clamp sampler and tells the shader
+    // (u_bndN = 2) to return zero for texels outside the image in its manual reads.
+    const BND = { repeat: 0, clamp: 1, border: 2 };
+    if (opts.samplers) {
+      for (const k in opts.samplers) {
+        const m = /^u_in(\d)$/.exec(k);
+        if (m && ('u_bnd' + m[1]) in pr.uniforms && !(('u_bnd' + m[1]) in uniforms)) uniforms = { ...uniforms, ['u_bnd' + m[1]]: BND[opts.samplers[k]] ?? 0 };
+      }
+    }
     let unit = 0;
     for (const uname in pr.uniforms) {
       const u = pr.uniforms[uname];
@@ -2864,7 +2925,8 @@ void main() {
         gl.activeTexture(gl.TEXTURE0 + unit);
         const valid = v && v.tex && v.gen === st.gen;
         gl.bindTexture(gl.TEXTURE_2D, valid ? v.tex : st.dummy);
-        gl.bindSampler(unit, st.samplers[(opts.samplers && opts.samplers[uname]) || 'repeat']);
+        const kind = (opts.samplers && opts.samplers[uname]) || 'repeat';
+        gl.bindSampler(unit, st.samplers[kind === 'border' ? 'clamp' : kind] || st.samplers.repeat);
         gl.uniform1i(u.loc, unit);
         unit++;
         continue;
@@ -3566,7 +3628,8 @@ void main() {
 
   float fl = 1.0 - u_flicker * (0.7 * vn3(vec3(T * 16.0, 3.5, 0.5), ivec3(16, 0, 0)) + 0.3 * vn3(vec3(T * 48.0, 8.5, 0.5), ivec3(48, 0, 0)));
   col *= u_tint * u_int * fl;
-  if (u_edgeFade) col *= 1.0 - smoothstep(0.82, 0.98, max(abs(p.x), abs(p.y)));
+  // round fade to the inscribed circle: a square max(|x|,|y|) mask would imprint the frame shape
+  if (u_edgeFade) col *= 1.0 - smoothstep(0.8, 0.98, length(p));
   col = max(col - 0.002, 0.0);
   float m = max(col.r, max(col.g, col.b));
   if (u_outMode == 1) { float g = clamp(m, 0.0, 1.0); emit(vec4(g, g, g, 1.0)); return; }
@@ -3615,7 +3678,20 @@ const FLARE_PRESETS = [
 //         'data'  = raw channel numbers (masks, height, normals, packed maps).
 // ---------------------------------------------------------------------------
 const BLACK = [0, 0, 0, 1];
-const WRAP_OPTS = [['repeat', 'Повтор (Repeat)'], ['clamp', 'Край (Clamp)']];
+// Boundary modes of image filters: Repeat (tileable), Clamp (extend the edge pixel),
+// Border (transparent zero outside — sprites, effects on an empty canvas).
+const WRAP_OPTS = [['repeat', 'Повтор (Repeat)'], ['clamp', 'Край (Clamp)'], ['border', 'Прозрачно за краем (Border)']];
+const WRAP_RC = [['repeat', 'Повтор (Repeat)'], ['clamp', 'Край (Clamp)']];
+const WRAP_HELP = 'Что фильтр видит за краем изображения. Repeat — противоположный край (бесшовные текстуры). Clamp — продолжение крайних пикселей. Border — пустоту (прозрачный ноль): для спрайтов и эффектов на пустом холсте, ореол не переносится и не «растягивает» край.';
+const AA_HELP = 'Включено: пиксели смешиваются в premultiplied-виде (цвет × альфа) до интерполяции — невидимые пиксели со скрытым цветом не дают каймы. Выключено: каналы RGBA интерполируются независимо, как числа (для карт-данных).';
+const BORDER_SEAM = 'Режим Border видит за краем пустоту — при повторе текстуры появится шов.';
+const wrapSeam = (w) => (w === 'clamp' ? CLAMP_SEAM : w === 'border' ? BORDER_SEAM : '');
+// Parameters whose default changed with compute engine 2 (v0.4): projects saved before that
+// get the old values, so they keep rendering exactly as they did.
+const ENGINE = 2;
+const LEGACY_DEFAULTS = {
+  transform: { alphaAware: false }, warp: { alphaAware: false }, polar: { alphaAware: false }, glow: { wrap: 'clamp' },
+};
 const CHAN_OPTS = [['L', 'Яркость (Luminance)'], ['R', 'R'], ['G', 'G'], ['B', 'B'], ['A', 'A']];
 const CHAN_IDX = { R: 0, G: 1, B: 2, A: 3, L: 4, C: 5 };
 const CLAMP_SEAM = 'Режим Clamp не берёт соседей с противоположного края — при повторе текстуры появится шов.';
@@ -3717,7 +3793,7 @@ const NODES = {
         { help: 'Цвет: значения считаются sRGB и переводятся в линейное пространство для размытия/смешивания. Данные: числа каналов используются как есть (маски, height, normal, упакованные карты).' }),
       e('fit', 'Приведение к размеру проекта', [['stretch', 'Растянуть (Stretch)'], ['cover', 'Заполнить с обрезкой (Cover)'], ['tile', '1:1 без масштаба, повтор (Tile)']], 'stretch',
         { help: 'Stretch: вся картинка масштабируется в квадрат проекта (при совпадении размеров — точная копия пикселей). Cover: сохраняет пропорции и обрезает лишнее по центру. Tile: пиксели 1:1 от левого верхнего угла, повтор при нехватке.' }),
-      e('wrap', 'Края при фильтрации', WRAP_OPTS, 'repeat'),
+      e('wrap', 'Края при фильтрации', WRAP_RC, 'repeat'),
     ],
     seam: 'Загруженное изображение бесшовно только если оно было бесшовным изначально. Cover и Tile с неподходящим размером почти всегда дают шов.',
     eval(ctx) {
@@ -4043,7 +4119,8 @@ const NODES = {
       f('offsetX', 'Смещение X', -1, 1, 0, { step: 0.001 }), f('offsetY', 'Смещение Y (вниз)', -1, 1, 0, { step: 0.001 }),
       f('scaleX', 'Масштаб X', 0.05, 8, 1), f('scaleY', 'Масштаб Y', 0.05, 8, 1),
       f('rotation', 'Поворот, °', -180, 180, 0, { step: 1 }),
-      e('wrap', 'Края', WRAP_OPTS, 'repeat'),
+      e('wrap', 'Края', WRAP_OPTS, 'repeat', { help: WRAP_HELP }),
+      b('alphaAware', 'С учётом альфы', true, { help: AA_HELP }),
     ],
     seamFn: (p) => {
       const w = [];
@@ -4051,12 +4128,12 @@ const NODES = {
       if (r > 1e-6 && 90 - r > 1e-6) w.push('Поворот не кратен 90° — периодичность нарушается, возможен шов.');
       const okScale = (s) => { const k = 1 / s; return Math.abs(k - Math.round(k)) < 1e-4; };
       if (!okScale(p.scaleX) || !okScale(p.scaleY)) w.push('Масштаб не равен 1/n — содержимое не укладывается целое число раз, возможен шов.');
-      if (p.wrap === 'clamp') w.push(CLAMP_SEAM);
+      if (wrapSeam(p.wrap)) w.push(wrapSeam(p.wrap));
       return w.join(' ');
     },
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
-      const u = { u_off: [p.offsetX, p.offsetY], u_scl: [p.scaleX || 1e-3, p.scaleY || 1e-3], u_rot: p.rotation };
+      const u = { u_off: [p.offsetX, p.offsetY], u_scl: [p.scaleX || 1e-3, p.scaleY || 1e-3], u_rot: p.rotation, u_premul: !!p.alphaAware };
       ctx.bindIn(u, 0, 0, 'native');
       ctx.pass('transform', out, u, { u_in0: p.wrap });
       return [{ tex: out, space: ctx.space(0) || 'data' }];
@@ -4071,16 +4148,17 @@ const NODES = {
       e('mode', 'Режим', [['directional', 'Направленный (Directional)'], ['gradient', 'По градиенту карты (Warp)']], 'gradient'),
       f('intensity', 'Сила', 0, 1, 0.1, { step: 0.001, help: 'Направленный: сдвиг (карта−0.5)·2·сила в долях текстуры. По градиенту: сдвиг = градиент карты (на единицу UV) · сила/10.' }),
       f('angle', 'Угол, °', -180, 180, 0, { step: 1, visible: (p) => p.mode === 'directional' }),
-      e('wrap', 'Края', WRAP_OPTS, 'repeat'),
+      e('wrap', 'Края', WRAP_OPTS, 'repeat', { help: WRAP_HELP + ' Карта искажения читается так же при Repeat и с продолжением края (Clamp) при Clamp/Border — пустота за краем карты не должна давать ложный сдвиг.' }),
+      b('alphaAware', 'С учётом альфы', true, { help: AA_HELP }),
     ],
-    seamFn: (p) => (p.wrap === 'clamp' ? CLAMP_SEAM : ''),
+    seamFn: (p) => wrapSeam(p.wrap),
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
       const a = (p.angle * Math.PI) / 180;
-      const u = { u_mode: p.mode === 'gradient' ? 1 : 0, u_dir: [Math.cos(a), -Math.sin(a)], u_int: p.intensity, u_rep: p.wrap === 'repeat' };
+      const u = { u_mode: p.mode === 'gradient' ? 1 : 0, u_dir: [Math.cos(a), -Math.sin(a)], u_int: p.intensity, u_premul: !!p.alphaAware };
       ctx.bindIn(u, 0, 0, 'native');
       ctx.bindIn(u, 1, 1, 'native');
-      ctx.pass('warp', out, u, { u_in0: p.wrap });
+      ctx.pass('warp', out, u, { u_in0: p.wrap, u_in1: p.wrap === 'repeat' ? 'repeat' : 'clamp' });
       return [{ tex: out, space: ctx.space(0) || 'data' }];
     },
   },
@@ -4091,13 +4169,13 @@ const NODES = {
     inputs: [{ label: 'Вход', def: BLACK, defText: 'чёрный (0,0,0,1)' }],
     params: [
       f('sigma', 'Радиус (σ, px проекта)', 0, 64, 4, { step: 0.1, help: 'Сигма в пикселях при разрешении проекта. Ядро ±3σ, два прохода (горизонталь + вертикаль). В уменьшенном предпросмотре масштабируется пропорционально.' }),
-      e('wrap', 'Края', WRAP_OPTS, 'repeat'),
+      e('wrap', 'Края', WRAP_OPTS, 'repeat', { help: WRAP_HELP }),
       b('alphaAware', 'С учётом альфы (для цветных изображений с прозрачностью)', false, { help: 'Выключено: каналы RGBA размываются независимо, как числа. Включено: RGB взвешивается альфой (premultiply → blur → unpremultiply), чтобы прозрачные пиксели не «пачкали» цвет.' }),
     ],
-    seamFn: (p) => (p.wrap === 'clamp' ? CLAMP_SEAM : ''),
+    seamFn: (p) => wrapSeam(p.wrap),
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
-      gaussianInto(ctx, ctx.input(0), 0, out, ctx.px(p.sigma), p.wrap === 'repeat', p.alphaAware);
+      gaussianInto(ctx, ctx.input(0), 0, out, ctx.px(p.sigma), p.wrap, p.alphaAware);
       return [{ tex: out, space: ctx.space(0) || 'data' }];
     },
   },
@@ -4108,11 +4186,11 @@ const NODES = {
     params: [
       f('length', 'Длина (px проекта)', 0, 256, 16, { step: 0.5 }),
       f('angle', 'Угол, °', -180, 180, 0, { step: 1 }),
-      e('wrap', 'Края', WRAP_OPTS, 'repeat'),
-      b('alphaAware', 'С учётом альфы', false),
+      e('wrap', 'Края', WRAP_OPTS, 'repeat', { help: WRAP_HELP }),
+      b('alphaAware', 'С учётом альфы', false, { help: AA_HELP }),
     ],
     help: 'Равномерное усреднение вдоль отрезка длиной L по обе стороны пикселя; число выборок ≈ L+1 (не более 128), с билинейной фильтрацией.',
-    seamFn: (p) => (p.wrap === 'clamp' ? CLAMP_SEAM : ''),
+    seamFn: (p) => wrapSeam(p.wrap),
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
       const u = {};
@@ -4133,8 +4211,8 @@ const NODES = {
       f('centerX', 'Центр X', 0, 1, 0.5), f('centerY', 'Центр Y (вниз)', 0, 1, 0.5),
       f('strength', 'Сила', 0, 1, 0.2, { step: 0.005, help: 'Zoom: доля расстояния до центра. Spin: 1 = ±90°. При 0 результат точно равен входу.' }),
       i('quality', 'Качество (выборок)', 4, 128, 32),
-      e('wrap', 'Края', WRAP_OPTS, 'repeat'),
-      b('alphaAware', 'С учётом альфы', false),
+      e('wrap', 'Края', WRAP_OPTS, 'repeat', { help: WRAP_HELP }),
+      b('alphaAware', 'С учётом альфы', false, { help: AA_HELP }),
     ],
     seam: 'Радиальное размытие привязано к центру и в общем случае не периодично — возможен шов.',
     eval(ctx) {
@@ -4152,21 +4230,21 @@ const NODES = {
     desc: 'Ореол вокруг ярких областей (bloom): порог яркости, мягкое многоуровневое размытие, сила и оттенок. Для эффектов, неона, магии, огня; у спрайтов с прозрачностью свечение расширяет альфу.',
     params: [
       f('threshold', 'Порог яркости', 0, 1, 0.5, { help: 'Светятся пиксели ярче порога (по максимальному из R, G, B). 0 — светится всё.' }),
-      f('knee', 'Мягкость порога', 0, 0.5, 0.15),
+      f('knee', 'Мягкость порога', 0, 0.5, 0.15, { help: 'Ширина плавного перехода вокруг порога. 0 — жёсткий порог.' }),
       f('radius', 'Радиус (σ, px проекта)', 0.5, 64, 10, { step: 0.5, help: 'Складываются три размытия: σ, 2σ и 4σ — плотное ядро и широкий ореол.' }),
       f('intensity', 'Сила', 0, 8, 1.5),
       { key: 'tint', label: 'Оттенок свечения', type: 'color', def: [1, 1, 1, 1] },
-      b('alpha', 'Свечение расширяет альфу (спрайты)', true),
-      e('wrap', 'Края', WRAP_OPTS, 'clamp'),
+      b('alpha', 'Свечение расширяет альфу (спрайты)', true, { help: 'Свечение — это добавленная световая энергия. Для спрайта с альфой (обычное смешивание) включите: альфа ореола = яркость свечения, чёрное и прозрачное не светятся. Для аддитивного материала альфа не нужна — берите RGB.' }),
+      e('wrap', 'Края', WRAP_OPTS, 'border', { help: WRAP_HELP }),
     ],
-    seamFn: (p) => (p.wrap === 'clamp' ? 'Края в режиме Clamp: для бесшовных текстур выберите Repeat.' : ''),
+    seamFn: (p) => (p.wrap !== 'repeat' ? 'Свечение не переносится через край: для бесшовных текстур выберите Repeat.' : ''),
     eval(ctx) {
       const p = ctx.params, sp = ctx.space(0) || 'data';
       const bright = ctx.temp();
       const u = { u_thr: p.threshold, u_knee: p.knee };
       ctx.bindIn(u, 0, 0, 'native');
       ctx.pass('brightpass', bright, u);
-      const rep = p.wrap === 'repeat', wrap = rep ? 'repeat' : 'clamp';
+      const wrap = p.wrap || 'border';
       // bloom pyramid: blur σ·2^k at resolution res/2^(k+1) (same look, a fraction of the cost)
       let prev = bright;
       const blurs = [1, 2, 4].map((m, k) => {
@@ -4175,7 +4253,7 @@ const NODES = {
         ctx.bindTex(u2, 0, { tex: prev, space: sp }, 'native');
         ctx.pass('downsample', down, u2, { u_in0: wrap });
         const t = ctx.tempAt(size);
-        gaussianInto(ctx, { tex: down, space: sp }, 0, t, Math.min(96, ctx.px(p.radius * m) * size / ctx.res), rep, false);
+        gaussianInto(ctx, { tex: down, space: sp }, 0, t, Math.min(96, ctx.px(p.radius * m) * size / ctx.res), wrap, false);
         prev = down;
         return t;
       });
@@ -4201,7 +4279,7 @@ const NODES = {
       b('invert', 'Инвертировать высоту', false),
       e('convention', 'Соглашение Y', [['gl', 'OpenGL (+Y, зелёный вверх)'], ['dx', 'DirectX (−Y, зелёный вниз)']], 'gl'),
       b('invertX', 'Дополнительно инвертировать X (красный)', false),
-      e('wrap', 'Края', WRAP_OPTS, 'repeat'),
+      e('wrap', 'Края', WRAP_RC, 'repeat'),
     ],
     presets: [
       { label: 'Unity / OpenGL +Y', apply: { convention: 'gl', invertX: false } },
@@ -4433,11 +4511,12 @@ const NODES = {
       e('mode', 'Режим', [['toPolar', 'Полоса → круг'], ['fromPolar', 'Круг → полоса']], 'toPolar'),
       f('turns', 'Повторов по кругу', 1, 16, 1, { step: 1 }),
       f('radius', 'Радиус', 0.1, 1, 1),
+      b('alphaAware', 'С учётом альфы', true, { help: AA_HELP }),
     ],
     help: 'Полоса → круг: ось X входа идёт по кругу (целое число повторов — без шва), ось Y — от внешнего края (верх) к центру (низ).',
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
-      const u = { u_mode: p.mode === 'toPolar' ? 0 : 1, u_turns: Math.round(p.turns), u_radius: p.radius };
+      const u = { u_mode: p.mode === 'toPolar' ? 0 : 1, u_turns: Math.round(p.turns), u_radius: p.radius, u_premul: !!p.alphaAware };
       ctx.bindIn(u, 0, 0, 'native');
       ctx.pass('polar', out, u, { u_in0: 'repeat' });
       return [{ tex: out, space: ctx.space(0) || 'data' }];
@@ -4513,16 +4592,18 @@ function pointwise(ctx, shader, u) {
 }
 
 // Two-pass separable Gaussian. sigma in evaluation pixels.
-function gaussianInto(ctx, src, _slot, out, sigma, repeat, alphaAware) {
+// wrap: 'repeat' | 'clamp' | 'border' (a boolean is accepted as repeat/clamp).
+function gaussianInto(ctx, src, _slot, out, sigma, wrap, alphaAware) {
+  const mode = typeof wrap === 'string' ? wrap : wrap ? 'repeat' : 'clamp';
   const u = {};
   ctx.bindTex(u, 0, src, 'native');
   if (!src || sigma <= 0.05) { ctx.pass('copy', out, u); return; }
   const radius = Math.min(512, Math.ceil(sigma * 3));
   const tmp = ctx.tempAt(out.size);
-  ctx.pass('gauss', tmp, { ...u, u_dir: [1, 0], u_sigma: sigma, u_radius: radius, u_rep: repeat, u_premul: alphaAware, u_unpremul: false });
+  ctx.pass('gauss', tmp, { ...u, u_dir: [1, 0], u_sigma: sigma, u_radius: radius, u_premul: alphaAware, u_unpremul: false }, { u_in0: mode });
   const u2 = {};
   ctx.bindTex(u2, 0, { tex: tmp, space: src.space }, 'native');
-  ctx.pass('gauss', out, { ...u2, u_dir: [0, 1], u_sigma: sigma, u_radius: radius, u_rep: repeat, u_premul: false, u_unpremul: alphaAware });
+  ctx.pass('gauss', out, { ...u2, u_dir: [0, 1], u_sigma: sigma, u_radius: radius, u_premul: false, u_unpremul: alphaAware }, { u_in0: mode });
 }
 
 // Stable sort by position: coincident stops keep list order.
@@ -4731,7 +4812,7 @@ const I18N = (() => {
   };
   const OPT = {
     'Цвет sRGB (Color)': 'Color (sRGB)', 'Данные каналов (Data)': 'Data (linear)', 'Растянуть (Stretch)': 'Stretch', 'Заполнить с обрезкой (Cover)': 'Cover (crop)',
-    '1:1 без масштаба, повтор (Tile)': 'Tile 1:1', 'Повтор (Repeat)': 'Repeat', 'Край (Clamp)': 'Clamp', 'Серое значение (данные)': 'Grayscale',
+    '1:1 без масштаба, повтор (Tile)': 'Tile 1:1', 'Повтор (Repeat)': 'Repeat', 'Край (Clamp)': 'Clamp', 'Прозрачно за краем (Border)': 'Border (transparent)', 'Серое значение (данные)': 'Grayscale',
     'Цвет RGBA (sRGB)': 'Color RGBA', 'Градиентный (Perlin)': 'Perlin', 'Клеточный (Worley)': 'Worley', 'Белый шум (White)': 'White Noise',
     'Обычный (fBM) — облака': 'fBM', 'Гребни (Ridged) — горы, трещины': 'Ridged', 'Клубы (Billow) — камни, дым': 'Billow',
     'Расстояние до точки (F1)': 'F1 Distance', 'До второй точки (F2)': 'F2 Distance', 'Трещины (F2 − F1)': 'Crackle (F2 − F1)',
@@ -4872,6 +4953,7 @@ const Graph = (() => {
 
   function toJSON() {
     return {
+      engine: ENGINE,
       resolution: g.resolution,
       activeOutput: g.activeOutput,
       nextId: g.nextId,
@@ -4888,9 +4970,11 @@ const Graph = (() => {
     validate(data);
     const old = g.nodes;
     g.nodes = new Map();
+    // Graphs saved before compute engine 2 keep the old values of parameters whose default changed.
+    const legacy = !(data.engine >= ENGINE);
     for (const n of data.nodes) {
       const prev = old.get(n.id);
-      const params = { ...defaultParams(n.type), ...JSON.parse(JSON.stringify(n.params || {})) };
+      const params = { ...defaultParams(n.type), ...(legacy ? LEGACY_DEFAULTS[n.type] || {} : {}), ...JSON.parse(JSON.stringify(n.params || {})) };
       const anim = cleanAnim(n.type, n.anim);
       const same = prev && prev.type === n.type && JSON.stringify(prev.params) === JSON.stringify(params) &&
         JSON.stringify(prev.anim || {}) === JSON.stringify(anim);
@@ -8275,7 +8359,9 @@ const App = (() => {
       if (n.type === 'image' && n.params && n.params.asset && !Assets.get(n.params.asset))
         throw new Error('В проекте нет встроенного изображения ' + n.params.asset);
     }
+    const affected = !(data.engine >= ENGINE) && (data.nodes || []).some((n) => ['glow', 'warp'].includes(n.type) || (['dirblur', 'radialblur'].includes(n.type) && n.params && n.params.alphaAware));
     loadGraph(data);
+    if (affected) toast('Проект из версии до 0.4: исправлены Glow (чёрное больше не даёт альфу), Warp у краёв и alpha-aware размытия — результат этих нод может немного отличаться. Остальные параметры открыты как были.', 'warn', 9000);
     commit();
     if (data.view) { Object.assign(GraphView.view, data.view); GraphView.applyView(); }
   }
@@ -8639,7 +8725,7 @@ window.PTL = PTL;
 
 // ===== main.js =====
 // Entry point.
-const PTL_VERSION = '0.3.2';
+const PTL_VERSION = '0.4.0';
 (() => {
   const start = () => {
     try {

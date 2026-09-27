@@ -1254,6 +1254,90 @@ await test('Первое знакомство: шаблон читаемо на 
   await page.context().close();
 });
 
+await test('Этап A: границы, альфа, Glow, Warp — контрольные изображения', async () => {
+  const page = await openPage();
+  const r = await page.evaluate(() => {
+    PTL.newProject(); PTL.setResolution(256);
+    const S = 256, out = {};
+    const code = (glsl) => PTL.addNode('code', { params: { code: glsl, space: 'data' } });
+    const px = (r, x, y) => { const i = (y * r.width + x) * 4; return [r.rgba[i], r.rgba[i + 1], r.rgba[i + 2], r.rgba[i + 3]]; };
+    // 1) black -> Glow only: zero RGB and A everywhere (threshold 0, soft and hard knee)
+    const blk = code('vec4 process(vec2 uv, ivec2 px) { return vec4(0.0, 0.0, 0.0, 1.0); }');
+    out.glowBlack = [0.15, 0].map((knee) => {
+      const g = PTL.addNode('glow', { params: { threshold: 0, knee, radius: 6, intensity: 2 } }); PTL.connect(blk, 0, g, 0);
+      const rr = PTL.render(g, { size: 64, port: 1 }); let m = 0; for (const v of rr.rgba) m = Math.max(m, v); return m;
+    });
+    // 2) hidden bright RGB under A=0 must not leak into visible pixels of alpha-aware filters
+    const hid = code('vec4 process(vec2 uv, ivec2 px) { return uv.x < 0.5 ? vec4(1.0, 0.0, 0.0, 1.0) : vec4(0.0, 0.0, 1.0, 0.0); }');
+    const leak = (type, params) => {
+      const n = PTL.addNode(type, { params }); PTL.connect(hid, 0, n, 0);
+      const rr = PTL.render(n, { size: 64 }); let m = 0;
+      for (let i = 0; i < rr.rgba.length; i += 4) if (rr.rgba[i + 3] >= 8) m = Math.max(m, rr.rgba[i + 2]);
+      return m;
+    };
+    out.leak = {
+      dirblur: leak('dirblur', { length: 12, alphaAware: true, wrap: 'clamp' }),
+      radialblur: leak('radialblur', { mode: 'spin', strength: 0.3, centerY: 0.1, alphaAware: true, wrap: 'clamp' }),
+      gaussian: leak('gaussian', { sigma: 4, alphaAware: true, wrap: 'clamp' }),
+      transform: leak('transform', { rotation: 17, scaleX: 0.9, alphaAware: true, wrap: 'border' }),
+      warp: leak('warp', { mode: 'directional', intensity: 0.05, alphaAware: true, wrap: 'clamp' }),
+    };
+    // data contract: without alpha-aware, an identity transform keeps hidden RGB exactly
+    const id = PTL.addNode('transform', { params: { alphaAware: false } }); PTL.connect(hid, 0, id, 0);
+    out.dataKeepsHidden = px(PTL.render(id, { size: S }), 200, 10);
+    // 3) impulse column at the left border vs. the reference convolution of each boundary rule
+    const imp = code('vec4 process(vec2 uv, ivec2 px) { return px.x == 0 ? vec4(1.0) : vec4(0.0, 0.0, 0.0, 1.0); }');
+    const sigma = 2, R = Math.ceil(sigma * 3), w = (k) => Math.exp(-k * k / (2 * sigma * sigma));
+    let W = 0; for (let k = -R; k <= R; k++) W += w(k);
+    const ref = { border: (x) => (x <= R ? w(x) / W : 0), repeat: (x) => (w(x) + w(S - x)) / W, clamp: (x) => { let v = 0; for (let k = -R; k <= R; k++) if (x + k <= 0) v += w(k); return v / W; } };
+    out.impulse = {};
+    for (const wrap of ['repeat', 'clamp', 'border']) {
+      const g = PTL.addNode('gaussian', { params: { sigma, wrap } }); PTL.connect(imp, 0, g, 0);
+      const rr = PTL.render(g, { size: S }); let err = 0;
+      for (const x of [0, 1, 2, 3, 5, 8, S - 3, S - 1]) err = Math.max(err, Math.abs(px(rr, x, 40)[0] - 255 * ref[wrap](x)));
+      out.impulse[wrap] = { err: +err.toFixed(2), col0: px(rr, 0, 40)[0], last: px(rr, S - 1, 40)[0] };
+    }
+    // 4) Warp: neutral map / zero intensity keeps the input; a horizontal ramp moves content along +x
+    const tex = code('vec4 process(vec2 uv, ivec2 px) { return vec4(fract(uv * 4.0), 0.5, 1.0); }');
+    const mid = code('vec4 process(vec2 uv, ivec2 px) { return vec4(0.5, 0.5, 0.5, 1.0); }');
+    const wn = PTL.addNode('warp', { params: { mode: 'directional', intensity: 0.3, alphaAware: false } }); PTL.connect(tex, 0, wn, 0); PTL.connect(mid, 0, wn, 1);
+    const w0 = PTL.addNode('warp', { params: { mode: 'gradient', intensity: 0, alphaAware: false } }); PTL.connect(tex, 0, w0, 0); PTL.connect(tex, 0, w0, 1);
+    const a0 = PTL.render(tex, { size: 64 }).rgba, a1 = PTL.render(wn, { size: 64 }).rgba, a2 = PTL.render(w0, { size: 64 }).rgba;
+    let d1 = 0, d2 = 0; for (let i = 0; i < a0.length; i++) { d1 = Math.max(d1, Math.abs(a0[i] - a1[i])); d2 = Math.max(d2, Math.abs(a0[i] - a2[i])); }
+    out.warpNeutral = [d1, d2];
+    const one = code('vec4 process(vec2 uv, ivec2 px) { return vec4(1.0); }');   // map = 1 -> offset (1-0.5)*2*intensity = intensity along the angle
+    const wd = PTL.addNode('warp', { params: { mode: 'directional', intensity: 0.0625, angle: 0, alphaAware: false } }); PTL.connect(tex, 0, wd, 0); PTL.connect(one, 0, wd, 1);
+    const b0 = PTL.render(tex, { size: 64 }), b1 = PTL.render(wd, { size: 64 });
+    out.warpShift = [px(b1, 10, 5)[0], px(b0, 14, 5)[0]];   // dst(x) = src(x + 0.0625 * 64 = 4 px)
+    // 5) round flare fade: same alpha on axis and diagonal at the same radius, zero at the frame
+    const f = PTL.addNode('flare', { params: { ...flarePreset({ glowI: 1, glowSize: 1.4, glowFall: 2, glowColor: [1, 1, 1, 1] }), background: 'transparent' } });
+    const fr = PTL.render(f, { size: S }); let edge = 0;
+    for (let k = 0; k < S; k++) edge = Math.max(edge, px(fr, k, 0)[3], px(fr, 0, k)[3], px(fr, k, S - 1)[3], px(fr, S - 1, k)[3]);
+    const c = S / 2, Rr = Math.round(0.9 * c), d = Math.round(0.9 * c / Math.SQRT2);
+    out.flare = { edge, axis: px(fr, c + Rr, c)[3], diag: px(fr, c + d, c + d)[3] };
+    out.errors = PTL.errors();
+    return out;
+  });
+  ok(r.glowBlack.every((m) => m === 0), 'чёрное → Glow «только свечение»: RGB и A = 0 везде (порог 0, мягкий и жёсткий knee)', r.glowBlack);
+  ok(Object.values(r.leak).every((m) => m <= 2), 'скрытый яркий RGB под A=0 не проникает в видимые пиксели alpha-aware фильтров', r.leak);
+  ok(r.dataKeepsHidden.join() === '0,0,255,0', 'режим данных (без альфы): скрытый RGB при A=0 сохраняется', r.dataKeepsHidden);
+  ok(Object.values(r.impulse).every((x) => x.err <= 2) && r.impulse.repeat.last > 20 && r.impulse.clamp.col0 > r.impulse.border.col0 && r.impulse.border.last === 0,
+    'импульс у края: Repeat переносит, Clamp продлевает, Border не делает ни того ни другого — совпадает с эталонной свёрткой', r.impulse);
+  ok(r.warpNeutral[0] <= 1 && r.warpNeutral[1] <= 1, 'Warp: нейтральная карта 0.5 и сила 0 сохраняют вход', r.warpNeutral);
+  ok(Math.abs(r.warpShift[0] - r.warpShift[1]) <= 2, 'Warp: карта 1 даёт сдвиг ровно на «силу» по направлению (угол 0° → +x)', r.warpShift);
+  ok(r.flare.edge === 0 && Math.abs(r.flare.axis - r.flare.diag) <= 2, 'Flare: круглое затухание — без квадратной рамки, край кадра прозрачен', r.flare);
+  ok(Object.keys(r.errors).length === 0, 'нет ошибок нод', r.errors);
+  // compatibility: a graph saved before engine 2 keeps legacy defaults; new graphs get the new ones
+  const mig = await page.evaluate(async () => {
+    await App.loadProjectData({ format: 'pocket-texture-lab', version: 1, resolution: 256, nodes: [{ id: 'n1', type: 'transform', x: 0, y: 0, params: {} }, { id: 'n2', type: 'glow', x: 0, y: 0, params: {} }], links: [] });
+    const old = [PTL.getParams('n1').alphaAware, PTL.getParams('n2').wrap];
+    PTL.newProject(); const t = PTL.addNode('transform'), g = PTL.addNode('glow');
+    return { old, fresh: [PTL.getParams(t).alphaAware, PTL.getParams(g).wrap], engine: PTL.getGraph().engine };
+  });
+  ok(mig.old.join() === 'false,clamp' && mig.fresh.join() === 'true,border' && mig.engine === 2, 'старые проекты открываются с прежними значениями, новые ноды — с исправленными', mig);
+  await page.context().close();
+});
+
 await browser.close();
 
 console.log('\n# Внешние запросы: ' + (netRequests.length ? netRequests.join(', ') : 'нет'));

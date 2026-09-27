@@ -74,6 +74,11 @@ Editing (all validated; unknown params/enum values throw with the list of valid 
 - `PTL.connect(fromId, fromPort, toId, toPort)` — an input takes one link (replaces the old one); outputs fan out; cycles throw.
 - `PTL.disconnect(toId, toPort)`, `PTL.removeNode(id)`, `PTL.duplicate(id)`.
 - `PTL.setActiveOutput(outputId)`, `PTL.setResolution(256|512|1024|2048)`, `PTL.select(id)`.
+- Boundary modes of image filters (`wrap` of Transform, Warp, Gaussian/Directional/Radial Blur, Glow): `repeat`
+  (tileable), `clamp` (extend edge), `border` (transparent zero outside — use for sprites/effects; Glow defaults to it).
+  Warp reads its map with Repeat when `wrap` is `repeat`, else Clamp. `alphaAware` (Transform/Warp/Polar default true,
+  blurs default false) interpolates premultiplied so hidden RGB under A=0 never leaks; switch it off for packed data maps.
+  Graphs carry `engine: 2`; older graphs load with legacy defaults. Details and proofs: docs/QUALITY.md.
 - `PTL.pinPreview(id)` pins the preview to a node (like a double click in the graph; `null` unpins). UI titles of nodes and
   parameters are English (Levels, Blend, Gradient Map, Transform 2D…); node types and parameter keys are unchanged.
 - `PTL.batch(fn)` — several edits as one undo step. `PTL.undo()`, `PTL.redo()`, `PTL.autoLayout()`.

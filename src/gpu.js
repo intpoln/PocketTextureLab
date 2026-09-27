@@ -212,6 +212,16 @@ void main() {
       const vp = opts.viewport || [0, 0, opts.width, opts.height];
       gl.viewport(vp[0], vp[1], vp[2], vp[3]);
     }
+    // Boundary mode per input slot: 'repeat' | 'clamp' | 'border' (transparent zero outside).
+    // WebGL2 has no CLAMP_TO_BORDER, so 'border' binds a clamp sampler and tells the shader
+    // (u_bndN = 2) to return zero for texels outside the image in its manual reads.
+    const BND = { repeat: 0, clamp: 1, border: 2 };
+    if (opts.samplers) {
+      for (const k in opts.samplers) {
+        const m = /^u_in(\d)$/.exec(k);
+        if (m && ('u_bnd' + m[1]) in pr.uniforms && !(('u_bnd' + m[1]) in uniforms)) uniforms = { ...uniforms, ['u_bnd' + m[1]]: BND[opts.samplers[k]] ?? 0 };
+      }
+    }
     let unit = 0;
     for (const uname in pr.uniforms) {
       const u = pr.uniforms[uname];
@@ -220,7 +230,8 @@ void main() {
         gl.activeTexture(gl.TEXTURE0 + unit);
         const valid = v && v.tex && v.gen === st.gen;
         gl.bindTexture(gl.TEXTURE_2D, valid ? v.tex : st.dummy);
-        gl.bindSampler(unit, st.samplers[(opts.samplers && opts.samplers[uname]) || 'repeat']);
+        const kind = (opts.samplers && opts.samplers[uname]) || 'repeat';
+        gl.bindSampler(unit, st.samplers[kind === 'border' ? 'clamp' : kind] || st.samplers.repeat);
         gl.uniform1i(u.loc, unit);
         unit++;
         continue;
