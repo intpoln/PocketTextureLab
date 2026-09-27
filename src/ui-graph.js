@@ -421,7 +421,9 @@ const GraphView = (() => {
     }
   }
 
-  function fit() {
+  // Fit the whole graph; with opts.minZoom a large graph is not shrunk below it — the view is
+  // anchored on the node `opts.focus` (e.g. the main output) so titles stay readable.
+  function fit(opts = {}) {
     const r = root.getBoundingClientRect();
     if (!Graph.nodes.size) { view.x = 40; view.y = 40; view.z = 1; applyView(); return; }
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -435,6 +437,14 @@ const GraphView = (() => {
     view.z = z;
     view.x = (r.width - (x1 - x0) * z) / 2 - x0 * z;
     view.y = (r.height - (y1 - y0) * z) / 2 - y0 * z;
+    const f = opts.focus && Graph.nodes.get(opts.focus);
+    if (opts.minZoom && z < opts.minZoom && f) {
+      view.z = opts.minZoom;
+      const fr = els.get(f.id), fw = fr ? fr.el.offsetWidth : 176, fh = fr ? fr.el.offsetHeight : 100;
+      view.x = Math.min(r.width - pad - (f.x + fw) * view.z, pad - x0 * view.z);   // focus node near the right edge
+      view.x = Math.max(view.x, r.width - pad - x1 * view.z);
+      view.y = r.height / 2 - (f.y + fh / 2) * view.z;
+    }
     applyView();
   }
 

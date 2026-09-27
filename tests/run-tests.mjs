@@ -1233,6 +1233,27 @@ await test('Перетаскивание ноды не обрывается (в�
   await page.context().close();
 });
 
+await test('Первое знакомство: шаблон читаемо на графе, превью ≤512, карточка «Быстрый старт»', async () => {
+  const page = await openPage();
+  await page.evaluate(() => { try { localStorage.removeItem('ptl.quickHidden'); } catch (e) {} App.loadExample(EXAMPLES.findIndex((x) => /Кирпич/.test(x.title))); });
+  await idle(page); await page.waitForTimeout(300);
+  const r = await page.evaluate(() => ({ z: GraphView.view.z, res: PTL.info().resolution, pres: App.previewRes(), steps: [...document.querySelectorAll('#params .quick .q-step')].map((s) => s.classList.contains('done')) }));
+  ok(r.z >= 0.6, 'граф шаблона открывается с читаемым масштабом (≥60%)', r.z);
+  ok(r.res === 1024 && r.pres === 512, 'превью по умолчанию ≤512 при проекте 1024 (экспорт — в разрешении проекта)', r);
+  ok(r.steps.length === 4 && r.steps.join() === 'true,false,false,false', 'карточка «Быстрый старт»: шаг 1 (шаблон) отмечен', r.steps);
+  const range = page.locator('#params .prow input[type=range]').first();
+  await range.focus(); await page.keyboard.press('ArrowRight');
+  await range.evaluate((el) => el.dispatchEvent(new Event('change', { bubbles: true })));
+  await page.click('#params .quick button:has-text("2D | 3D")');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#params .quick button.primary')]);
+  await page.waitForTimeout(500);
+  const steps = await page.evaluate(() => [...document.querySelectorAll('#params .quick .q-step')].map((s) => s.classList.contains('done')));
+  ok(steps.join() === 'true,true,true,true' && /\.png$/.test(dl.suggestedFilename()), 'параметр → 3D → экспорт: все шаги отмечены, PNG скачан', { steps, file: dl.suggestedFilename() });
+  await page.click('#params .quick .q-close');
+  ok(await page.evaluate(() => !document.querySelector('#params .quick')), 'карточку можно скрыть');
+  await page.context().close();
+});
+
 await browser.close();
 
 console.log('\n# Внешние запросы: ' + (netRequests.length ? netRequests.join(', ') : 'нет'));

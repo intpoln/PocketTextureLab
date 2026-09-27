@@ -16,7 +16,7 @@ const Preview = (() => {
   function init() {
     canvas = $('#view'); wrap = $('#canvas-wrap'); info = $('#pinfo');
     document.querySelectorAll('#preview [data-view]').forEach((b) => b.addEventListener('click', () => setView({ mode: +b.dataset.view })));
-    document.querySelectorAll('#preview [data-layout]').forEach((b) => b.addEventListener('click', () => setView({ layout: b.dataset.layout })));
+    document.querySelectorAll('#preview [data-layout]').forEach((b) => b.addEventListener('click', () => { setView({ layout: b.dataset.layout }); if (b.dataset.layout !== '2d') App.quickMark('viewed'); }));
     $('#btn-tile').onclick = () => setView({ tile3: !st.tile3 });
     $('#btn-half').onclick = () => setView({ half: !st.half });
     $('#btn-vfit').onclick = () => { st.zoom = 1; st.pan = [0, 0]; draw(); };

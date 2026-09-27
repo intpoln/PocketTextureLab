@@ -187,6 +187,18 @@ main { position: relative; }
 .node.sel.primary { box-shadow: 0 0 0 2px var(--acc), 0 2px 10px #000a; }
 #graph { cursor: default; user-select: none; -webkit-user-select: none; }
 
+/* «Быстрый старт» card */
+#params .quick { border: 1px solid var(--acc); border-radius: 8px; padding: 8px 10px; margin: 8px 0 12px; background: color-mix(in srgb, var(--acc) 8%, var(--bg2)); }
+#params .quick .q-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+#params .quick .q-close { border: none; background: none; color: var(--fg3); padding: 0 4px; }
+#params .quick .q-step { display: flex; gap: 8px; align-items: flex-start; padding: 4px 0; }
+#params .quick .q-step select { margin-top: 3px; max-width: 100%; }
+#params .quick .q-step .actions { margin: 3px 0 0; }
+#params .quick .q-step > .q-step button.primary { margin-top: 3px; }
+#params .quick .q-n { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--bg4); text-align: center; line-height: 20px; font-size: 11px; font-weight: 700; }
+#params .quick .q-step.done .q-n { background: #2f8a55; color: #fff; }
+#params .quick .q-step.done > div > div:first-child { color: var(--fg3); }
+
 /* preview pinned to a node (double click) */
 .node.pinned { outline: 2px solid #58c27d; outline-offset: 2px; }
 .node.pinned .head::after { content: '📌'; margin-left: auto; font-size: 11px; }

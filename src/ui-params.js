@@ -224,9 +224,33 @@ const ParamsPanel = (() => {
   }
 
   // Nothing selected: template parameters (exposed) + outputs.
+  // «Быстрый старт»: the shortest path for a newcomer — template, one slider, look, export.
+  function quickStart() {
+    let hidden = false;
+    try { hidden = localStorage.getItem('ptl.quickHidden') === '1'; } catch (e) { /* per-viewer convenience */ }
+    if (hidden) return null;
+    const q = App.state.quick || {};
+    const box = h('div', { class: 'quick' });
+    const close = h('button', { class: 'q-close', text: '✕', title: 'Скрыть (вернуть — в «Справке»)', onclick: () => { try { localStorage.setItem('ptl.quickHidden', '1'); } catch (e) { /* ignore */ } build(); } });
+    box.append(h('div', { class: 'q-head' }, h('b', { text: 'Быстрый старт' }), close));
+    const step = (done, n, ...kids) => box.append(h('div', { class: 'q-step' + (done ? ' done' : '') }, h('span', { class: 'q-n', text: done ? '✓' : n }), h('div', {}, ...kids)));
+    const sel = h('select', { title: 'Готовые материалы: граф + вынесенные параметры + выходы Base Color / Normal / ORM' }, h('option', { value: '', text: 'Выберите шаблон…' }));
+    EXAMPLES.forEach((x, k) => { if (x.template) sel.append(h('option', { value: k, text: x.title })); });
+    if (q.template != null) sel.value = q.template;
+    sel.addEventListener('change', () => { if (sel.value !== '') App.loadExample(+sel.value); });
+    step(q.template != null, '1', h('div', { text: 'Шаблон материала' }), sel);
+    step(!!q.tweaked, '2', h('div', { text: 'Подвигайте любой ползунок в «Параметрах шаблона» ниже' }));
+    step(!!q.viewed, '3', h('div', { text: 'Посмотрите результат на 3D-объекте' }),
+      h('div', { class: 'actions' }, h('button', { text: '3D', onclick: () => { document.querySelector('#preview [data-layout="3d"]').click(); } }), h('button', { text: '2D | 3D', onclick: () => { document.querySelector('#preview [data-layout="split"]').click(); } })));
+    step(!!q.exported, '4', h('div', { text: 'Сохраните карты Base Color, Normal, ORM' }), h('button', { class: 'primary', text: 'Экспорт всех PNG', onclick: () => App.exportAll() }));
+    return box;
+  }
+
   function buildProject() {
     const ex = Graph.state.exposed;
     el.append(h('h3', { text: 'Проект' }), h('div', { class: 'sub', text: `${Graph.nodes.size} нод · ${Graph.state.resolution}×${Graph.state.resolution}` }));
+    const qs = quickStart();
+    if (qs) el.append(qs);
     const outs = [...Graph.nodes.values()].filter((n) => n.type === 'output');
     if (outs.length) {
       el.append(h('div', { class: 'group', text: 'Выходы' }));
@@ -249,6 +273,7 @@ const ParamsPanel = (() => {
       lab.style.cursor = 'pointer';
       lab.title = `${NODES[node.type].title} (${node.id}) → ${d.label}. Щелчок — выбрать ноду.`;
       lab.addEventListener('click', (e) => { if (e.target === lab) App.select(node.id); });
+      row.el.addEventListener('change', () => App.quickMark('tweaked'));
       el.append(row.el);
     }
   }

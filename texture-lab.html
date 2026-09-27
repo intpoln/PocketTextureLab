@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Pocket Texture Lab v0.3.1 — offline procedural texture editor in one HTML file.
+  Pocket Texture Lab v0.3.2 — offline procedural texture editor in one HTML file.
   Author: intpoln — https://github.com/intpoln/PocketTextureLab
   FOR AI AGENTS / AUTOMATION: this page exposes a full JavaScript API as
   `window.PTL`. Call `PTL.help()` for the manual (it is also embedded below in
@@ -17,11 +17,17 @@
 <meta name="author" content="intpoln — https://github.com/intpoln/PocketTextureLab">
 <title>Pocket Texture Lab</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232d6fb8'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%2358c27d'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%23e0b04d'/%3E%3C/svg%3E">
-<meta name="version" content="0.3.1">
+<meta name="version" content="0.3.2">
 <script type="text/markdown" id="ptl-changelog">
 # История версий
 
 Пока версия начинается с 0 — программа в активной разработке и может содержать ошибки.
+
+## 0.3.2
+- Первое знакомство: карточка «Быстрый старт» (шаблон → параметр → 3D → «Экспорт всех PNG»), шаги отмечаются по мере выполнения; скрывается ✕, возвращается из «Справки».
+- Граф шаблона открывается с читаемым масштабом (не мельче ~60%), видны выходы; «Весь граф» (F) по-прежнему показывает всё.
+- Превью по умолчанию ≤512: на шаблоне 1024² видеопамять ~44 МБ вместо ~200 МБ (замер в одной сессии Chromium/SwiftShader); экспорт считается в разрешении проекта.
+- README: картинки материалов на 3D-объектах, редактора и спрайт-шитов в начале, ссылка «Открыть редактор»; скрипт tools/readme-shots.mjs пересобирает их из настоящего редактора.
 
 ## 0.3.1
 - Исправлено: если перед этим что-то выделялось или редактировалось в другой панели, нода при перетаскивании сдвигалась на пару пикселей и останавливалась. Перетаскивание (ноды, провода, рамка, сдвиг графа) больше не зависит от захвата указателя; выделенный текст сбрасывается, а недописанное значение в поле параметра применяется.
@@ -548,6 +554,18 @@ main { position: relative; }
 .node.sel.primary { box-shadow: 0 0 0 2px var(--acc), 0 2px 10px #000a; }
 #graph { cursor: default; user-select: none; -webkit-user-select: none; }
 
+/* «Быстрый старт» card */
+#params .quick { border: 1px solid var(--acc); border-radius: 8px; padding: 8px 10px; margin: 8px 0 12px; background: color-mix(in srgb, var(--acc) 8%, var(--bg2)); }
+#params .quick .q-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+#params .quick .q-close { border: none; background: none; color: var(--fg3); padding: 0 4px; }
+#params .quick .q-step { display: flex; gap: 8px; align-items: flex-start; padding: 4px 0; }
+#params .quick .q-step select { margin-top: 3px; max-width: 100%; }
+#params .quick .q-step .actions { margin: 3px 0 0; }
+#params .quick .q-step > .q-step button.primary { margin-top: 3px; }
+#params .quick .q-n { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--bg4); text-align: center; line-height: 20px; font-size: 11px; font-weight: 700; }
+#params .quick .q-step.done .q-n { background: #2f8a55; color: #fff; }
+#params .quick .q-step.done > div > div:first-child { color: var(--fg3); }
+
 /* preview pinned to a node (double click) */
 .node.pinned { outline: 2px solid #58c27d; outline-offset: 2px; }
 .node.pinned .head::after { content: '📌'; margin-left: auto; font-size: 11px; }
@@ -630,7 +648,7 @@ main { position: relative; }
 <div id="agent-note" class="sr-only">Note for AI agents and screen readers: this is Pocket Texture Lab, a procedural texture editor. It is fully scriptable through the JavaScript object window.PTL. Run PTL.help() in the page for the complete manual (also embedded in this document as script#ptl-agent-guide), PTL.examples() for ready texture templates (brick, asphalt, cobblestone, wood, painted metal) and PTL.exportAll() to download the PNG maps.</div>
 <div id="app">
   <header id="toolbar">
-    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.3.1</button></span>
+    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.3.2</button></span>
     <button id="btn-mmenu" title="Меню">☰</button>
     <select id="examples" title="Встроенные примеры, шаблоны текстур и ваши шаблоны"></select>
     <button id="btn-lib" title="Мои пресеты и шаблоны (хранятся в браузере), экспорт/импорт">Библиотека</button>
@@ -642,7 +660,7 @@ main { position: relative; }
     <button id="btn-redo" title="Повторить (Ctrl+Shift+Z / Ctrl+Y)">↷</button>
     <span class="sep"></span>
     <label>Проект <select id="res"><option>256</option><option selected>512</option><option>1024</option><option>2048</option></select></label>
-    <label title="Разрешение предпросмотра в покое. При движении ползунка используется уменьшенный предпросмотр.">Превью <select id="pres"><option value="project">как проект</option><option value="1024">≤1024</option><option value="512">≤512</option><option value="256">≤256</option></select></label>
+    <label title="Разрешение предпросмотра (по умолчанию ≤512 — экономит видеопамять на сложных шаблонах). Экспорт всегда считается в разрешении проекта или выбранном в «Экспорт».">Превью <select id="pres"><option value="project">как проект</option><option value="1024">≤1024</option><option value="512" selected>≤512</option><option value="256">≤256</option></select></label>
     <span class="sep"></span>
     <label>Экспорт <select id="exres"><option value="project">как проект</option><option>256</option><option>512</option><option>1024</option><option>2048</option></select></label>
     <button id="btn-export" class="primary" title="Экспорт основного Output в PNG">Экспорт PNG</button>
@@ -5843,7 +5861,9 @@ const GraphView = (() => {
     }
   }
 
-  function fit() {
+  // Fit the whole graph; with opts.minZoom a large graph is not shrunk below it — the view is
+  // anchored on the node `opts.focus` (e.g. the main output) so titles stay readable.
+  function fit(opts = {}) {
     const r = root.getBoundingClientRect();
     if (!Graph.nodes.size) { view.x = 40; view.y = 40; view.z = 1; applyView(); return; }
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -5857,6 +5877,14 @@ const GraphView = (() => {
     view.z = z;
     view.x = (r.width - (x1 - x0) * z) / 2 - x0 * z;
     view.y = (r.height - (y1 - y0) * z) / 2 - y0 * z;
+    const f = opts.focus && Graph.nodes.get(opts.focus);
+    if (opts.minZoom && z < opts.minZoom && f) {
+      view.z = opts.minZoom;
+      const fr = els.get(f.id), fw = fr ? fr.el.offsetWidth : 176, fh = fr ? fr.el.offsetHeight : 100;
+      view.x = Math.min(r.width - pad - (f.x + fw) * view.z, pad - x0 * view.z);   // focus node near the right edge
+      view.x = Math.max(view.x, r.width - pad - x1 * view.z);
+      view.y = r.height / 2 - (f.y + fh / 2) * view.z;
+    }
     applyView();
   }
 
@@ -6226,9 +6254,33 @@ const ParamsPanel = (() => {
   }
 
   // Nothing selected: template parameters (exposed) + outputs.
+  // «Быстрый старт»: the shortest path for a newcomer — template, one slider, look, export.
+  function quickStart() {
+    let hidden = false;
+    try { hidden = localStorage.getItem('ptl.quickHidden') === '1'; } catch (e) { /* per-viewer convenience */ }
+    if (hidden) return null;
+    const q = App.state.quick || {};
+    const box = h('div', { class: 'quick' });
+    const close = h('button', { class: 'q-close', text: '✕', title: 'Скрыть (вернуть — в «Справке»)', onclick: () => { try { localStorage.setItem('ptl.quickHidden', '1'); } catch (e) { /* ignore */ } build(); } });
+    box.append(h('div', { class: 'q-head' }, h('b', { text: 'Быстрый старт' }), close));
+    const step = (done, n, ...kids) => box.append(h('div', { class: 'q-step' + (done ? ' done' : '') }, h('span', { class: 'q-n', text: done ? '✓' : n }), h('div', {}, ...kids)));
+    const sel = h('select', { title: 'Готовые материалы: граф + вынесенные параметры + выходы Base Color / Normal / ORM' }, h('option', { value: '', text: 'Выберите шаблон…' }));
+    EXAMPLES.forEach((x, k) => { if (x.template) sel.append(h('option', { value: k, text: x.title })); });
+    if (q.template != null) sel.value = q.template;
+    sel.addEventListener('change', () => { if (sel.value !== '') App.loadExample(+sel.value); });
+    step(q.template != null, '1', h('div', { text: 'Шаблон материала' }), sel);
+    step(!!q.tweaked, '2', h('div', { text: 'Подвигайте любой ползунок в «Параметрах шаблона» ниже' }));
+    step(!!q.viewed, '3', h('div', { text: 'Посмотрите результат на 3D-объекте' }),
+      h('div', { class: 'actions' }, h('button', { text: '3D', onclick: () => { document.querySelector('#preview [data-layout="3d"]').click(); } }), h('button', { text: '2D | 3D', onclick: () => { document.querySelector('#preview [data-layout="split"]').click(); } })));
+    step(!!q.exported, '4', h('div', { text: 'Сохраните карты Base Color, Normal, ORM' }), h('button', { class: 'primary', text: 'Экспорт всех PNG', onclick: () => App.exportAll() }));
+    return box;
+  }
+
   function buildProject() {
     const ex = Graph.state.exposed;
     el.append(h('h3', { text: 'Проект' }), h('div', { class: 'sub', text: `${Graph.nodes.size} нод · ${Graph.state.resolution}×${Graph.state.resolution}` }));
+    const qs = quickStart();
+    if (qs) el.append(qs);
     const outs = [...Graph.nodes.values()].filter((n) => n.type === 'output');
     if (outs.length) {
       el.append(h('div', { class: 'group', text: 'Выходы' }));
@@ -6251,6 +6303,7 @@ const ParamsPanel = (() => {
       lab.style.cursor = 'pointer';
       lab.title = `${NODES[node.type].title} (${node.id}) → ${d.label}. Щелчок — выбрать ноду.`;
       lab.addEventListener('click', (e) => { if (e.target === lab) App.select(node.id); });
+      row.el.addEventListener('change', () => App.quickMark('tweaked'));
       el.append(row.el);
     }
   }
@@ -6843,7 +6896,7 @@ const Preview = (() => {
   function init() {
     canvas = $('#view'); wrap = $('#canvas-wrap'); info = $('#pinfo');
     document.querySelectorAll('#preview [data-view]').forEach((b) => b.addEventListener('click', () => setView({ mode: +b.dataset.view })));
-    document.querySelectorAll('#preview [data-layout]').forEach((b) => b.addEventListener('click', () => setView({ layout: b.dataset.layout })));
+    document.querySelectorAll('#preview [data-layout]').forEach((b) => b.addEventListener('click', () => { setView({ layout: b.dataset.layout }); if (b.dataset.layout !== '2d') App.quickMark('viewed'); }));
     $('#btn-tile').onclick = () => setView({ tile3: !st.tile3 });
     $('#btn-half').onclick = () => setView({ half: !st.half });
     $('#btn-vfit').onclick = () => { st.zoom = 1; st.pan = [0, 0]; draw(); };
@@ -7591,6 +7644,7 @@ const App = (() => {
 
   function showHelp() {
     modal('Справка', `
+      <p><b>Быстрый старт</b>: выберите шаблон материала → подвигайте вынесенный параметр → посмотрите 3D → «Экспорт всех PNG». <button id="qs-restore">Показать карточку «Быстрый старт»</button></p>
       <h3>Граф</h3>
       <ul>
       <li><b>На телефоне</b>: внизу переключатель панелей «Граф / Ноды / Превью / Параметры»; граф двигается пальцем, масштаб — двумя пальцами; двойное касание ноды закрепляет её в превью; остальные команды — в меню <b>☰</b>.</li>
@@ -7634,6 +7688,8 @@ const App = (() => {
       <p>Шумы и Voronoi в режиме Tileable математически периодичны (целый масштаб). Размытия и Height to Normal в режиме Repeat берут соседей с противоположного края. Поворот, градиенты, Clamp, радиальное размытие и произвольные картинки могут давать шов — у таких нод есть подсказка.</p>
       <p>Автор: <a href="https://github.com/intpoln/PocketTextureLab" target="_blank" rel="noopener" style="color:var(--acc)">intpoln — github.com/intpoln/PocketTextureLab</a> (исходный код, новые версии, обратная связь).</p>
       <p style="color:var(--fg3)">${GPU.precisionNote} PNG: UPNG.js (MIT, © Photopea) + pako (MIT/Zlib, © Vitaly Puzrin, Andrei Tuputcyn). Полные тексты лицензий — в исходнике страницы.</p>`);
+    const qb = document.getElementById('qs-restore');
+    if (qb) qb.onclick = () => { try { localStorage.removeItem('ptl.quickHidden'); } catch (e) { /* ignore */ } $('#modal').classList.remove('show'); select(null); };
   }
 
   function refreshExamplesMenu() {
@@ -7929,13 +7985,22 @@ const App = (() => {
     requestAnimationFrame(() => GraphView.fit());
   }
 
+  // «Быстрый старт» card progress (template -> tweak a parameter -> look in 2D/3D -> export)
+  function quickMark(step) {
+    if (!state.quick || state.quick[step]) return;
+    state.quick[step] = true;
+    if (!state.selected) ParamsPanel.build();
+  }
+
   function loadExample(k) {
     const ex = EXAMPLES[k];
     if (!ex) return;
     loadGraph(JSON.parse(JSON.stringify(ex.graph)));
     commit();
     status(`Загружен ${ex.template ? 'шаблон' : 'пример'} «${ex.title}». Предыдущий граф можно вернуть через Отмену.`);
+    if (ex.template) { state.quick = { template: k, tweaked: false, viewed: false, exported: false }; }
     if (ex.template || ex.fx) { state.selected = null; ParamsPanel.build(); GraphView.refreshMarks(); }
+    requestAnimationFrame(() => GraphView.fit({ minZoom: 0.62, focus: Graph.state.activeOutput }));
     if (ex.template || /ORM/.test(ex.title)) Preview.setView({ layout: 'split' });
     if (ex.fx) { Preview.setView({ layout: '2d', mode: 1 }); setFrame(0); setTimeout(() => { if (Anim.any()) play(); }, 400); }
   }
@@ -8165,12 +8230,14 @@ const App = (() => {
   }
 
   async function exportAll() {
+    quickMark('exported');
     const outs = [...Graph.nodes.values()].filter((n) => n.type === 'output');
     if (!outs.length) { toast('В графе нет нод Output.', 'warn'); return; }
     for (const o of outs) { await exportNode(o.id, 0); await new Promise((r) => setTimeout(r, 250)); }
   }
 
   async function exportActive() {
+    quickMark('exported');
     const id = Graph.state.activeOutput;
     if (!id || !Graph.nodes.has(id)) { toast('В графе нет ноды Output. Добавьте «Выход (Output)» или используйте «PNG выбранной».', 'warn'); return; }
     await exportNode(id, 0);
@@ -8289,7 +8356,7 @@ const App = (() => {
 
   return {
     init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId, pinPreview, pinnedId,
-    undo, redo, flush, mtab, isMobile, downloadApp, quickAddNode, nodeSearchText: (t) => searchText(t), removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    undo, redo, flush, mtab, isMobile, downloadApp, quickMark, quickAddNode, nodeSearchText: (t) => searchText(t), removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };
@@ -8572,7 +8639,7 @@ window.PTL = PTL;
 
 // ===== main.js =====
 // Entry point.
-const PTL_VERSION = '0.3.1';
+const PTL_VERSION = '0.3.2';
 (() => {
   const start = () => {
     try {

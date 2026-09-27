@@ -1,23 +1,26 @@
 # Pocket Texture Lab
 
-## ⬇ СКАЧАЙТЕ ОДИН HTML-ФАЙЛ — И РАБОТАЙТЕ ОФЛАЙН
+**Офлайн-редактор процедурных текстур и VFX-спрайтов для игровых движков — один HTML-файл, WebGL2, без установки.**
+Нодовый граф → PBR-материал (Base Color / Normal / ORM) на 3D-объекте → PNG без потерь и спрайт-шиты.
+
+### [▶ Открыть редактор в браузере](https://intpoln.github.io/PocketTextureLab/) · [⬇ Скачать texture-lab.html](https://github.com/intpoln/PocketTextureLab/raw/main/texture-lab.html) · [Что нового](CHANGELOG.md)
+
+![Материалы из шаблонов на 3D-объектах: кирпич, булыжник, дерево, окрашенный металл](docs/img/materials.jpg)
+
+![Редактор: граф кирпичной стены, превью 2D и 3D, вынесенные параметры шаблона](docs/img/editor.jpg)
+
+![Спрайт-шиты 4×4, собранные в редакторе: взрыв (однократный) и портал (петля)](docs/img/spritesheets.jpg)
+
+**Попробовать за минуту:** откройте редактор → «Быстрый старт» справа: выберите шаблон (например, «Кирпичная стена») →
+подвигайте любой параметр шаблона → «2D | 3D» → «Экспорт всех PNG» (Base Color, Normal, ORM).
+
+Автор: [intpoln](https://github.com/intpoln).
+
+## ⬇ Скачайте один HTML-файл — и работайте офлайн
 
 **Вся программа — это один файл [`texture-lab.html`](texture-lab.html).** Никакой установки, сервера, интернета,
-регистрации и сборки: скачайте файл и откройте двойным щелчком в браузере.
-
-- **Скачать:** откройте [онлайн-версию](https://intpoln.github.io/PocketTextureLab/) и нажмите кнопку
-  **⬇ Скачать HTML** в панели инструментов (или Ctrl+Shift+S), либо на GitHub откройте файл
-  [`texture-lab.html`](texture-lab.html) → кнопка **Download raw file**.
-- **Попробовать сразу в браузере:** https://intpoln.github.io/PocketTextureLab/
-
-Автор: [intpoln](https://github.com/intpoln) · онлайн-версия: https://intpoln.github.io/PocketTextureLab/
-
-Небольшой офлайн-редактор процедурных текстур для игровых движков: ноды, маски,
-normal maps, упаковка каналов в RGBA, экспорт PNG без потерь.
-
-**Весь продукт — один файл [`texture-lab.html`](texture-lab.html).** Скачайте его и
-откройте двойным щелчком: без интернета, сервера, установки и сборки. Этот же файл
-работает на любом статическом хостинге.
+регистрации и сборки: скачайте файл и откройте двойным щелчком в браузере. В редакторе есть кнопка **⬇ Скачать HTML**
+(Ctrl+Shift+S), на GitHub — [прямая ссылка на файл](https://github.com/intpoln/PocketTextureLab/raw/main/texture-lab.html).
 
 ## Запуск
 
@@ -126,9 +129,10 @@ normal maps, упаковка каналов в RGBA, экспорт PNG без 
 ```sh
 npm install        # только для разработки: playwright, pngjs, pako, upng-js
 npm run build      # src/ -> texture-lab.html
-npm test           # сборка + 207 проверок в настоящем Chromium через file://
+npm test           # сборка + 212 проверок в настоящем Chromium через file://
 node tests/perf.mjs
 node tools/ptl-run.mjs script.js out/   # выполнить сценарий PTL без UI и сохранить PNG
+node tools/readme-shots.mjs             # пересобрать картинки README (docs/img) из настоящего редактора
 ```
 
 Структура: `png.js` (PNG), `gpu.js` (WebGL2, пул текстур, проходы), `shaders.js` (GLSL),

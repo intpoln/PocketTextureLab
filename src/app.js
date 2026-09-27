@@ -402,6 +402,7 @@ const App = (() => {
 
   function showHelp() {
     modal('Справка', `
+      <p><b>Быстрый старт</b>: выберите шаблон материала → подвигайте вынесенный параметр → посмотрите 3D → «Экспорт всех PNG». <button id="qs-restore">Показать карточку «Быстрый старт»</button></p>
       <h3>Граф</h3>
       <ul>
       <li><b>На телефоне</b>: внизу переключатель панелей «Граф / Ноды / Превью / Параметры»; граф двигается пальцем, масштаб — двумя пальцами; двойное касание ноды закрепляет её в превью; остальные команды — в меню <b>☰</b>.</li>
@@ -445,6 +446,8 @@ const App = (() => {
       <p>Шумы и Voronoi в режиме Tileable математически периодичны (целый масштаб). Размытия и Height to Normal в режиме Repeat берут соседей с противоположного края. Поворот, градиенты, Clamp, радиальное размытие и произвольные картинки могут давать шов — у таких нод есть подсказка.</p>
       <p>Автор: <a href="https://github.com/intpoln/PocketTextureLab" target="_blank" rel="noopener" style="color:var(--acc)">intpoln — github.com/intpoln/PocketTextureLab</a> (исходный код, новые версии, обратная связь).</p>
       <p style="color:var(--fg3)">${GPU.precisionNote} PNG: UPNG.js (MIT, © Photopea) + pako (MIT/Zlib, © Vitaly Puzrin, Andrei Tuputcyn). Полные тексты лицензий — в исходнике страницы.</p>`);
+    const qb = document.getElementById('qs-restore');
+    if (qb) qb.onclick = () => { try { localStorage.removeItem('ptl.quickHidden'); } catch (e) { /* ignore */ } $('#modal').classList.remove('show'); select(null); };
   }
 
   function refreshExamplesMenu() {
@@ -740,13 +743,22 @@ const App = (() => {
     requestAnimationFrame(() => GraphView.fit());
   }
 
+  // «Быстрый старт» card progress (template -> tweak a parameter -> look in 2D/3D -> export)
+  function quickMark(step) {
+    if (!state.quick || state.quick[step]) return;
+    state.quick[step] = true;
+    if (!state.selected) ParamsPanel.build();
+  }
+
   function loadExample(k) {
     const ex = EXAMPLES[k];
     if (!ex) return;
     loadGraph(JSON.parse(JSON.stringify(ex.graph)));
     commit();
     status(`Загружен ${ex.template ? 'шаблон' : 'пример'} «${ex.title}». Предыдущий граф можно вернуть через Отмену.`);
+    if (ex.template) { state.quick = { template: k, tweaked: false, viewed: false, exported: false }; }
     if (ex.template || ex.fx) { state.selected = null; ParamsPanel.build(); GraphView.refreshMarks(); }
+    requestAnimationFrame(() => GraphView.fit({ minZoom: 0.62, focus: Graph.state.activeOutput }));
     if (ex.template || /ORM/.test(ex.title)) Preview.setView({ layout: 'split' });
     if (ex.fx) { Preview.setView({ layout: '2d', mode: 1 }); setFrame(0); setTimeout(() => { if (Anim.any()) play(); }, 400); }
   }
@@ -976,12 +988,14 @@ const App = (() => {
   }
 
   async function exportAll() {
+    quickMark('exported');
     const outs = [...Graph.nodes.values()].filter((n) => n.type === 'output');
     if (!outs.length) { toast('В графе нет нод Output.', 'warn'); return; }
     for (const o of outs) { await exportNode(o.id, 0); await new Promise((r) => setTimeout(r, 250)); }
   }
 
   async function exportActive() {
+    quickMark('exported');
     const id = Graph.state.activeOutput;
     if (!id || !Graph.nodes.has(id)) { toast('В графе нет ноды Output. Добавьте «Выход (Output)» или используйте «PNG выбранной».', 'warn'); return; }
     await exportNode(id, 0);
@@ -1100,7 +1114,7 @@ const App = (() => {
 
   return {
     init, state, changed, commit, tryConnect, addNode, removeNode, duplicate, select, selectLink, viewedId, pinPreview, pinnedId,
-    undo, redo, flush, mtab, isMobile, downloadApp, quickAddNode, nodeSearchText: (t) => searchText(t), removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
+    undo, redo, flush, mtab, isMobile, downloadApp, quickMark, quickAddNode, nodeSearchText: (t) => searchText(t), removeNodes, duplicateMany, selectMany, selectedIds, showHotkeys, animChanged, cachedFrame, clearFrameCache, frameCacheSize: () => frameCache.frames.size, renderSpriteSheet, exportSpriteSheet, setFrame, play, stop, loadExample, newProject, setResolution, previewRes, requestEval, toast, status,
     exportNode, exportActive, exportAll, refreshExamplesMenu, encodeNode, saveProject, projectData, loadProjectData, openProjectFile,
     pickImage, loadImageFile, loadImageBytes, autoLayout, loadGraph, afterLoad, updateUndo,
   };
