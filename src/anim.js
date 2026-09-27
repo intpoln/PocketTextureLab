@@ -22,7 +22,10 @@ const Anim = (() => {
     const a = Graph.state.animation;
     return { frames: a.frames, frameSize: a.frameSize, fps: a.fps, layout: LAYOUTS[a.frames] };
   }
-  function isAnimated(node) { return !!((node.anim && Object.keys(node.anim).length) || (NODES[node.type] && NODES[node.type].timeDependent)); }
+  function isAnimated(node) {
+    const td = NODES[node.type] && NODES[node.type].timeDependent;
+    return !!((node.anim && Object.keys(node.anim).length) || (typeof td === 'function' ? td(node.params) : td));
+  }
   function any() { for (const n of Graph.nodes.values()) if (isAnimated(n)) return true; return false; }
 
   // Parameters of `node` at time t (the node's own params are the start values).

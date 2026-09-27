@@ -111,8 +111,13 @@ void main() {
   emit(texture(u_img, uv));
 }` };
 
+  // Noise v2. Families: 0 value, 1 gradient (Perlin), 2 cellular (Worley), 3 white, 4 flow
+  // (gradient noise with rotating gradients + pseudo-advection), 5 structured splat fractal
+  // (multi-scale elements). With u_lod, octaves finer than the pixel fade to their mean
+  // instead of aliasing (the footprint accounts for stretch and domain warp). Old graphs run
+  // with u_lod = false and neutral new parameters: bit-identical to the pre-v2 shader.
   S.noise = { nin: 0, body: `
-uniform int u_type;     // 0 value, 1 gradient (Perlin), 2 worley, 3 white
+uniform int u_type;
 uniform int u_fractal;  // 0 fbm, 1 ridged, 2 billow
 uniform int u_seed;
 uniform int u_oct;
@@ -124,8 +129,24 @@ uniform float u_pers;
 uniform float u_contrast;
 uniform float u_warp;
 uniform int u_warpScale;
+uniform int u_warpLevels;
 uniform bool u_tile;
 uniform bool u_inv;
+uniform bool u_lod;
+uniform float u_mean;   // mean of one octave after the fractal fold (what a faded octave contributes)
+uniform vec2 u_offset;  // texture units; whole numbers keep a tileable noise identical
+uniform float u_balance;
+uniform bool u_clampOut;
+uniform bool u_warpEvo;
+// flow
+uniform float u_flowRot;
+uniform float u_flowT;   // loop phase 0..1
+uniform int u_flowSpin;  // whole turns per loop (octave o turns (o+1)·spin times)
+uniform float u_advect;
+// splat
+uniform int u_splShape;  // 0 soft spot, 1 cone, 2 streak
+uniform float u_splSize, u_splHard, u_splDensity, u_splSizeRand, u_splPosRand, u_splRotRand, u_splAngle, u_splAspect, u_splValRand, u_splSmooth;
+uniform int u_splPer, u_splIn, u_splAcross;
 ivec2 wc(ivec2 c, ivec2 P) { return u_tile ? ((c % P) + P) % P : c + 65536; }
 uvec3 hh(ivec2 c, int o, uint salt) {
   return pcg3(uvec3(uvec2(c), uint(u_seed) * 747796405u + uint(o) * 2891336453u + salt));
@@ -133,6 +154,7 @@ uvec3 hh(ivec2 c, int o, uint salt) {
 float h1(ivec2 c, int o, uint salt) { return float(hh(c, o, salt).x >> 8u) / 16777215.0; }
 vec2 h2(ivec2 c, int o) { uvec3 r = hh(c, o, 3u); return vec2(r.xy >> 8u) / 16777215.0; }
 vec2 fade(vec2 f) { return f * f * f * (f * (f * 6.0 - 15.0) + 10.0); }
+vec2 dfade(vec2 f) { return 30.0 * f * f * (f * (f - 2.0) + 1.0); }
 float valueN(vec2 p, ivec2 P, int o, uint salt) {
   ivec2 i = ivec2(floor(p)); vec2 f = fract(p), u = fade(f);
   float a = h1(wc(i, P), o, salt), b = h1(wc(i + ivec2(1, 0), P), o, salt);
@@ -145,6 +167,22 @@ float gradN(vec2 p, ivec2 P, int o) {
   float a = gr(wc(i, P), f, o), b = gr(wc(i + ivec2(1, 0), P), f - vec2(1, 0), o);
   float c = gr(wc(i + ivec2(0, 1), P), f - vec2(0, 1), o), d = gr(wc(i + ivec2(1, 1), P), f - vec2(1, 1), o);
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y) * 0.70710678 + 0.5;
+}
+// Flow noise: each lattice gradient rotates by +ang or -ang (random sign) — the pattern swirls
+// in place instead of cross-fading. Returns value (0..1) and its gradient d/dp.
+vec2 fgrad(ivec2 c, int o, float ang) {
+  float a = h1(c, o, 1u) * 2.0 * PI + (h1(c, o, 5u) < 0.5 ? ang : -ang);
+  return vec2(cos(a), sin(a));
+}
+vec3 flowN(vec2 p, ivec2 P, int o, float ang) {
+  ivec2 i = ivec2(floor(p)); vec2 f = fract(p), u = fade(f), du = dfade(f);
+  vec2 ga = fgrad(wc(i, P), o, ang), gb = fgrad(wc(i + ivec2(1, 0), P), o, ang);
+  vec2 gc = fgrad(wc(i + ivec2(0, 1), P), o, ang), gd = fgrad(wc(i + ivec2(1, 1), P), o, ang);
+  float va = dot(ga, f), vb = dot(gb, f - vec2(1, 0)), vc = dot(gc, f - vec2(0, 1)), vd = dot(gd, f - vec2(1, 1));
+  float v = va + u.x * (vb - va) + u.y * (vc - va) + u.x * u.y * (va - vb - vc + vd);
+  vec2 dv = ga + u.x * (gb - ga) + u.y * (gc - ga) + u.x * u.y * (ga - gb - gc + gd)
+          + du * (u.yx * (va - vb - vc + vd) + vec2(vb, vc) - va);
+  return vec3(v * 0.70710678 + 0.5, dv * 0.70710678);
 }
 float worleyN(vec2 p, ivec2 P, int o) {
   ivec2 i = ivec2(floor(p)); vec2 f = fract(p);
@@ -163,7 +201,7 @@ float octave(vec2 p, ivec2 P, int o) {
   if (u_type == 2) return worleyN(p, P, o);
   return h1(wc(ivec2(floor(p)), P), o, 7u);
 }
-// Evolution: blend between 3 periodic "slices" of the noise with a
+// Evolution (morph): blend between 3 periodic "slices" of the noise with a
 // variance-preserving cos/sin crossfade; evolution 0 → 1 loops seamlessly.
 float octaveE(vec2 p, ivec2 P, int o) {
   if (u_evo <= 0.0) return octave(p, P, o);
@@ -174,32 +212,108 @@ float octaveE(vec2 p, ivec2 P, int o) {
   float th = f * f * (3.0 - 2.0 * f) * 1.5707963;
   return 0.5 + (a - 0.5) * cos(th) + (b - 0.5) * sin(th);
 }
-float warpN(vec2 uv, int W, uint salt) {
+float warpN0(vec2 uv, int W, uint salt, int slice) {
   float s = 0.0, a = 0.5;
-  for (int o = 0; o < 3; o++) { int Pw = W << o; s += a * valueN(uv * float(Pw), ivec2(Pw), 20 + o, salt); a *= 0.5; }
+  for (int o = 0; o < 3; o++) { int Pw = W << o; s += a * valueN(uv * float(Pw), ivec2(Pw), 20 + o + 97 * slice, salt); a *= 0.5; }
   return s / 0.875;
 }
+float warpN(vec2 uv, int W, uint salt) {
+  if (!u_warpEvo || u_evo <= 0.0) return warpN0(uv, W, salt, 0);
+  float z = fract(u_evo) * 3.0; int zi = int(floor(z)); float f = z - float(zi);
+  float th = f * f * (3.0 - 2.0 * f) * 1.5707963;
+  return 0.5 + (warpN0(uv, W, salt, zi) - 0.5) * cos(th) + (warpN0(uv, W, salt, (zi + 1) % 3) - 0.5) * sin(th);
+}
+// ---- structured splat fractal: one layer of elements on a periodic grid
+float splatProfile(vec2 q) {
+  float r = length(q);
+  if (u_splShape == 1) return pow(max(1.0 - r, 0.0), 1.0 + (1.0 - u_splHard) * 2.0);             // cone
+  float soft = exp(-r * r * 3.0), hard = 1.0 - smoothstep(0.82, 1.0, r);
+  float v = mix(soft, hard, u_splHard);
+  if (u_splShape == 2) v *= max(1.0 - abs(q.x), 0.0);                                          // streak tapers along its length
+  return v * step(r, 1.0) + (r > 1.0 ? soft * (1.0 - u_splHard) * (1.0 - smoothstep(1.0, 1.6, r)) : 0.0);
+}
+float splatLayer(vec2 p, ivec2 P, int o) {
+  ivec2 ic = ivec2(floor(p)); vec2 f = p - floor(p);
+  float aspect = u_splShape == 2 ? max(u_splAspect, 1.0) : u_splAspect;
+  float reach = u_splSize * max(aspect, 1.0) * (1.0 + u_splSizeRand) * 1.6 + u_splPosRand * 0.5;
+  int R = reach > 1.0 ? 2 : 1;
+  float mx = 0.0, sum = 0.0, se = 0.0, k = mix(2.0, 24.0, 1.0 - u_splSmooth);
+  for (int dy = -2; dy <= 2; dy++) for (int dx = -2; dx <= 2; dx++) {
+    if (abs(dx) > R || abs(dy) > R) continue;
+    ivec2 d = ivec2(dx, dy), cell = wc(ic + d, P);
+    for (int e = 0; e < 4; e++) {
+      if (e >= u_splPer) break;
+      uint salt = 40u + uint(e) * 17u;
+      uvec3 A = hh(cell, o, salt), B = hh(cell, o, salt + 7u);
+      vec3 ra = vec3(A >> 8u) / 16777215.0, rb = vec3(B >> 8u) / 16777215.0;
+      if (ra.x >= u_splDensity) continue;
+      vec2 c = vec2(d) + 0.5 + (rb.xy - 0.5) * u_splPosRand * 1.0 - f;
+      float sz = max(0.02, u_splSize * (1.0 + u_splSizeRand * (ra.y * 2.0 - 1.0)));
+      float ang = u_splAngle + u_splRotRand * (ra.z - 0.5) * 2.0 * PI;
+      vec2 q = vec2(cos(ang) * c.x + sin(ang) * c.y, -sin(ang) * c.x + cos(ang) * c.y);
+      q = vec2(q.x / aspect, q.y) / sz;
+      float v = splatProfile(-q) * (1.0 - u_splValRand * rb.z);
+      mx = max(mx, v); sum += v; se += exp(k * v) - 1.0;
+    }
+  }
+  if (u_splIn == 0) return 1.0 - exp(-sum * 1.5);      // additive, softly saturated
+  if (u_splIn == 1) return mx;
+  return clamp(log(1.0 + se) / k, 0.0, 1.0);           // smooth max
+}
 void main() {
-  vec2 uv = pixUV() + u_uvOff;
+  vec2 uv = pixUV() + u_uvOff + u_offset;
   float sc = u_type == 3 ? u_grainCells : u_scale;
   vec2 base = vec2(sc, sc * u_stretch);
   if (u_tile) base = max(vec2(1.0), floor(base + 0.5));
+  float wfoot = 1.0;
   if (u_warp > 0.0) {
-    vec2 w = vec2(warpN(uv, u_warpScale, 101u), warpN(uv, u_warpScale, 202u));
-    uv += (w - 0.5) * u_warp * 0.5;
+    for (int l = 0; l < 3; l++) {
+      if (l >= max(u_warpLevels, 1)) break;
+      uint s1 = l == 0 ? 101u : 101u + uint(l) * 1000u, s2 = l == 0 ? 202u : 202u + uint(l) * 1000u;
+      vec2 w = vec2(warpN(uv, u_warpScale, s1), warpN(uv, u_warpScale, s2));
+      uv += (w - 0.5) * u_warp * 0.5;
+    }
+    wfoot = 1.0 + u_warp * float(u_warpScale) * float(max(u_warpLevels, 1));   // warp compresses the domain locally
   }
   ivec2 P = ivec2(base);
   vec2 freq = base;
-  float sum = 0.0, amp = 1.0, norm = 0.0;
+  float sum = 0.0, amp = 1.0, norm = 0.0, mxAcc = 0.0, seAcc = 0.0;
+  vec2 adv = vec2(0.0);
+  float kx = mix(2.0, 24.0, 1.0 - u_splSmooth);
   for (int o = 0; o < 8; o++) {
     if (o >= u_oct) break;
-    float n = octaveE(uv * freq, P, o);
-    if (u_fractal == 1) { n = 1.0 - abs(2.0 * n - 1.0); n *= n; }
-    else if (u_fractal == 2) n = abs(2.0 * n - 1.0);
+    // pixel footprint: noise cells per output pixel (geometric mean of both axes, so a stretched
+    // octave that is still visible along one axis is not dropped), scaled by the warp compression.
+    // The octave fades out between 0.3 and 0.8 cells per pixel — tuned against a 2048 px render
+    // box-downsampled to 256 px (tools/noise-lod.mjs).
+    float cpp = sqrt(freq.x * freq.y) / u_res.x * wfoot * (u_type == 4 ? 1.0 + u_advect : 1.0);
+    float w = (u_lod && u_type != 3) ? 1.0 - smoothstep(0.3, 0.8, cpp) : 1.0;
+    float n = u_mean;
+    if (w > 0.0) {
+      if (u_type == 5) {
+        n = splatLayer(uv * freq, P, o);
+      } else if (u_type == 4) {
+        float ang = u_flowRot + u_flowT * 2.0 * PI * float(u_flowSpin * (o + 1));
+        vec3 fn = flowN(uv * freq - adv, P, o, ang);
+        adv += u_advect * fn.yz * amp;
+        n = fn.x;
+      } else n = octaveE(uv * freq, P, o);
+      if (u_type != 5) {
+        if (u_fractal == 1) { n = 1.0 - abs(2.0 * n - 1.0); n *= n; }
+        else if (u_fractal == 2) n = abs(2.0 * n - 1.0);
+      }
+      n = mix(u_mean, n, w);
+    }
+    if (u_type == 5 && u_splAcross == 1) mxAcc = max(mxAcc, n * amp);
+    if (u_type == 5 && u_splAcross == 2) seAcc += exp(kx * n * amp) - 1.0;
     sum += n * amp; norm += amp; amp *= u_pers;
     P *= u_lac; freq *= float(u_lac);
   }
-  float v = clamp((sum / norm - 0.5) * u_contrast + 0.5, 0.0, 1.0);
+  float v = sum / norm;
+  if (u_type == 5 && u_splAcross == 1) v = mxAcc;
+  if (u_type == 5 && u_splAcross == 2) v = log(1.0 + seAcc) / kx;
+  v = (v - 0.5) * u_contrast + 0.5 + u_balance;
+  if (u_clampOut) v = clamp(v, 0.0, 1.0);
   if (u_inv) v = 1.0 - v;
   emit(vec4(v, v, v, 1.0));
 }` };

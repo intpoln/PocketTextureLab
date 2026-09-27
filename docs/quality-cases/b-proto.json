@@ -1,0 +1,10 @@
+{ "cols": 4, "size": 256, "cases": [
+  { "label": "Perlin, масштаб 64, лакун. 4, 8 окт., растяж. 8 — LOD выкл (старое)", "script": "return PTL.addNode('noise',{params:{type:'perlin',scale:64,lacunarity:4,octaves:8,stretch:8,lod:false}})" },
+  { "label": "то же — LOD вкл", "script": "return PTL.addNode('noise',{params:{type:'perlin',scale:64,lacunarity:4,octaves:8,stretch:8,lod:true}})" },
+  { "label": "Flow, адвекция 0", "script": "return PTL.addNode('noise',{params:{type:'flow',scale:3,octaves:6,advect:0}})" },
+  { "label": "Flow, адвекция 0.8", "script": "return PTL.addNode('noise',{params:{type:'flow',scale:3,octaves:6,advect:0.8}})" },
+  { "label": "Splat: пятна, Smooth Max, слои Add", "script": "return PTL.addNode('noise',{params:{type:'splat',scale:3,octaves:5}})" },
+  { "label": "Splat: пятна, слои Smooth Max", "script": "return PTL.addNode('noise',{params:{type:'splat',scale:3,octaves:5,splAcross:'smax'}})" },
+  { "label": "Splat: штрихи, направленные (разброс напр. 0.1, вытян. 4)", "script": "return PTL.addNode('noise',{params:{type:'splat',scale:4,octaves:4,splShape:'streak',splAspect:4,splRotRand:0.1,splAngle:20,splPer:2}})" },
+  { "label": "Splat: конусы, Max, жёсткие", "script": "return PTL.addNode('noise',{params:{type:'splat',scale:6,octaves:3,splShape:'cone',splIn:'max',splAcross:'max',splHard:0.6}})" }
+] }

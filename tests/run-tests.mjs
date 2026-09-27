@@ -1334,7 +1334,66 @@ await test('Этап A: границы, альфа, Glow, Warp — контро�
     PTL.newProject(); const t = PTL.addNode('transform'), g = PTL.addNode('glow');
     return { old, fresh: [PTL.getParams(t).alphaAware, PTL.getParams(g).wrap], engine: PTL.getGraph().engine };
   });
-  ok(mig.old.join() === 'false,clamp' && mig.fresh.join() === 'true,border' && mig.engine === 2, 'старые проекты открываются с прежними значениями, новые ноды — с исправленными', mig);
+  ok(mig.old.join() === 'false,clamp' && mig.fresh.join() === 'true,border' && mig.engine >= 2, 'старые проекты открываются с прежними значениями, новые ноды — с исправленными', mig);
+  await page.context().close();
+});
+
+await test('Этап B: Noise v2 — seed, разрешения, периодичность, LOD, Flow-петля, Splat', async () => {
+  const page = await openPage();
+  const r = await page.evaluate(() => {
+    PTL.newProject(); PTL.setResolution(2048);
+    const out = {};
+    const gray = (id, size, extra = {}) => { const px = PTL.render(id, { size, ...extra }).rgba; const g = new Float32Array(size * size); for (let i = 0; i < g.length; i++) g[i] = px[i * 4]; return g; };
+    const down = (g, S, k) => { const s = S / k, o = new Float32Array(s * s); for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) o[Math.floor(y / k) * s + Math.floor(x / k)] += g[y * S + x] / (k * k); return o; };
+    const mae = (a, b) => { let d = 0; for (let i = 0; i < a.length; i++) d += Math.abs(a[i] - b[i]); return d / a.length; };
+    const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+    // 1) seed: same seed reproduces, different seed varies
+    const a1 = PTL.addNode('noise', { params: { seed: 7 } }), a2 = PTL.addNode('noise', { params: { seed: 7 } }), a3 = PTL.addNode('noise', { params: { seed: 8 } });
+    out.seed = [mae(gray(a1, 128), gray(a2, 128)), mae(gray(a1, 128), gray(a3, 128))];
+    // 2) resolution: 256 render vs 2048 render box-downsampled to 256 (high-frequency fBM), LOD on and off
+    // reference = the 2048 px render WITHOUT LOD, box-downsampled: a supersampled ground truth
+    for (const [name, cfg] of [['ridged', { type: 'perlin', fractal: 'ridged', scale: 32, octaves: 8, persistence: 0.7 }], ['worley', { type: 'worley', scale: 32, octaves: 6, persistence: 0.7 }], ['fbm', { type: 'perlin', scale: 16, octaves: 8, persistence: 0.65 }]]) {
+      const ref = down(gray(PTL.addNode('noise', { params: { ...cfg, lod: false } }), 2048), 2048, 8);
+      const on = gray(PTL.addNode('noise', { params: { ...cfg, lod: true } }), 256), off = gray(PTL.addNode('noise', { params: { ...cfg, lod: false } }), 256);
+      out['res_' + name] = { on: +mae(on, ref).toFixed(2), off: +mae(off, ref).toFixed(2), meanOn: +mean(on).toFixed(1), meanRef: +mean(ref).toFixed(1) };
+    }
+    // 3) periodicity: offset by one period is identical; offset by 1/2 equals a rolled image (tiles meet seamlessly)
+    for (const type of ['perlin', 'flow', 'worley', 'splat']) {
+      const base = { type, scale: 4, octaves: 4, warp: 0.3, advect: 0.4 };
+      const n0 = PTL.addNode('noise', { params: base }), n1 = PTL.addNode('noise', { params: { ...base, offsetX: 1, offsetY: -2 } }), nh = PTL.addNode('noise', { params: { ...base, offsetX: 0.5 } });
+      const g0 = gray(n0, 128), g1 = gray(n1, 128), gh = gray(nh, 128);
+      let roll = 0; for (let y = 0; y < 128; y++) for (let x = 0; x < 128; x++) roll = Math.max(roll, Math.abs(gh[y * 128 + x] - g0[y * 128 + ((x + 64) % 128)]));
+      out['tile_' + type] = { period: mae(g0, g1), rollMax: roll };
+    }
+    // 4) Flow loop: consecutive frame differences stay even across the loop boundary; t=1 equals t=0
+    const fl = PTL.addNode('noise', { params: { type: 'flow', scale: 3, octaves: 5, flowSpin: 1, advect: 0.5 } });
+    const frames = []; for (let k = 0; k <= 16; k++) { Anim.t = (k % 16) / 16; frames.push(gray(fl, 96)); }
+    const steps = []; for (let k = 0; k < 16; k++) steps.push(mae(frames[k], frames[k + 1]));
+    out.flow = { min: +Math.min(...steps).toFixed(2), max: +Math.max(...steps).toFixed(2), wrap: +steps[15].toFixed(2), animated: Anim.isAnimated(PTL.getGraph().nodes.find((n) => n.id === fl)) };
+    Anim.t = 0;
+    // 5) splat: a small parameter change is a small image change (no reshuffle), size grows coverage monotonically
+    const sp = (p) => gray(PTL.addNode('noise', { params: { type: 'splat', scale: 4, octaves: 3, ...p } }), 128);
+    const s1 = sp({ splSize: 0.5 }), s2 = sp({ splSize: 0.51 }), s3 = sp({ splSize: 0.7 });
+    out.splat = { tiny: +mae(s1, s2).toFixed(2), bigger: +(mean(s3) - mean(s1)).toFixed(1) };
+    out.errors = PTL.errors();
+    return out;
+  });
+  ok(r.seed[0] === 0 && r.seed[1] > 10, 'одинаковый seed воспроизводится, другой seed даёт другой рисунок', r.seed);
+  ok(r.res_ridged.on < r.res_ridged.off / 2 && r.res_worley.on < r.res_worley.off && r.res_fbm.on < r.res_fbm.off + 1 &&
+    ['ridged', 'worley', 'fbm'].every((k) => Math.abs(r['res_' + k].meanOn - r['res_' + k].meanRef) < 4),
+    'LOD: 256 px ближе к эталону «2048 px, уменьшенный» для Ridged и Worley, fBM не хуже, средняя яркость сохраняется', { ridged: r.res_ridged, worley: r.res_worley, fbm: r.res_fbm });
+  ok(['perlin', 'flow', 'worley', 'splat'].every((t) => r['tile_' + t].period < 0.01 && r['tile_' + t].rollMax <= 2),
+    'периодичность: сдвиг на целый период = тот же рисунок, сдвиг на ½ = прокрутка (тайлы стыкуются) — Perlin, Flow, Worley, Splat',
+    ['perlin', 'flow', 'worley', 'splat'].map((t) => r['tile_' + t]));
+  ok(r.flow.animated && r.flow.min > 0.3 && r.flow.max / r.flow.min < 2.5 && r.flow.wrap <= r.flow.max, 'Flow: анимация течёт равномерно, стык петли не выделяется', r.flow);
+  ok(r.splat.bigger > 3 && r.splat.tiny / 0.01 < 2 * (r.splat.bigger / 0.2), 'Splat: изменение размера меняет картинку пропорционально, без скачков и пересоздания рисунка', r.splat);
+  ok(Object.keys(r.errors).length === 0, 'нет ошибок нод', r.errors);
+  // compatibility: noise without an engine field renders without LOD (as before)
+  const leg = await page.evaluate(async () => {
+    await App.loadProjectData({ format: 'pocket-texture-lab', version: 1, resolution: 256, nodes: [{ id: 'n1', type: 'noise', x: 0, y: 0, params: { scale: 8 } }], links: [] });
+    return PTL.getParams('n1').lod;
+  });
+  ok(leg === false, 'старые проекты открываются без LOD — шум как раньше');
   await page.context().close();
 });
 

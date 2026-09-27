@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Pocket Texture Lab v0.4.0 — offline procedural texture editor in one HTML file.
+  Pocket Texture Lab v0.5.0 — offline procedural texture editor in one HTML file.
   Author: intpoln — https://github.com/intpoln/PocketTextureLab
   FOR AI AGENTS / AUTOMATION: this page exposes a full JavaScript API as
   `window.PTL`. Call `PTL.help()` for the manual (it is also embedded below in
@@ -17,11 +17,20 @@
 <meta name="author" content="intpoln — https://github.com/intpoln/PocketTextureLab">
 <title>Pocket Texture Lab</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232d6fb8'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%2358c27d'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%23e0b04d'/%3E%3C/svg%3E">
-<meta name="version" content="0.4.0">
+<meta name="version" content="0.5.0">
 <script type="text/markdown" id="ptl-changelog">
 # История версий
 
 Пока версия начинается с 0 — программа в активной разработке и может содержать ошибки.
+
+## 0.5.0
+Этап B переработки ядра — Noise v2 (подробности и замеры — docs/QUALITY.md).
+- Нода Noise разбита на разделы: Основа, Структура, Детализация, Искажение, Анимация, Выход.
+- Новое семейство **Flow**: вращающиеся градиенты и адвекция мелкой детали крупной — текучие, закручивающиеся формы; анимация «течения» на месте (целое число оборотов за цикл, петля без шва).
+- Новое семейство **Splat Fractal**: рисунок из элементов (мягкое пятно, конус, штрих) на нескольких масштабах — облачные массы, клочья, россыпи. Раздельно: форма, размер, жёсткость, вытянутость, плотность, разброс размера / положения / направления / яркости и смешивание внутри слоя и между слоями (сложение, Max, Smooth Max).
+- **LOD**: детализация мельче пикселя плавно гаснет к среднему — нет ряби у Ridged / Worley / растянутого шума, крупная структура одинакова на 256…2048; подобрано по эталону «2048 px, уменьшенный».
+- Сдвиг X/Y (бегущий бесшовный шум), 1–3 уровня искажения, эволюция искажения, баланс и явный clamp выхода.
+- Совместимость: старые проекты открываются без LOD и рендерятся побайтно как раньше.
 
 ## 0.4.0
 Этап A переработки ядра (подробности, замеры до/после и контракты — docs/QUALITY.md).
@@ -242,7 +251,7 @@ Pin kinds (also coloured in the UI): **gray** = one value per pixel (mask/height
 
 | id | inputs → outputs | what it is for |
 |---|---|---|
-| `noise` | — → gray | Perlin / Value / Worley / White noise; `fractal` fbm·ridged·billow; `scale` (int when tile), `stretch` (anisotropy), `octaves`, `persistence`, `lacunarity`, `warp`+`warpScale` (domain warp), `contrast`, `invert`, `grain` (white). Base of almost everything. |
+| `noise` | — → gray | `type` perlin · flow · value · worley · white · splat; `seed`, `tile`, `scale`, `grain` (white), `stretch`, `offsetX/Y` (translation, whole numbers stay tileable); `fractal` fbm/ridged/billow; flow: `flowRot`°, `advect`, `flowSpin` (whole turns per loop, animated); splat: `splShape` spot/cone/streak, `splSize`, `splHard`, `splAspect`, `splDensity`, `splPer` (1–4), `splSizeRand`, `splPosRand`, `splAngle`°, `splRotRand`, `splValRand`, `splIn`/`splAcross` add/max/smax, `splSmooth`; `octaves`, `persistence` (gain), `lacunarity` (int), `lod` (fade sub-pixel octaves, default true); `warp`, `warpScale`, `warpLevels` 1–3, `warpEvo`; `evolution` (morph loop 0→1); `contrast`, `balance`, `clampOut`, `invert`. |
 | `voronoi` | — → gray | Cells: `mode` f1·f2·crackle(F2−F1)·border·cell (random value per cell); `metric` euclid·manhattan·chebyshev. Stones, cracks, scales, crystals. |
 | `shape` | — → gray | One ellipse/rect/ring with softness; stamp for tiler/splatter or a mask. |
 | `gradient` | — → gray | Linear/radial/angular ramps (not tileable). |
@@ -663,7 +672,7 @@ main { position: relative; }
 <div id="agent-note" class="sr-only">Note for AI agents and screen readers: this is Pocket Texture Lab, a procedural texture editor. It is fully scriptable through the JavaScript object window.PTL. Run PTL.help() in the page for the complete manual (also embedded in this document as script#ptl-agent-guide), PTL.examples() for ready texture templates (brick, asphalt, cobblestone, wood, painted metal) and PTL.exportAll() to download the PNG maps.</div>
 <div id="app">
   <header id="toolbar">
-    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.4.0</button></span>
+    <span class="logo"><svg width="18" height="18" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6fb8"/><rect x="2" y="2" width="6" height="6" fill="#58c27d"/><rect x="8" y="8" width="6" height="6" fill="#e0b04d"/></svg>Pocket Texture Lab<button id="app-version" title="Версия программы — щелчок: что нового">v0.5.0</button></span>
     <button id="btn-mmenu" title="Меню">☰</button>
     <select id="examples" title="Встроенные примеры, шаблоны текстур и ваши шаблоны"></select>
     <button id="btn-lib" title="Мои пресеты и шаблоны (хранятся в браузере), экспорт/импорт">Библиотека</button>
@@ -1993,8 +2002,13 @@ void main() {
   emit(texture(u_img, uv));
 }` };
 
+  // Noise v2. Families: 0 value, 1 gradient (Perlin), 2 cellular (Worley), 3 white, 4 flow
+  // (gradient noise with rotating gradients + pseudo-advection), 5 structured splat fractal
+  // (multi-scale elements). With u_lod, octaves finer than the pixel fade to their mean
+  // instead of aliasing (the footprint accounts for stretch and domain warp). Old graphs run
+  // with u_lod = false and neutral new parameters: bit-identical to the pre-v2 shader.
   S.noise = { nin: 0, body: `
-uniform int u_type;     // 0 value, 1 gradient (Perlin), 2 worley, 3 white
+uniform int u_type;
 uniform int u_fractal;  // 0 fbm, 1 ridged, 2 billow
 uniform int u_seed;
 uniform int u_oct;
@@ -2006,8 +2020,24 @@ uniform float u_pers;
 uniform float u_contrast;
 uniform float u_warp;
 uniform int u_warpScale;
+uniform int u_warpLevels;
 uniform bool u_tile;
 uniform bool u_inv;
+uniform bool u_lod;
+uniform float u_mean;   // mean of one octave after the fractal fold (what a faded octave contributes)
+uniform vec2 u_offset;  // texture units; whole numbers keep a tileable noise identical
+uniform float u_balance;
+uniform bool u_clampOut;
+uniform bool u_warpEvo;
+// flow
+uniform float u_flowRot;
+uniform float u_flowT;   // loop phase 0..1
+uniform int u_flowSpin;  // whole turns per loop (octave o turns (o+1)·spin times)
+uniform float u_advect;
+// splat
+uniform int u_splShape;  // 0 soft spot, 1 cone, 2 streak
+uniform float u_splSize, u_splHard, u_splDensity, u_splSizeRand, u_splPosRand, u_splRotRand, u_splAngle, u_splAspect, u_splValRand, u_splSmooth;
+uniform int u_splPer, u_splIn, u_splAcross;
 ivec2 wc(ivec2 c, ivec2 P) { return u_tile ? ((c % P) + P) % P : c + 65536; }
 uvec3 hh(ivec2 c, int o, uint salt) {
   return pcg3(uvec3(uvec2(c), uint(u_seed) * 747796405u + uint(o) * 2891336453u + salt));
@@ -2015,6 +2045,7 @@ uvec3 hh(ivec2 c, int o, uint salt) {
 float h1(ivec2 c, int o, uint salt) { return float(hh(c, o, salt).x >> 8u) / 16777215.0; }
 vec2 h2(ivec2 c, int o) { uvec3 r = hh(c, o, 3u); return vec2(r.xy >> 8u) / 16777215.0; }
 vec2 fade(vec2 f) { return f * f * f * (f * (f * 6.0 - 15.0) + 10.0); }
+vec2 dfade(vec2 f) { return 30.0 * f * f * (f * (f - 2.0) + 1.0); }
 float valueN(vec2 p, ivec2 P, int o, uint salt) {
   ivec2 i = ivec2(floor(p)); vec2 f = fract(p), u = fade(f);
   float a = h1(wc(i, P), o, salt), b = h1(wc(i + ivec2(1, 0), P), o, salt);
@@ -2027,6 +2058,22 @@ float gradN(vec2 p, ivec2 P, int o) {
   float a = gr(wc(i, P), f, o), b = gr(wc(i + ivec2(1, 0), P), f - vec2(1, 0), o);
   float c = gr(wc(i + ivec2(0, 1), P), f - vec2(0, 1), o), d = gr(wc(i + ivec2(1, 1), P), f - vec2(1, 1), o);
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y) * 0.70710678 + 0.5;
+}
+// Flow noise: each lattice gradient rotates by +ang or -ang (random sign) — the pattern swirls
+// in place instead of cross-fading. Returns value (0..1) and its gradient d/dp.
+vec2 fgrad(ivec2 c, int o, float ang) {
+  float a = h1(c, o, 1u) * 2.0 * PI + (h1(c, o, 5u) < 0.5 ? ang : -ang);
+  return vec2(cos(a), sin(a));
+}
+vec3 flowN(vec2 p, ivec2 P, int o, float ang) {
+  ivec2 i = ivec2(floor(p)); vec2 f = fract(p), u = fade(f), du = dfade(f);
+  vec2 ga = fgrad(wc(i, P), o, ang), gb = fgrad(wc(i + ivec2(1, 0), P), o, ang);
+  vec2 gc = fgrad(wc(i + ivec2(0, 1), P), o, ang), gd = fgrad(wc(i + ivec2(1, 1), P), o, ang);
+  float va = dot(ga, f), vb = dot(gb, f - vec2(1, 0)), vc = dot(gc, f - vec2(0, 1)), vd = dot(gd, f - vec2(1, 1));
+  float v = va + u.x * (vb - va) + u.y * (vc - va) + u.x * u.y * (va - vb - vc + vd);
+  vec2 dv = ga + u.x * (gb - ga) + u.y * (gc - ga) + u.x * u.y * (ga - gb - gc + gd)
+          + du * (u.yx * (va - vb - vc + vd) + vec2(vb, vc) - va);
+  return vec3(v * 0.70710678 + 0.5, dv * 0.70710678);
 }
 float worleyN(vec2 p, ivec2 P, int o) {
   ivec2 i = ivec2(floor(p)); vec2 f = fract(p);
@@ -2045,7 +2092,7 @@ float octave(vec2 p, ivec2 P, int o) {
   if (u_type == 2) return worleyN(p, P, o);
   return h1(wc(ivec2(floor(p)), P), o, 7u);
 }
-// Evolution: blend between 3 periodic "slices" of the noise with a
+// Evolution (morph): blend between 3 periodic "slices" of the noise with a
 // variance-preserving cos/sin crossfade; evolution 0 → 1 loops seamlessly.
 float octaveE(vec2 p, ivec2 P, int o) {
   if (u_evo <= 0.0) return octave(p, P, o);
@@ -2056,32 +2103,108 @@ float octaveE(vec2 p, ivec2 P, int o) {
   float th = f * f * (3.0 - 2.0 * f) * 1.5707963;
   return 0.5 + (a - 0.5) * cos(th) + (b - 0.5) * sin(th);
 }
-float warpN(vec2 uv, int W, uint salt) {
+float warpN0(vec2 uv, int W, uint salt, int slice) {
   float s = 0.0, a = 0.5;
-  for (int o = 0; o < 3; o++) { int Pw = W << o; s += a * valueN(uv * float(Pw), ivec2(Pw), 20 + o, salt); a *= 0.5; }
+  for (int o = 0; o < 3; o++) { int Pw = W << o; s += a * valueN(uv * float(Pw), ivec2(Pw), 20 + o + 97 * slice, salt); a *= 0.5; }
   return s / 0.875;
 }
+float warpN(vec2 uv, int W, uint salt) {
+  if (!u_warpEvo || u_evo <= 0.0) return warpN0(uv, W, salt, 0);
+  float z = fract(u_evo) * 3.0; int zi = int(floor(z)); float f = z - float(zi);
+  float th = f * f * (3.0 - 2.0 * f) * 1.5707963;
+  return 0.5 + (warpN0(uv, W, salt, zi) - 0.5) * cos(th) + (warpN0(uv, W, salt, (zi + 1) % 3) - 0.5) * sin(th);
+}
+// ---- structured splat fractal: one layer of elements on a periodic grid
+float splatProfile(vec2 q) {
+  float r = length(q);
+  if (u_splShape == 1) return pow(max(1.0 - r, 0.0), 1.0 + (1.0 - u_splHard) * 2.0);             // cone
+  float soft = exp(-r * r * 3.0), hard = 1.0 - smoothstep(0.82, 1.0, r);
+  float v = mix(soft, hard, u_splHard);
+  if (u_splShape == 2) v *= max(1.0 - abs(q.x), 0.0);                                          // streak tapers along its length
+  return v * step(r, 1.0) + (r > 1.0 ? soft * (1.0 - u_splHard) * (1.0 - smoothstep(1.0, 1.6, r)) : 0.0);
+}
+float splatLayer(vec2 p, ivec2 P, int o) {
+  ivec2 ic = ivec2(floor(p)); vec2 f = p - floor(p);
+  float aspect = u_splShape == 2 ? max(u_splAspect, 1.0) : u_splAspect;
+  float reach = u_splSize * max(aspect, 1.0) * (1.0 + u_splSizeRand) * 1.6 + u_splPosRand * 0.5;
+  int R = reach > 1.0 ? 2 : 1;
+  float mx = 0.0, sum = 0.0, se = 0.0, k = mix(2.0, 24.0, 1.0 - u_splSmooth);
+  for (int dy = -2; dy <= 2; dy++) for (int dx = -2; dx <= 2; dx++) {
+    if (abs(dx) > R || abs(dy) > R) continue;
+    ivec2 d = ivec2(dx, dy), cell = wc(ic + d, P);
+    for (int e = 0; e < 4; e++) {
+      if (e >= u_splPer) break;
+      uint salt = 40u + uint(e) * 17u;
+      uvec3 A = hh(cell, o, salt), B = hh(cell, o, salt + 7u);
+      vec3 ra = vec3(A >> 8u) / 16777215.0, rb = vec3(B >> 8u) / 16777215.0;
+      if (ra.x >= u_splDensity) continue;
+      vec2 c = vec2(d) + 0.5 + (rb.xy - 0.5) * u_splPosRand * 1.0 - f;
+      float sz = max(0.02, u_splSize * (1.0 + u_splSizeRand * (ra.y * 2.0 - 1.0)));
+      float ang = u_splAngle + u_splRotRand * (ra.z - 0.5) * 2.0 * PI;
+      vec2 q = vec2(cos(ang) * c.x + sin(ang) * c.y, -sin(ang) * c.x + cos(ang) * c.y);
+      q = vec2(q.x / aspect, q.y) / sz;
+      float v = splatProfile(-q) * (1.0 - u_splValRand * rb.z);
+      mx = max(mx, v); sum += v; se += exp(k * v) - 1.0;
+    }
+  }
+  if (u_splIn == 0) return 1.0 - exp(-sum * 1.5);      // additive, softly saturated
+  if (u_splIn == 1) return mx;
+  return clamp(log(1.0 + se) / k, 0.0, 1.0);           // smooth max
+}
 void main() {
-  vec2 uv = pixUV() + u_uvOff;
+  vec2 uv = pixUV() + u_uvOff + u_offset;
   float sc = u_type == 3 ? u_grainCells : u_scale;
   vec2 base = vec2(sc, sc * u_stretch);
   if (u_tile) base = max(vec2(1.0), floor(base + 0.5));
+  float wfoot = 1.0;
   if (u_warp > 0.0) {
-    vec2 w = vec2(warpN(uv, u_warpScale, 101u), warpN(uv, u_warpScale, 202u));
-    uv += (w - 0.5) * u_warp * 0.5;
+    for (int l = 0; l < 3; l++) {
+      if (l >= max(u_warpLevels, 1)) break;
+      uint s1 = l == 0 ? 101u : 101u + uint(l) * 1000u, s2 = l == 0 ? 202u : 202u + uint(l) * 1000u;
+      vec2 w = vec2(warpN(uv, u_warpScale, s1), warpN(uv, u_warpScale, s2));
+      uv += (w - 0.5) * u_warp * 0.5;
+    }
+    wfoot = 1.0 + u_warp * float(u_warpScale) * float(max(u_warpLevels, 1));   // warp compresses the domain locally
   }
   ivec2 P = ivec2(base);
   vec2 freq = base;
-  float sum = 0.0, amp = 1.0, norm = 0.0;
+  float sum = 0.0, amp = 1.0, norm = 0.0, mxAcc = 0.0, seAcc = 0.0;
+  vec2 adv = vec2(0.0);
+  float kx = mix(2.0, 24.0, 1.0 - u_splSmooth);
   for (int o = 0; o < 8; o++) {
     if (o >= u_oct) break;
-    float n = octaveE(uv * freq, P, o);
-    if (u_fractal == 1) { n = 1.0 - abs(2.0 * n - 1.0); n *= n; }
-    else if (u_fractal == 2) n = abs(2.0 * n - 1.0);
+    // pixel footprint: noise cells per output pixel (geometric mean of both axes, so a stretched
+    // octave that is still visible along one axis is not dropped), scaled by the warp compression.
+    // The octave fades out between 0.3 and 0.8 cells per pixel — tuned against a 2048 px render
+    // box-downsampled to 256 px (tools/noise-lod.mjs).
+    float cpp = sqrt(freq.x * freq.y) / u_res.x * wfoot * (u_type == 4 ? 1.0 + u_advect : 1.0);
+    float w = (u_lod && u_type != 3) ? 1.0 - smoothstep(0.3, 0.8, cpp) : 1.0;
+    float n = u_mean;
+    if (w > 0.0) {
+      if (u_type == 5) {
+        n = splatLayer(uv * freq, P, o);
+      } else if (u_type == 4) {
+        float ang = u_flowRot + u_flowT * 2.0 * PI * float(u_flowSpin * (o + 1));
+        vec3 fn = flowN(uv * freq - adv, P, o, ang);
+        adv += u_advect * fn.yz * amp;
+        n = fn.x;
+      } else n = octaveE(uv * freq, P, o);
+      if (u_type != 5) {
+        if (u_fractal == 1) { n = 1.0 - abs(2.0 * n - 1.0); n *= n; }
+        else if (u_fractal == 2) n = abs(2.0 * n - 1.0);
+      }
+      n = mix(u_mean, n, w);
+    }
+    if (u_type == 5 && u_splAcross == 1) mxAcc = max(mxAcc, n * amp);
+    if (u_type == 5 && u_splAcross == 2) seAcc += exp(kx * n * amp) - 1.0;
     sum += n * amp; norm += amp; amp *= u_pers;
     P *= u_lac; freq *= float(u_lac);
   }
-  float v = clamp((sum / norm - 0.5) * u_contrast + 0.5, 0.0, 1.0);
+  float v = sum / norm;
+  if (u_type == 5 && u_splAcross == 1) v = mxAcc;
+  if (u_type == 5 && u_splAcross == 2) v = log(1.0 + seAcc) / kx;
+  v = (v - 0.5) * u_contrast + 0.5 + u_balance;
+  if (u_clampOut) v = clamp(v, 0.0, 1.0);
   if (u_inv) v = 1.0 - v;
   emit(vec4(v, v, v, 1.0));
 }` };
@@ -3688,10 +3811,22 @@ const BORDER_SEAM = 'Режим Border видит за краем пустоту
 const wrapSeam = (w) => (w === 'clamp' ? CLAMP_SEAM : w === 'border' ? BORDER_SEAM : '');
 // Parameters whose default changed with compute engine 2 (v0.4): projects saved before that
 // get the old values, so they keep rendering exactly as they did.
-const ENGINE = 2;
+const ENGINE = 3;
 const LEGACY_DEFAULTS = {
   transform: { alphaAware: false }, warp: { alphaAware: false }, polar: { alphaAware: false }, glow: { wrap: 'clamp' },
+  noise: { lod: false },   // engine 3: octaves finer than a pixel fade out
 };
+// Mean value of one noise octave after the fractal fold (measured on the GPU with tools/noise-means.mjs):
+// a faded (sub-pixel) octave contributes this constant, so the overall brightness does not jump.
+const NOISE_MEANS = { 0: [0.5025, 0.4457, 0.3794], 1: [0.5, 0.5951, 0.2487], 2: [0.4289, 0.4998, 0.3316], 3: [0.4998, 0.3335, 0.4997], 4: [0.5, 0.5951, 0.2487] };
+function noiseMean(p, type, fractal) {
+  if (type === 5) {   // splat: expected coverage of a layer (soft profile integrates to ~0.32 of its disc)
+    const asp = p.splShape === 'streak' ? Math.max(p.splAspect, 1) : p.splAspect;
+    const m = p.splDensity * p.splPer * Math.PI * p.splSize * p.splSize * asp * 0.32 * (1 - p.splValRand / 2);
+    return p.splIn === 'add' ? 1 - Math.exp(-1.5 * m) : Math.min(m, 0.9);
+  }
+  return (NOISE_MEANS[type] || NOISE_MEANS[1])[fractal];
+}
 const CHAN_OPTS = [['L', 'Яркость (Luminance)'], ['R', 'R'], ['G', 'G'], ['B', 'B'], ['A', 'A']];
 const CHAN_IDX = { R: 0, G: 1, B: 2, A: 3, L: 4, C: 5 };
 const CLAMP_SEAM = 'Режим Clamp не берёт соседей с противоположного края — при повторе текстуры появится шов.';
@@ -3834,33 +3969,72 @@ const NODES = {
 
   noise: {
     title: 'Шум (Noise)', cat: 'Источники', outputs: ['Шум'], inputs: [],
-    desc: 'Процедурный шум: Perlin, Value, клеточный Worley или белый; фракталы fBM/Ridged/Billow, растяжение, доменное искажение. Основа почти любой текстуры.',
+    desc: 'Процедурный шум одной нодой: семейство (Perlin, Flow, Value, клеточный Worley, белый, структурный фрактал пятен) + масштаб, детализация, искажение, анимация и выходной диапазон. Мелкая деталь, которую пиксель не может показать, плавно гасится (без ряби).',
     params: [
-      e('type', 'Тип', [['perlin', 'Градиентный (Perlin)'], ['value', 'Value Noise'], ['worley', 'Клеточный (Worley)'], ['white', 'Белый шум (White)']], 'perlin'),
+      e('type', 'Семейство', [['perlin', 'Градиентный (Perlin)'], ['flow', 'Текучий (Flow)'], ['value', 'Value Noise'], ['worley', 'Клеточный (Worley)'], ['white', 'Белый шум (White)'], ['splat', 'Фрактал пятен (Splat Fractal)']], 'perlin',
+        { section: 'Основа (Base)', help: 'Perlin — мягкие облачные формы. Flow — как Perlin, но градиенты вращаются: узор «течёт» и закручивается (анимация без перекрёстного затухания), плюс псевдо-адвекция мелких деталей крупными. Value — более «квадратный». Worley — расстояние до точек, клетки. White — случайное значение на зерно. Splat Fractal — рисунок из элементов (пятна, конусы, штрихи) на нескольких масштабах: облачные массы, клочья, россыпи.' }),
+      i('seed', 'Seed', 0, 99999, 1, { section: 'Основа (Base)' }),
+      b('tile', 'Бесшовный (Tileable)', true, { section: 'Основа (Base)', help: 'Масштаб и частоты становятся целыми, шум математически периодичен по u и v. Сдвиг на целое число сохраняет бесшовность; поворота у шума нет (поверните Transform — там подсказка про швы).' }),
+      f('scale', 'Масштаб (Scale)', 1, 64, 4, { step: 1, intWhen: (p) => p.tile, visible: (p) => p.type !== 'white', section: 'Основа (Base)', help: 'Число крупных форм (клеток первой октавы) на ширину текстуры.' }),
+      i('grain', 'Размер зерна (px проекта)', 1, 64, 1, { visible: (p) => p.type === 'white', section: 'Основа (Base)', help: 'Белый шум: одно случайное значение на квадрат grain×grain пикселей проекта.' }),
+      f('stretch', 'Растяжение по Y (×)', 0.125, 8, 1, { step: 0.125, section: 'Основа (Base)', help: 'Частота по Y = масштаб × растяжение (в Tileable округляется до целого). >1 — вытянутые по X волокна (дерево, шлифованный металл), <1 — по Y.' }),
+      f('offsetX', 'Сдвиг X', -1, 1, 0, { step: 0.001, hardMin: -1e4, hardMax: 1e4, section: 'Основа (Base)', help: 'Сдвиг узора в долях текстуры. Анимируйте ⏱ от 0 до целого числа — бегущий бесшовный шум (translation).' }),
+      f('offsetY', 'Сдвиг Y', -1, 1, 0, { step: 0.001, hardMin: -1e4, hardMax: 1e4, section: 'Основа (Base)' }),
+
       e('fractal', 'Фрактал', [['fbm', 'Обычный (fBM) — облака'], ['ridged', 'Гребни (Ridged) — горы, трещины'], ['billow', 'Клубы (Billow) — камни, дым']], 'fbm',
-        { help: 'fBM: сумма октав. Ridged: 1−|2n−1| в квадрате — острые хребты и прожилки. Billow: |2n−1| — округлые «клубы».' }),
-      b('tile', 'Бесшовный (Tileable)', true, { help: 'В режиме Tileable масштаб — целое число: период каждой октавы равен целому числу клеток, шум математически периодичен по u и v.' }),
-      f('scale', 'Масштаб (Scale)', 1, 64, 4, { step: 1, intWhen: (p) => p.tile, visible: (p) => p.type !== 'white' }),
-      i('grain', 'Размер зерна (px проекта)', 1, 64, 1, { visible: (p) => p.type === 'white', help: 'Белый шум: одно случайное значение на квадрат grain×grain пикселей проекта.' }),
-      f('stretch', 'Растяжение по Y (×)', 0.125, 8, 1, { step: 0.125, help: 'Частота по Y = масштаб × растяжение (в Tileable округляется до целого). >1 — вытянутые по X волокна (дерево, шлифованный металл), <1 — по Y.' }),
-      i('seed', 'Seed', 0, 99999, 1),
-      i('octaves', 'Детализация (Detail, октавы)', 1, 8, 5),
-      f('persistence', 'Шероховатость шума (Persistence)', 0, 1, 0.5, { help: 'Вклад каждой следующей октавы относительно предыдущей. Не путать с PBR roughness.' }),
-      i('lacunarity', 'Лакунарность (×частота на октаву)', 2, 4, 2, { help: 'Во сколько раз растёт частота с каждой октавой. Целое — чтобы шум оставался бесшовным.' }),
-      f('warp', 'Искажение (Domain Warp)', 0, 1, 0, { help: 'Сдвигает координаты другим периодическим шумом — «текучие», органические формы (мрамор, грязь, облака). Бесшовность сохраняется.' }),
-      i('warpScale', 'Масштаб искажения', 1, 16, 2, { visible: (p) => p.warp > 0 }),
-      f('evolution', 'Эволюция (анимация)', 0, 1, 0, { step: 0.001, help: 'Плавно меняет узор, не сдвигая его. Для зацикленной анимации анимируйте 0 → 1 (кривая «Линейно»): последний кадр переходит в первый без скачка.' }),
-      f('contrast', 'Контраст (Contrast)', 0, 4, 1),
-      b('invert', 'Инвертировать', false),
+        { section: 'Структура (Structure)', visible: (p) => p.type !== 'splat', help: 'fBM: сумма октав. Ridged: 1−|2n−1| в квадрате — острые хребты и прожилки. Billow: |2n−1| — округлые «клубы».' }),
+      f('flowRot', 'Поворот градиентов, °', -180, 180, 0, { step: 1, section: 'Структура (Structure)', visible: (p) => p.type === 'flow', help: 'Статический поворот градиентов: другой рисунок того же seed без пересоздания крупных масс.' }),
+      f('advect', 'Адвекция (снос деталей)', 0, 1, 0.3, { section: 'Структура (Structure)', visible: (p) => p.type === 'flow', help: 'Мелкие октавы сдвигаются по градиенту крупных — деталь «обтекает» формы, как дым или жидкость. 0 — обычный фрактал.' }),
+      e('splShape', 'Элемент', [['spot', 'Мягкое пятно'], ['cone', 'Конус'], ['streak', 'Штрих (вытянутый)']], 'spot', { section: 'Структура (Structure)', visible: (p) => p.type === 'splat' }),
+      f('splSize', 'Размер элемента (доля клетки)', 0.05, 1.5, 0.55, { section: 'Структура (Structure)', visible: (p) => p.type === 'splat' }),
+      f('splHard', 'Жёсткость края', 0, 1, 0.2, { section: 'Структура (Structure)', visible: (p) => p.type === 'splat', help: '0 — гауссов мягкий профиль, 1 — чёткий край.' }),
+      f('splAspect', 'Вытянутость', 0.25, 8, 1, { step: 0.05, section: 'Структура (Structure)', visible: (p) => p.type === 'splat', help: 'Длина элемента вдоль его направления к ширине. Больше 1 — волокна и клочья.' }),
+      f('splDensity', 'Плотность (доля клеток с элементом)', 0, 1, 0.85, { section: 'Структура (Structure)', visible: (p) => p.type === 'splat' }),
+      i('splPer', 'Элементов в клетке', 1, 4, 1, { section: 'Структура (Structure)', visible: (p) => p.type === 'splat' }),
+      f('splSizeRand', 'Разброс размера', 0, 1, 0.5, { section: 'Структура (Structure)', visible: (p) => p.type === 'splat' }),
+      f('splPosRand', 'Разброс положения', 0, 1, 1, { section: 'Структура (Structure)', visible: (p) => p.type === 'splat', help: '0 — регулярная сетка, 1 — случайно в пределах клетки.' }),
+      f('splAngle', 'Направление, °', -180, 180, 0, { step: 1, section: 'Структура (Structure)', visible: (p) => p.type === 'splat' }),
+      f('splRotRand', 'Разброс направления', 0, 1, 1, { section: 'Структура (Structure)', visible: (p) => p.type === 'splat', help: '0 — все элементы смотрят в одну сторону (направленные клочья), 1 — случайно.' }),
+      f('splValRand', 'Разброс яркости', 0, 1, 0.3, { section: 'Структура (Structure)', visible: (p) => p.type === 'splat' }),
+      e('splIn', 'Смешивание в слое', [['add', 'Сложение (мягкое насыщение)'], ['max', 'Максимум (Max)'], ['smax', 'Плавный максимум (Smooth Max)']], 'smax', { section: 'Структура (Structure)', visible: (p) => p.type === 'splat', help: 'Сложение: перекрытия уплотняются (1 − e^(−Σ)). Max: элементы не складываются. Smooth Max: как Max, но стыки сглажены — слипшиеся массы.' }),
+      e('splAcross', 'Смешивание слоёв', [['add', 'Взвешенная сумма (как fBM)'], ['max', 'Максимум (Max)'], ['smax', 'Плавный максимум (Smooth Max)']], 'add', { section: 'Структура (Structure)', visible: (p) => p.type === 'splat', help: 'Как складываются крупные, средние и мелкие элементы. Сумма: вес слоя = шероховатость^номер. Max/Smooth Max: мелкие элементы добавляются только там, где они ярче.' }),
+      f('splSmooth', 'Мягкость стыков', 0, 1, 0.5, { section: 'Структура (Structure)', visible: (p) => p.type === 'splat' && (p.splIn === 'smax' || p.splAcross === 'smax') }),
+
+      i('octaves', 'Детализация (Detail, октавы)', 1, 8, 5, { section: 'Детализация (Detail)', help: 'Число слоёв: крупные → мелкие формы.' }),
+      f('persistence', 'Шероховатость шума (Persistence)', 0, 1, 0.5, { section: 'Детализация (Detail)', help: 'Вес каждого следующего, более мелкого слоя относительно предыдущего (gain): 0.3 — спокойные крупные формы, 0.7 — много мелкой детали. Не путать с PBR roughness.' }),
+      i('lacunarity', 'Лакунарность (×частота на октаву)', 2, 4, 2, { section: 'Детализация (Detail)', help: 'Во сколько раз растёт частота с каждой октавой. Целое — чтобы шум оставался бесшовным.' }),
+      b('lod', 'Гасить неразличимую деталь (LOD)', true, { section: 'Детализация (Detail)', help: 'Октавы, которые мельче пикселя (с учётом растяжения и искажения), плавно заменяются своим средним — нет ряби и муара, крупная структура одинакова в 256…2048. Выключено — старое поведение: все октавы считаются как есть.' }),
+
+      f('warp', 'Искажение (Domain Warp)', 0, 1, 0, { section: 'Искажение (Warp)', help: 'Сдвигает координаты другим периодическим шумом — «текучие», органические формы (мрамор, грязь, облака). Бесшовность сохраняется.' }),
+      i('warpScale', 'Масштаб искажения', 1, 16, 2, { section: 'Искажение (Warp)', visible: (p) => p.warp > 0 }),
+      i('warpLevels', 'Уровней искажения', 1, 3, 1, { section: 'Искажение (Warp)', visible: (p) => p.warp > 0, help: 'Искажение искажённого: 2–3 уровня дают завихрения и прожилки внутри прожилок.' }),
+
+      f('evolution', 'Эволюция (morph)', 0, 1, 0, { step: 0.001, section: 'Анимация (Animation)', help: 'Плавно превращает узор в другой, не сдвигая его (morph). Для петли анимируйте 0 → 1 (кривая «Линейно»): последний кадр переходит в первый без скачка. Бегущий шум (translation) — анимируйте «Сдвиг X/Y» до целого числа.' }),
+      b('warpEvo', 'Искажение тоже эволюционирует', false, { section: 'Анимация (Animation)', visible: (p) => p.warp > 0, help: 'Поле искажения меняется вместе с эволюцией — формы «плывут», а не только перетекают.' }),
+      i('flowSpin', 'Течение: оборотов за цикл', -4, 4, 0, { section: 'Анимация (Animation)', visible: (p) => p.type === 'flow', help: 'Flow-анимация: градиенты поворачиваются на целое число оборотов за цикл кадров (мелкие октавы — быстрее), узор закручивается и течёт на месте; петля бесшовна. 0 — без анимации.' }),
+
+      f('contrast', 'Контраст (Contrast)', 0, 4, 1, { section: 'Выход (Output)' }),
+      f('balance', 'Баланс (сдвиг яркости)', -0.5, 0.5, 0, { section: 'Выход (Output)', help: 'Сдвигает середину диапазона после контраста: меньше — больше тёмного, больше — светлого.' }),
+      b('clampOut', 'Ограничить 0…1', true, { section: 'Выход (Output)', help: 'Выключено — значения за пределами 0…1 сохраняются (для дальнейших Levels / Warp без потери), в PNG они всё равно обрежутся.' }),
+      b('invert', 'Инвертировать', false, { section: 'Выход (Output)' }),
     ],
+    timeDependent: (p) => p.type === 'flow' && p.flowSpin !== 0,
     seamFn: (p) => (p.tile ? '' : 'Tileable выключен — шум не периодичен, при повторе будет шов.'),
     eval(ctx) {
       const p = ctx.params, out = ctx.alloc();
+      const type = { value: 0, perlin: 1, worley: 2, white: 3, flow: 4, splat: 5 }[p.type] ?? 1;
+      const fractal = { fbm: 0, ridged: 1, billow: 2 }[p.fractal] ?? 0;
       ctx.pass('noise', out, {
-        u_type: { value: 0, perlin: 1, worley: 2, white: 3 }[p.type], u_fractal: { fbm: 0, ridged: 1, billow: 2 }[p.fractal],
+        u_type: type, u_fractal: fractal,
         u_seed: p.seed, u_oct: p.octaves, u_lac: p.lacunarity, u_scale: p.scale, u_stretch: p.stretch,
         u_grainCells: ctx.projRes / Math.max(1, p.grain), u_pers: p.persistence, u_contrast: p.contrast,
-        u_warp: p.warp, u_warpScale: p.warpScale, u_tile: p.tile, u_inv: p.invert, u_evo: p.evolution,
+        u_warp: p.warp, u_warpScale: p.warpScale, u_warpLevels: p.warpLevels, u_tile: p.tile, u_inv: p.invert, u_evo: p.evolution,
+        u_lod: !!p.lod,  u_mean: noiseMean(p, type, fractal), u_offset: [p.offsetX, p.offsetY], u_balance: p.balance, u_clampOut: p.clampOut !== false,
+        u_warpEvo: !!p.warpEvo, u_flowRot: (p.flowRot * Math.PI) / 180, u_flowT: p.flowSpin ? Anim.t : 0, u_flowSpin: p.flowSpin | 0, u_advect: p.advect,
+        u_splShape: { spot: 0, cone: 1, streak: 2 }[p.splShape] ?? 0, u_splSize: p.splSize, u_splHard: p.splHard, u_splDensity: p.splDensity,
+        u_splSizeRand: p.splSizeRand, u_splPosRand: p.splPosRand, u_splRotRand: p.splRotRand, u_splAngle: (p.splAngle * Math.PI) / 180,
+        u_splAspect: p.splAspect, u_splValRand: p.splValRand, u_splSmooth: p.splSmooth, u_splPer: p.splPer,
+        u_splIn: { add: 0, max: 1, smax: 2 }[p.splIn] ?? 2, u_splAcross: { add: 0, max: 1, smax: 2 }[p.splAcross] ?? 0,
       });
       return [{ tex: out, space: 'data' }];
     },
@@ -4809,6 +4983,15 @@ const I18N = (() => {
     'Разлёт вокруг источника': 'Spread', 'Мигание': 'Twinkle', 'Сила грязи на линзе': 'Lens Dirt Intensity', 'Масштаб пятен': 'Dirt Scale',
     'Радиус подсветки': 'Illumination Radius', 'Повторов по кругу': 'Repeat Around', 'Назначение': 'Usage', 'Соглашение нормали для 3D': 'Normal Format (3D)',
     'Имя файла': 'File Name',
+    'Семейство': 'Family', 'Сдвиг X': 'Offset X', 'Сдвиг Y': 'Offset Y', 'Поворот градиентов, °': 'Gradient Rotation',
+    'Адвекция (снос деталей)': 'Advection', 'Элемент': 'Element', 'Размер элемента (доля клетки)': 'Element Size',
+    'Жёсткость края': 'Edge Hardness', 'Вытянутость': 'Elongation', 'Плотность (доля клеток с элементом)': 'Density',
+    'Элементов в клетке': 'Elements per Cell', 'Разброс размера': 'Size Variation', 'Разброс положения': 'Position Variation',
+    'Направление, °': 'Direction', 'Разброс направления': 'Direction Variation', 'Разброс яркости': 'Luminance Variation',
+    'Смешивание в слое': 'Blend within Layer', 'Смешивание слоёв': 'Blend Layers', 'Мягкость стыков': 'Blend Smoothness',
+    'Гасить неразличимую деталь (LOD)': 'Anti-alias Detail (LOD)', 'Уровней искажения': 'Warp Levels', 'Эволюция (morph)': 'Evolution (Morph)',
+    'Искажение тоже эволюционирует': 'Evolve Warp', 'Течение: оборотов за цикл': 'Flow Turns per Loop', 'Баланс (сдвиг яркости)': 'Balance',
+    'Ограничить 0…1': 'Clamp 0–1',
   };
   const OPT = {
     'Цвет sRGB (Color)': 'Color (sRGB)', 'Данные каналов (Data)': 'Data (linear)', 'Растянуть (Stretch)': 'Stretch', 'Заполнить с обрезкой (Cover)': 'Cover (crop)',
@@ -4839,6 +5022,8 @@ const I18N = (() => {
     'Многоугольник (диафрагма)': 'Polygon (aperture)', 'Один цвет': 'Single Color', 'Радуга по порядку': 'Rainbow', 'Случайные оттенки': 'Random Hue',
     'Полоса → круг': 'Rectangular to Polar', 'Круг → полоса': 'Polar to Rectangular', 'Обычная карта': 'Generic', 'Base Color (альбедо)': 'Base Color',
     'Авто (по ноде Height to Normal)': 'Auto (from Height to Normal)',
+    'Текучий (Flow)': 'Flow', 'Фрактал пятен (Splat Fractal)': 'Splat Fractal', 'Конус': 'Cone', 'Штрих (вытянутый)': 'Streak',
+    'Сложение (мягкое насыщение)': 'Add (soft saturation)', 'Плавный максимум (Smooth Max)': 'Smooth Max', 'Взвешенная сумма (как fBM)': 'Weighted Sum (fBM)',
   };
   const GROUP = {
     'Зацикленные': 'Looping', 'Однократные': 'One-shot', 'Оптические блики (Optical Flares)': 'Optical Flares',
@@ -5092,7 +5277,10 @@ const Anim = (() => {
     const a = Graph.state.animation;
     return { frames: a.frames, frameSize: a.frameSize, fps: a.fps, layout: LAYOUTS[a.frames] };
   }
-  function isAnimated(node) { return !!((node.anim && Object.keys(node.anim).length) || (NODES[node.type] && NODES[node.type].timeDependent)); }
+  function isAnimated(node) {
+    const td = NODES[node.type] && NODES[node.type].timeDependent;
+    return !!((node.anim && Object.keys(node.anim).length) || (typeof td === 'function' ? td(node.params) : td));
+  }
   function any() { for (const n of Graph.nodes.values()) if (isAnimated(n)) return true; return false; }
 
   // Parameters of `node` at time t (the node's own params are the start values).
@@ -8725,7 +8913,7 @@ window.PTL = PTL;
 
 // ===== main.js =====
 // Entry point.
-const PTL_VERSION = '0.4.0';
+const PTL_VERSION = '0.5.0';
 (() => {
   const start = () => {
     try {

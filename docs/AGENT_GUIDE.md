@@ -136,7 +136,7 @@ Pin kinds (also coloured in the UI): **gray** = one value per pixel (mask/height
 
 | id | inputs → outputs | what it is for |
 |---|---|---|
-| `noise` | — → gray | Perlin / Value / Worley / White noise; `fractal` fbm·ridged·billow; `scale` (int when tile), `stretch` (anisotropy), `octaves`, `persistence`, `lacunarity`, `warp`+`warpScale` (domain warp), `contrast`, `invert`, `grain` (white). Base of almost everything. |
+| `noise` | — → gray | `type` perlin · flow · value · worley · white · splat; `seed`, `tile`, `scale`, `grain` (white), `stretch`, `offsetX/Y` (translation, whole numbers stay tileable); `fractal` fbm/ridged/billow; flow: `flowRot`°, `advect`, `flowSpin` (whole turns per loop, animated); splat: `splShape` spot/cone/streak, `splSize`, `splHard`, `splAspect`, `splDensity`, `splPer` (1–4), `splSizeRand`, `splPosRand`, `splAngle`°, `splRotRand`, `splValRand`, `splIn`/`splAcross` add/max/smax, `splSmooth`; `octaves`, `persistence` (gain), `lacunarity` (int), `lod` (fade sub-pixel octaves, default true); `warp`, `warpScale`, `warpLevels` 1–3, `warpEvo`; `evolution` (morph loop 0→1); `contrast`, `balance`, `clampOut`, `invert`. |
 | `voronoi` | — → gray | Cells: `mode` f1·f2·crackle(F2−F1)·border·cell (random value per cell); `metric` euclid·manhattan·chebyshev. Stones, cracks, scales, crystals. |
 | `shape` | — → gray | One ellipse/rect/ring with softness; stamp for tiler/splatter or a mask. |
 | `gradient` | — → gray | Linear/radial/angular ramps (not tileable). |

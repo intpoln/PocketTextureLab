@@ -35,8 +35,8 @@
   дублирование, разрыв связи, pan/zoom, запрет циклов с сообщением, undo/redo
   (одно перетаскивание ползунка = один шаг), точный ввод чисел, сброс параметра.
 - Ноды (29):
-  - источники — Image, Constant, **Noise** (Perlin / Value / Worley / белый шум; фракталы fBM / Ridged / Billow;
-    растяжение, лакунарность, доменное искажение), **Voronoi** (F1, F2, трещины F2−F1, границы, значение ячейки;
+  - источники — Image, Constant, **Noise** (Perlin / Flow / Value / Worley / белый / Splat Fractal из элементов; фракталы
+    fBM / Ridged / Billow; растяжение, лакунарность, 1–3 уровня доменного искажения, LOD без ряби, morph / flow / сдвиг), **Voronoi** (F1, F2, трещины F2−F1, границы, значение ячейки;
     евклидова / манхэттен / Чебышёв), Shape, Gradient;
   - узоры — **Waves** (полосы с искажением: дерево, мрамор), **Tile Sampler / Раскладка** (сетка со сдвигом рядов,
     фаской, случайными позицией/поворотом/размером/яркостью; пресеты «Кирпичи», «Плитка», «Паркет», «Соты», «Булыжник»),
@@ -129,7 +129,7 @@
 ```sh
 npm install        # только для разработки: playwright, pngjs, pako, upng-js
 npm run build      # src/ -> texture-lab.html
-npm test           # сборка + 221 проверка в настоящем Chromium через file://
+npm test           # сборка + 228 проверок в настоящем Chromium через file://
 node tests/perf.mjs
 node tools/ptl-run.mjs script.js out/   # выполнить сценарий PTL без UI и сохранить PNG
 node tools/readme-shots.mjs             # пересобрать картинки README (docs/img) из настоящего редактора

@@ -73,6 +73,15 @@ const I18N = (() => {
     'Разлёт вокруг источника': 'Spread', 'Мигание': 'Twinkle', 'Сила грязи на линзе': 'Lens Dirt Intensity', 'Масштаб пятен': 'Dirt Scale',
     'Радиус подсветки': 'Illumination Radius', 'Повторов по кругу': 'Repeat Around', 'Назначение': 'Usage', 'Соглашение нормали для 3D': 'Normal Format (3D)',
     'Имя файла': 'File Name',
+    'Семейство': 'Family', 'Сдвиг X': 'Offset X', 'Сдвиг Y': 'Offset Y', 'Поворот градиентов, °': 'Gradient Rotation',
+    'Адвекция (снос деталей)': 'Advection', 'Элемент': 'Element', 'Размер элемента (доля клетки)': 'Element Size',
+    'Жёсткость края': 'Edge Hardness', 'Вытянутость': 'Elongation', 'Плотность (доля клеток с элементом)': 'Density',
+    'Элементов в клетке': 'Elements per Cell', 'Разброс размера': 'Size Variation', 'Разброс положения': 'Position Variation',
+    'Направление, °': 'Direction', 'Разброс направления': 'Direction Variation', 'Разброс яркости': 'Luminance Variation',
+    'Смешивание в слое': 'Blend within Layer', 'Смешивание слоёв': 'Blend Layers', 'Мягкость стыков': 'Blend Smoothness',
+    'Гасить неразличимую деталь (LOD)': 'Anti-alias Detail (LOD)', 'Уровней искажения': 'Warp Levels', 'Эволюция (morph)': 'Evolution (Morph)',
+    'Искажение тоже эволюционирует': 'Evolve Warp', 'Течение: оборотов за цикл': 'Flow Turns per Loop', 'Баланс (сдвиг яркости)': 'Balance',
+    'Ограничить 0…1': 'Clamp 0–1',
   };
   const OPT = {
     'Цвет sRGB (Color)': 'Color (sRGB)', 'Данные каналов (Data)': 'Data (linear)', 'Растянуть (Stretch)': 'Stretch', 'Заполнить с обрезкой (Cover)': 'Cover (crop)',
@@ -103,6 +112,8 @@ const I18N = (() => {
     'Многоугольник (диафрагма)': 'Polygon (aperture)', 'Один цвет': 'Single Color', 'Радуга по порядку': 'Rainbow', 'Случайные оттенки': 'Random Hue',
     'Полоса → круг': 'Rectangular to Polar', 'Круг → полоса': 'Polar to Rectangular', 'Обычная карта': 'Generic', 'Base Color (альбедо)': 'Base Color',
     'Авто (по ноде Height to Normal)': 'Auto (from Height to Normal)',
+    'Текучий (Flow)': 'Flow', 'Фрактал пятен (Splat Fractal)': 'Splat Fractal', 'Конус': 'Cone', 'Штрих (вытянутый)': 'Streak',
+    'Сложение (мягкое насыщение)': 'Add (soft saturation)', 'Плавный максимум (Smooth Max)': 'Smooth Max', 'Взвешенная сумма (как fBM)': 'Weighted Sum (fBM)',
   };
   const GROUP = {
     'Зацикленные': 'Looping', 'Однократные': 'One-shot', 'Оптические блики (Optical Flares)': 'Optical Flares',

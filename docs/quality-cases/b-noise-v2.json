@@ -1,0 +1,10 @@
+{ "cols": 4, "size": 256, "cases": [
+  { "label": "Ridged, масштаб 32, 8 окт. — без LOD (как раньше): рябь", "script": "return PTL.addNode('noise',{params:{type:'perlin',fractal:'ridged',scale:32,octaves:8,persistence:0.7,lod:false}})" },
+  { "label": "то же — LOD: мелкая деталь гаснет к среднему", "script": "return PTL.addNode('noise',{params:{type:'perlin',fractal:'ridged',scale:32,octaves:8,persistence:0.7,lod:true}})" },
+  { "label": "Worley, масштаб 32, 6 окт. — без LOD", "script": "return PTL.addNode('noise',{params:{type:'worley',scale:32,octaves:6,persistence:0.7,lod:false}})" },
+  { "label": "то же — LOD", "script": "return PTL.addNode('noise',{params:{type:'worley',scale:32,octaves:6,persistence:0.7,lod:true}})" },
+  { "label": "Perlin fBM, 6 окт., seed 5", "script": "return PTL.addNode('noise',{params:{type:'perlin',scale:3,octaves:6,seed:5}})" },
+  { "label": "Flow, адвекция 0.8, seed 5 — деталь обтекает формы", "script": "return PTL.addNode('noise',{params:{type:'flow',scale:3,octaves:6,advect:0.8,seed:5}})" },
+  { "label": "Splat, seed 5: округлые облачные массы (пятна, Smooth Max)", "script": "return PTL.addNode('noise',{params:{type:'splat',scale:3,octaves:5,seed:5,splSize:0.6,splIn:'smax',splAcross:'add',persistence:0.55}})" },
+  { "label": "Splat, seed 5: направленные клочья (штрихи, направление 25°, разброс 0.1)", "script": "return PTL.addNode('noise',{params:{type:'splat',scale:4,octaves:4,seed:5,splShape:'streak',splAspect:4,splRotRand:0.1,splAngle:25,splPer:2,splIn:'smax'}})" }
+] }
